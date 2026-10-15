@@ -3,7 +3,8 @@ export type SourceErrorKind =
   | "quota"          // daily quota exhausted; retry after the reset
   | "auth"           // credentials missing or rejected; retrying won't help
   | "bad_request"    // our query was rejected; retrying won't help
-  | "transient";     // 5xx, network, timeout; retry with backoff
+  | "transient"      // 5xx, network, timeout; retry with backoff
+  | "budget";        // a spending limit refused the call; wait for the next period or a higher limit
 
 export class SourceError extends Error {
   readonly kind: SourceErrorKind;

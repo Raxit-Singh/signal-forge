@@ -38,6 +38,9 @@ function fakeCtx(routes: Route[]) {
     async cooldown(s) {
       cooldowns.push(s);
     },
+    async paidRequest() {
+      throw new Error("free sources must not make paid requests");
+    },
     now: () => NOW,
   };
   return { ctx, calls, cooldowns };

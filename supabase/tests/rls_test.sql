@@ -492,6 +492,302 @@ select t.throws($$select * from public.source_health$$, 'anon cannot read source
 select t.throws($$select * from public.scans$$, 'anon cannot read scans', 'permission denied');
 reset role;
 
+-- ===================================================================== M2.5 monitoring + cost control
+insert into auth.users (id, email) values ('00000000-0000-0000-0000-00000000000d', 'dave@example.test');
+select t.as_user('00000000-0000-0000-0000-00000000000d');
+set role authenticated;
+insert into ids select 'ws_d', public.create_workspace('Dave Co');
+with p as (
+  insert into public.products (workspace_id, name, created_by)
+  select v, 'DaveApp', auth.uid() from ids where k = 'ws_d' returning id
+)
+insert into ids select 'p_d', id from p;
+reset role;
+
+-- Supplier pricing, budgets and the ledger are never visible to customers.
+select t.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+select t.throws($$select * from public.provider_pricing$$, 'users cannot read supplier pricing', 'permission denied');
+select t.throws($$select * from public.api_budgets$$, 'users cannot read budgets', 'permission denied');
+select t.throws($$select * from public.api_cost_ledger$$, 'users cannot read the cost ledger', 'permission denied');
+select t.throws($$select * from public.api_cost_allocations$$, 'users cannot read cost allocations', 'permission denied');
+select t.throws($$select * from public.plan_paid_allowances$$, 'users cannot read paid allowances', 'permission denied');
+select t.throws($$select * from public.comment_expansions$$, 'users cannot read expansion internals', 'permission denied');
+select t.throws($$select public.svc_reserve_api_spend('reddit', 'reddit.posts', 1, 'search', '[]')$$, 'users cannot reserve spend', 'permission denied');
+select t.throws($$select public.svc_apply_query_groups(gen_random_uuid(), '[]')$$, 'users cannot write query groups', 'permission denied');
+select t.throws($$select public.svc_schedule_context(gen_random_uuid(), 'reddit')$$, 'users cannot read schedule internals', 'permission denied');
+-- Queries: users may not set fingerprints or schedule state.
+select t.throws(format($$insert into public.monitoring_queries (workspace_id, product_id, provider, query, fingerprint) values (%L, %L, 'reddit', 'x', repeat('a', 64))$$,
+  (select v from ids where k = 'ws_a'), (select v from ids where k = 'p_a')), 'users cannot set query fingerprints', 'permission denied');
+select t.throws(format($$update public.monitoring_queries set interval_minutes = 15 where product_id = %L$$, (select v from ids where k = 'p_a')),
+  'users cannot change adaptive schedule state', 'permission denied');
+reset role;
+set role anon;
+select t.throws($$select * from public.launch_boosts$$, 'anon cannot read launch boosts', 'permission denied');
+select t.throws($$select public.buzz_totals(gen_random_uuid(), now() - interval '1 day', now())$$, 'anon cannot run analytics', 'permission denied');
+reset role;
+
+-- Reservations (service role). ws_a is on Pro (allowance $5), ws_d on Free ($0).
+set role service_role;
+create temp table rv (k text primary key, r jsonb);
+grant all on rv to service_role;
+insert into rv values ('no_budget', public.svc_reserve_api_spend('reddit', 'reddit.comments', 2, 'comment_search',
+  jsonb_build_array(jsonb_build_object('workspace_id', (select v from ids where k = 'ws_a'), 'product_id', (select v from ids where k = 'p_a')))));
+select t.ok((select r ->> 'reason' from rv where k = 'no_budget') = 'no_global_budget', 'no paid call without an operator-set global budget');
+insert into public.api_budgets (scope, monthly_limit_usd) values ('global', 0.02);
+insert into rv values ('first', public.svc_reserve_api_spend('reddit', 'reddit.comments', 2, 'comment_search',
+  jsonb_build_array(jsonb_build_object('workspace_id', (select v from ids where k = 'ws_a'), 'product_id', (select v from ids where k = 'p_a'))), null, repeat('f', 64)));
+select t.ok((select (r ->> 'ok')::boolean from rv where k = 'first') and (select (r ->> 'estimated_usd')::numeric from rv where k = 'first') = 0.006,
+  'reservation estimates from the pricing registry (2 pages x $0.003)');
+select t.ok((select status from public.api_cost_ledger where id = (select (r ->> 'ledger_id')::uuid from rv where k = 'first')) = 'reserved', 'ledger row starts reserved');
+select public.svc_settle_api_spend((select (r ->> 'ledger_id')::uuid from rv where k = 'first'), 200, null, 2, 0, 900);
+select t.ok((select status = 'settled' and charged_usd = 0.006 and results_returned = 0 from public.api_cost_ledger where id = (select (r ->> 'ledger_id')::uuid from rv where k = 'first')),
+  'zero-result 200 settles as billed');
+insert into rv values ('err', public.svc_reserve_api_spend('reddit', 'reddit.posts', 1, 'search',
+  jsonb_build_array(jsonb_build_object('workspace_id', (select v from ids where k = 'ws_a'), 'product_id', (select v from ids where k = 'p_a')))));
+select public.svc_settle_api_spend((select (r ->> 'ledger_id')::uuid from rv where k = 'err'), 502, 'upstream_error', 0, null, 300);
+select t.ok((select status = 'released' and charged_usd = 0 from public.api_cost_ledger where id = (select (r ->> 'ledger_id')::uuid from rv where k = 'err')),
+  'unbilled failure releases the reservation');
+insert into rv values ('lost', public.svc_reserve_api_spend('reddit', 'reddit.posts', 1, 'search',
+  jsonb_build_array(jsonb_build_object('workspace_id', (select v from ids where k = 'ws_a'), 'product_id', (select v from ids where k = 'p_a')))));
+select public.svc_settle_api_spend((select (r ->> 'ledger_id')::uuid from rv where k = 'lost'), null, 'no_response', 0, null, 20000);
+select t.ok((select status = 'unknown' and charged_usd is null from public.api_cost_ledger where id = (select (r ->> 'ledger_id')::uuid from rv where k = 'lost')),
+  'a request with no answer stays counted at its estimate');
+select t.ok((public.svc_reserve_api_spend('reddit', 'reddit.unknown', 1, 'search',
+  jsonb_build_array(jsonb_build_object('workspace_id', (select v from ids where k = 'ws_a'), 'product_id', (select v from ids where k = 'p_a'))))) ->> 'reason' = 'unpriced',
+  'unpriced endpoints are refused');
+select t.ok((public.svc_reserve_api_spend('x', 'reddit.posts', 1, 'search',
+  jsonb_build_array(jsonb_build_object('workspace_id', (select v from ids where k = 'ws_a'), 'product_id', (select v from ids where k = 'p_a'))))) ->> 'reason' = 'unpriced',
+  'pricing key must belong to the platform');
+-- Spent so far: 0.006 settled + 0.003 unknown = 0.009 of 0.02. 4 X pages ($0.024) would exceed it.
+select t.ok((public.svc_reserve_api_spend('x', 'x.posts', 4, 'search',
+  jsonb_build_array(jsonb_build_object('workspace_id', (select v from ids where k = 'ws_a'), 'product_id', (select v from ids where k = 'p_a'))))) ->> 'reason' = 'global_budget_exhausted',
+  'global monthly limit is enforced including unknown spend');
+update public.api_budgets set monthly_limit_usd = 100 where scope = 'global';
+insert into public.api_budgets (scope, platform, monthly_limit_usd) values ('platform', 'x', 0.01);
+select t.ok((public.svc_reserve_api_spend('x', 'x.posts', 2, 'search',
+  jsonb_build_array(jsonb_build_object('workspace_id', (select v from ids where k = 'ws_a'), 'product_id', (select v from ids where k = 'p_a'))))) ->> 'reason' = 'platform_budget_exhausted',
+  'platform budget is enforced');
+insert into public.api_budgets (scope, provider, monthly_limit_usd) values ('provider', 'apidirect', 0.01);
+select t.ok((public.svc_reserve_api_spend('reddit', 'reddit.posts', 1, 'search',
+  jsonb_build_array(jsonb_build_object('workspace_id', (select v from ids where k = 'ws_a'), 'product_id', (select v from ids where k = 'p_a'))))) ->> 'reason' = 'provider_budget_exhausted',
+  'provider budget is enforced');
+delete from public.api_budgets where scope in ('provider', 'platform');
+select t.ok((public.svc_reserve_api_spend('reddit', 'reddit.posts', 1, 'search',
+  jsonb_build_array(jsonb_build_object('workspace_id', (select v from ids where k = 'ws_d'), 'product_id', (select v from ids where k = 'p_d'))))) ->> 'reason' = 'workspace_budget_exhausted',
+  'free plan has no paid-source allowance');
+-- Shared fetch: dave can't pay, so only alice is billed (full share).
+insert into rv values ('shared', public.svc_reserve_api_spend('reddit', 'reddit.posts', 1, 'search', jsonb_build_array(
+  jsonb_build_object('workspace_id', (select v from ids where k = 'ws_a'), 'product_id', (select v from ids where k = 'p_a')),
+  jsonb_build_object('workspace_id', (select v from ids where k = 'ws_d'), 'product_id', (select v from ids where k = 'p_d')))));
+select t.ok(jsonb_array_length((select r -> 'members' from rv where k = 'shared')) = 1
+  and (select share from public.api_cost_allocations where ledger_id = (select (r ->> 'ledger_id')::uuid from rv where k = 'shared')) = 1,
+  'members who cannot afford their share are dropped; the rest share the cost');
+update public.plan_paid_allowances set monthly_usd = 5 where plan_id = 'free';
+insert into rv values ('split', public.svc_reserve_api_spend('reddit', 'reddit.posts', 1, 'search', jsonb_build_array(
+  jsonb_build_object('workspace_id', (select v from ids where k = 'ws_a'), 'product_id', (select v from ids where k = 'p_a')),
+  jsonb_build_object('workspace_id', (select v from ids where k = 'ws_d'), 'product_id', (select v from ids where k = 'p_d')))));
+select t.ok((select sum(share) from public.api_cost_allocations where ledger_id = (select (r ->> 'ledger_id')::uuid from rv where k = 'split')) = 1
+  and (select count(*) from public.api_cost_allocations where ledger_id = (select (r ->> 'ledger_id')::uuid from rv where k = 'split')) = 2,
+  'one shared request is split across both products');
+update public.plan_paid_allowances set monthly_usd = 0 where plan_id = 'free';
+insert into public.api_budgets (scope, product_id, monthly_limit_usd) values ('product', (select v from ids where k = 'p_a'), 0.001);
+select t.ok((public.svc_reserve_api_spend('reddit', 'reddit.posts', 1, 'search',
+  jsonb_build_array(jsonb_build_object('workspace_id', (select v from ids where k = 'ws_a'), 'product_id', (select v from ids where k = 'p_a'))))) ->> 'reason' = 'workspace_budget_exhausted',
+  'product budget is enforced');
+delete from public.api_budgets where scope = 'product';
+-- Stale reservations count as unknown spend.
+update public.api_cost_ledger set reserved_at = now() - interval '1 hour' where id = (select (r ->> 'ledger_id')::uuid from rv where k = 'shared');
+select public.svc_reserve_api_spend('reddit', 'reddit.posts', 1, 'search',
+  jsonb_build_array(jsonb_build_object('workspace_id', (select v from ids where k = 'ws_a'), 'product_id', (select v from ids where k = 'p_a'))));
+select t.ok((select status from public.api_cost_ledger where id = (select (r ->> 'ledger_id')::uuid from rv where k = 'shared')) = 'unknown',
+  'reservations abandoned by crashed workers become unknown (still counted)');
+select t.ok((select count(*) from public.provider_pricing) = 18 and (select price_usd from private.current_price('x.posts')) = 0.006,
+  'pricing registry seeded from the verified price list');
+reset role;
+
+-- Launch boosts: admins only, paid boosts need explicit authorization, isolated per workspace.
+select t.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+with b as (
+  insert into public.launch_boosts (workspace_id, product_id, title, platforms, starts_at, ends_at, created_by)
+  select (select v from ids where k = 'ws_a'), (select v from ids where k = 'p_a'), 'v2 launch', array['hackernews','bluesky']::public.integration_provider[],
+         now() - interval '1 hour', now() + interval '2 days', auth.uid()
+  returning id)
+insert into ids select 'boost_a', id from b;
+select t.ok((select count(*) from public.launch_boosts) = 1, 'admin can create a free-source boost');
+select t.throws(format($$insert into public.launch_boosts (workspace_id, product_id, title, platforms, starts_at, ends_at, max_paid_checks, created_by)
+  values (%L, %L, 'paid', array['reddit']::public.integration_provider[], now(), now() + interval '1 day', 50, auth.uid())$$,
+  (select v from ids where k = 'ws_a'), (select v from ids where k = 'p_a')), 'paid boost without authorization is rejected', 'check');
+select t.throws(format($$insert into public.launch_boosts (workspace_id, product_id, title, platforms, starts_at, ends_at, max_paid_checks, paid_authorized_by, paid_authorized_at, created_by)
+  values (%L, %L, 'paid', array['reddit']::public.integration_provider[], now(), now() + interval '1 day', 50, '00000000-0000-0000-0000-00000000000d', now(), auth.uid())$$,
+  (select v from ids where k = 'ws_a'), (select v from ids where k = 'p_a')), 'paid authorization must be the acting user', 'row-level security');
+with b as (
+  insert into public.launch_boosts (workspace_id, product_id, title, platforms, starts_at, ends_at, max_paid_checks, paid_authorized_by, paid_authorized_at, created_by)
+  values ((select v from ids where k = 'ws_a'), (select v from ids where k = 'p_a'), 'paid', array['reddit']::public.integration_provider[],
+          now() - interval '1 minute', now() + interval '1 day', 1, auth.uid(), now(), auth.uid())
+  returning id)
+insert into ids select 'boost_paid', id from b;
+select t.throws(format($$insert into public.launch_boosts (workspace_id, product_id, title, platforms, starts_at, ends_at, created_by)
+  values (%L, %L, 'long', array['x']::public.integration_provider[], now(), now() + interval '20 days', auth.uid())$$,
+  (select v from ids where k = 'ws_a'), (select v from ids where k = 'p_a')), 'boosts last at most 14 days', 'check');
+insert into public.product_source_settings (workspace_id, product_id, platform, enabled, updated_by)
+values ((select v from ids where k = 'ws_a'), (select v from ids where k = 'p_a'), 'reddit', true, auth.uid());
+select t.throws(format($$update public.product_source_settings set config = '{"x":1}' where product_id = %L$$, (select v from ids where k = 'p_a')),
+  'users cannot write worker-maintained source config', 'permission denied');
+update public.products set monitoring_mode = 'priority' where id = (select v from ids where k = 'p_a');
+select t.ok((select monitoring_mode from public.products where id = (select v from ids where k = 'p_a')) = 'priority', 'admin can change the monitoring mode');
+reset role;
+select t.as_user('00000000-0000-0000-0000-00000000000d');
+set role authenticated;
+select t.ok((select count(*) from public.launch_boosts) = 0, 'other workspaces cannot see boosts');
+select t.ok((select count(*) from public.product_source_settings) = 0, 'other workspaces cannot see source settings');
+update public.launch_boosts set canceled_at = now();
+reset role;
+select t.ok((select count(*) from public.launch_boosts where canceled_at is not null) = 0, 'other workspaces cannot cancel boosts');
+
+-- Boost paid-check cap (1) is enforced by reservations.
+set role service_role;
+select t.ok((public.svc_reserve_api_spend('reddit', 'reddit.posts', 1, 'search', jsonb_build_array(jsonb_build_object(
+  'workspace_id', (select v from ids where k = 'ws_a'), 'product_id', (select v from ids where k = 'p_a'), 'boost_id', (select v from ids where k = 'boost_paid')))) ->> 'ok')::boolean,
+  'boost allows paid checks up to its cap');
+select t.ok((public.svc_reserve_api_spend('reddit', 'reddit.posts', 1, 'search', jsonb_build_array(jsonb_build_object(
+  'workspace_id', (select v from ids where k = 'ws_a'), 'product_id', (select v from ids where k = 'p_a'), 'boost_id', (select v from ids where k = 'boost_paid')))) ->> 'reason') = 'workspace_budget_exhausted',
+  'boost paid-check cap stops further paid calls');
+select t.ok((public.svc_schedule_context((select v from ids where k = 'p_a'), 'hackernews') -> 'boost' ->> 'id')::uuid = (select v from ids where k = 'boost_a')
+  and (public.svc_schedule_context((select v from ids where k = 'p_a'), 'hackernews') ->> 'plan_min_minutes')::int = 360
+  and public.svc_schedule_context((select v from ids where k = 'p_a'), 'hackernews') ->> 'mode' = 'priority',
+  'schedule context exposes plan floor, mode and the active boost for that platform');
+select t.ok(public.svc_schedule_context((select v from ids where k = 'p_a'), 'github') -> 'boost' = 'null'::jsonb,
+  'a boost only applies to its selected platforms');
+reset role;
+
+-- Optimizer query groups: streams coexist; the legacy sync leaves them alone.
+set role service_role;
+select t.ok(public.svc_apply_query_groups((select v from ids where k = 'p_a'), jsonb_build_array(
+  jsonb_build_object('provider', 'reddit', 'stream', 'posts', 'query', 'FocusFlow', 'fingerprint', repeat('a', 64), 'params', '{"terms":["FocusFlow"]}'),
+  jsonb_build_object('provider', 'reddit', 'stream', 'comments', 'query', 'FocusFlow', 'fingerprint', repeat('b', 64), 'params', '{"terms":["FocusFlow"]}'))) = 2,
+  'service writes optimizer query groups');
+select t.ok((select count(*) from public.monitoring_queries where product_id = (select v from ids where k = 'p_a') and provider = 'reddit' and enabled) = 2,
+  'Reddit posts and comments are separate query groups (separate checkpoints) with the same query text');
+reset role;
+select t.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+select public.replace_product_aliases((select v from ids where k = 'p_a'), '[{"term":"FocusFlow","kind":"exact_name"}]');
+reset role;
+select t.ok((select count(*) from public.monitoring_queries where product_id = (select v from ids where k = 'p_a') and provider = 'reddit' and enabled) = 2,
+  'keyword re-sync of legacy sources does not disable optimizer groups');
+set role service_role;
+select public.svc_apply_query_groups((select v from ids where k = 'p_a'), jsonb_build_array(
+  jsonb_build_object('provider', 'reddit', 'stream', 'comments', 'query', 'FocusFlow', 'fingerprint', repeat('b', 64))));
+select t.ok((select count(*) from public.monitoring_queries where product_id = (select v from ids where k = 'p_a') and provider = 'reddit' and enabled) = 1
+  and exists (select 1 from public.monitoring_queries where product_id = (select v from ids where k = 'p_a') and stream = 'posts' and not enabled),
+  'groups no longer wanted are disabled, not deleted (checkpoints survive)');
+-- Adaptive interval drives the scheduler bucket.
+update public.monitoring_queries set next_run_at = now() - interval '1 minute', interval_minutes = 120
+ where product_id = (select v from ids where k = 'p_a') and stream = 'comments';
+select t.ok(public.svc_schedule_due_queries(array['reddit'], 10) = 1, 'scheduler picks up due optimizer groups');
+select t.ok((select next_run_at > now() + interval '115 minutes' and next_run_at < now() + interval '130 minutes'
+  from public.monitoring_queries where product_id = (select v from ids where k = 'p_a') and stream = 'comments'),
+  'provisional next run follows the adaptive interval (2 h), not the plan default');
+reset role;
+
+-- ===================================================================== M3 Buzz analytics
+-- Dave's product, fixed timestamps (UTC): day 1 = 2026-09-01.
+set role service_role;
+select public.svc_ingest_mentions((select v from ids where k = 'p_d'), 'reddit', jsonb_build_array(
+  jsonb_build_object('external_id', 'r1', 'source_url', 'https://reddit.com/r/a/comments/r1/x', 'published_at', '2026-09-01T10:00:00Z',
+    'relevance_status', 'relevant', 'author_external_id', 'u1', 'engagement_score', 5, 'mention_type', 'post', 'data_provider', 'apidirect', 'community', 'r/a'),
+  jsonb_build_object('external_id', 'r2', 'source_url', 'https://reddit.com/r/a/comments/r1/x', 'published_at', '2026-09-01T23:30:00Z',
+    'relevance_status', 'relevant', 'author_external_id', 'u1', 'engagement_score', 1, 'mention_type', 'comment', 'collection_method', 'comment_search', 'link_target', 'thread'),
+  jsonb_build_object('external_id', 'r3', 'source_url', 'https://reddit.com/r/a/comments/r3/x', 'published_at', '2026-09-02T09:00:00Z',
+    'relevance_status', 'irrelevant', 'author_external_id', 'u2'),
+  jsonb_build_object('external_id', 'r4', 'source_url', 'https://reddit.com/r/a/comments/r4/x', 'published_at', '2026-09-02T09:00:00Z',
+    'relevance_status', 'pending', 'author_external_id', 'u3')));
+select public.svc_ingest_mentions((select v from ids where k = 'p_d'), 'hackernews', jsonb_build_array(
+  jsonb_build_object('external_id', 'h1', 'source_url', 'https://news.ycombinator.com/item?id=h1', 'published_at', '2026-09-02T12:00:00Z',
+    'relevance_status', 'user_relevant', 'author_external_id', 'pg', 'linked_url', 'daveapp.example/launch'),
+  jsonb_build_object('external_id', 'h2', 'source_url', 'https://news.ycombinator.com/item?id=h2', 'published_at', '2026-09-02T13:00:00Z',
+    'relevance_status', 'relevant', 'author_external_id', 'tptacek', 'linked_url', 'daveapp.example/launch')));
+select public.svc_ingest_mentions((select v from ids where k = 'p_d'), 'web', jsonb_build_array(
+  jsonb_build_object('external_id', 'w1', 'source_url', 'https://blog.example/daveapp', 'published_at', '2026-09-02T00:00:00Z',
+    'relevance_status', 'relevant', 'published_at_estimated', true)));
+insert into public.coverage_windows (workspace_id, product_id, provider, window_start, window_end, status) values
+  ((select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d'), 'reddit', '2026-09-01T00:00:00Z', '2026-09-03T00:00:00Z', 'complete'),
+  ((select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d'), 'hackernews', '2026-09-02T00:00:00Z', '2026-09-02T12:00:00Z', 'complete'),
+  ((select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d'), 'hackernews', '2026-09-02T06:00:00Z', '2026-09-03T00:00:00Z', 'partial');
+reset role;
+select t.ok((select mention_type || '/' || collection_method || '/' || link_target from public.mentions where external_id = 'r2') = 'comment/comment_search/thread'
+  and (select data_provider || '/' || community from public.mentions where external_id = 'r1') = 'apidirect/r/a',
+  'ingest stores the extended mention model');
+
+select t.as_user('00000000-0000-0000-0000-00000000000d');
+set role authenticated;
+create temp table s_utc as select * from public.buzz_series((select v from ids where k = 'p_d'), '2026-09-01T00:00:00Z', '2026-09-03T00:00:00Z', 'day', 'UTC');
+select t.ok((select relevant from s_utc where bucket_start = '2026-09-01T00:00:00Z' and source = 'reddit') = 2
+  and (select irrelevant from s_utc where bucket_start = '2026-09-02T00:00:00Z' and source = 'reddit') = 1
+  and (select pending from s_utc where bucket_start = '2026-09-02T00:00:00Z' and source = 'reddit') = 1,
+  'daily series splits relevant / irrelevant / pending');
+select t.ok((select relevant from s_utc where source = 'hackernews') = 1, 'reposts are excluded from counts (dedup before aggregation)');
+select t.ok(not exists (select 1 from s_utc where source = 'web'), 'undated web results stay out of time series');
+select t.ok((select posts from s_utc where bucket_start = '2026-09-01T00:00:00Z' and source = 'reddit') = 1
+  and (select comments from s_utc where bucket_start = '2026-09-01T00:00:00Z' and source = 'reddit') = 1, 'post/comment split');
+create temp table s_ny as select * from public.buzz_series((select v from ids where k = 'p_d'), '2026-08-31T04:00:00Z', '2026-09-03T04:00:00Z', 'day', 'America/New_York');
+select t.ok((select relevant from s_ny where bucket_start = '2026-09-01T04:00:00Z' and source = 'reddit') = 2
+  and (select count(*) from s_ny where source = 'reddit' and relevant > 0) = 1,
+  'day buckets follow the viewer''s time zone (23:30 UTC is still Sep 1 in New York)');
+create temp table tot as select * from public.buzz_totals((select v from ids where k = 'p_d'), '2026-09-01T00:00:00Z', '2026-09-03T00:00:00Z');
+select t.ok((select unique_authors from tot where source = 'reddit') = 1 and (select with_author from tot where source = 'reddit') = 2,
+  'unique authors are distinct per platform');
+select t.ok((select duplicates_excluded from tot where source = 'hackernews') = 1 and (select undated from tot where source = 'web') = 1,
+  'totals report excluded duplicates and undated rows');
+select t.ok((select engagement from tot where source = 'reddit') = 6, 'engagement totals');
+-- Totals reconcile with the series.
+select t.ok((select sum(relevant) from s_utc) = (select sum(relevant) from tot), 'series and totals reconcile');
+create temp table cov as select * from public.buzz_coverage((select v from ids where k = 'p_d'), '2026-08-31T00:00:00Z', '2026-09-03T00:00:00Z', 'day', 'UTC');
+select t.ok((select covered from cov where bucket_start = '2026-08-31T00:00:00Z' and source = 'reddit') = 0, 'day before monitoring is uncovered (a gap, not zero)');
+select t.ok((select covered from cov where bucket_start = '2026-09-02T00:00:00Z' and source = 'hackernews') = 1
+  and (select complete from cov where bucket_start = '2026-09-02T00:00:00Z' and source = 'hackernews') = 0.5,
+  'overlapping windows are merged; partial coverage is separated from complete');
+select t.ok((select covered from cov where bucket_start = '2026-09-01T00:00:00Z' and source = 'hackernews') = 0, 'per-source coverage');
+select t.throws($$select * from public.buzz_series(gen_random_uuid(), now() - interval '1 day', now(), 'day', 'Mars/Base')$$, 'unknown time zones are rejected', 'time zone');
+select t.throws($$select * from public.buzz_series(gen_random_uuid(), now() - interval '30 days', now(), 'hour', 'UTC')$$, 'hourly ranges are bounded', 'too long');
+select t.throws($$select * from public.buzz_series(gen_random_uuid(), now(), now() - interval '1 day', 'day', 'UTC')$$, 'inverted ranges are rejected', 'invalid range');
+reset role;
+
+-- Isolation: alice aggregates nothing from dave's product.
+select t.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+select t.ok((select count(*) from public.buzz_series((select v from ids where k = 'p_d'), '2026-09-01T00:00:00Z', '2026-09-03T00:00:00Z', 'day', 'UTC')) = 0,
+  'analytics never aggregate another workspace''s mentions');
+select t.ok((select count(*) from public.buzz_totals((select v from ids where k = 'p_d'), '2026-09-01T00:00:00Z', '2026-09-03T00:00:00Z')) = 0,
+  'totals are isolated too');
+select t.ok((select count(*) from public.buzz_coverage((select v from ids where k = 'p_d'), '2026-09-01T00:00:00Z', '2026-09-03T00:00:00Z', 'day', 'UTC') where source is not null) = 0,
+  'coverage is isolated too');
+reset role;
+
+-- Spikes and execution logs: readable by the workspace only.
+set role service_role;
+insert into public.buzz_spikes (workspace_id, product_id, platform, granularity, period_start, period_end, observed, expected, baseline_periods, robust_z, ratio, severity)
+values ((select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d'), null, 'day', '2026-09-02T00:00:00Z', '2026-09-03T00:00:00Z', 30, 4, 20, 9.1, 7.5, 'major');
+select t.throws(format($$insert into public.buzz_spikes (workspace_id, product_id, platform, granularity, period_start, period_end, observed, expected, baseline_periods, severity)
+  values (%L, %L, null, 'day', '2026-09-02T00:00:00Z', '2026-09-03T00:00:00Z', 31, 4, 20, 'major')$$, (select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d')),
+  'one spike per product/platform/period (re-detection is idempotent)', 'duplicate');
+insert into public.monitoring_executions (workspace_id, product_id, platform, status, started_at)
+values ((select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d'), 'reddit', 'succeeded', now());
+reset role;
+select t.as_user('00000000-0000-0000-0000-00000000000d');
+set role authenticated;
+select t.ok((select count(*) from public.buzz_spikes) = 1 and (select count(*) from public.monitoring_executions) = 1, 'workspace sees its spikes and executions');
+select t.throws($$insert into public.buzz_spikes (workspace_id, product_id, granularity, period_start, period_end, observed, expected, baseline_periods, severity)
+  values (gen_random_uuid(), gen_random_uuid(), 'day', now(), now() + interval '1 day', 1, 1, 1, 'major')$$, 'users cannot write spikes', 'permission denied');
+reset role;
+select t.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+select t.ok((select count(*) from public.buzz_spikes) = 0 and (select count(*) from public.monitoring_executions where product_id = (select v from ids where k = 'p_d')) = 0,
+  'other workspaces cannot see spikes or execution logs');
+reset role;
+
 -- ===================================================================== summary
 do $$
 declare passed int; failed int;

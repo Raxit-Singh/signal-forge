@@ -2,16 +2,16 @@ import "server-only";
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { PUBLIC_SOURCES } from "@/lib/sources/registry";
 import type { PublicSourceId } from "@/lib/sources/types";
 import { sourceSetup } from "./sources";
 
-export type CoverageState = "live" | "partial" | "failing" | "not_configured" | "not_started";
+export type CoverageState = "live" | "partial" | "failing" | "not_configured" | "not_enabled" | "not_started";
 
 export interface SourceCoverage {
   id: PublicSourceId;
   name: string;
   state: CoverageState;
+  paid: boolean;
   /** Human explanation for anything other than "live". */
   detail?: string;
   lastCoveredAt?: string;
@@ -32,30 +32,32 @@ const STALE_MS = 2 * 86_400_000 + 3_600_000;
 
 /**
  * Per-source coverage for a product, from coverage windows (what was actually
- * searched) plus server configuration. Reads through RLS.
+ * searched), the product's enabled query groups, and server configuration.
+ * Reads through RLS.
  */
 export const getCoverageSummary = cache(async (productId: string): Promise<CoverageSummary> => {
   const supabase = await createClient();
   const setup = sourceSetup();
-  const latest = await Promise.all(
-    PUBLIC_SOURCES.map(async (id) => {
-      const { data } = await supabase
-        .from("coverage_windows")
-        .select("status, detail, window_end")
-        .eq("product_id", productId)
-        .eq("provider", id)
-        .order("window_end", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      return [id, data] as const;
-    }),
-  );
-  const byId = new Map(latest);
+  const [{ data: windows }, { data: queries }] = await Promise.all([
+    supabase
+      .from("coverage_windows")
+      .select("provider, status, detail, window_end")
+      .eq("product_id", productId)
+      .order("window_end", { ascending: false })
+      .limit(1000),
+    supabase.from("monitoring_queries").select("provider").eq("product_id", productId).eq("enabled", true),
+  ]);
+  const byId = new Map<string, { status: string; detail: string | null; window_end: string }>();
+  for (const w of windows ?? []) if (!byId.has(w.provider as string)) byId.set(w.provider as string, w);
+  const active = new Set((queries ?? []).map((q) => q.provider as string));
 
   const sources = setup.map((s): SourceCoverage => {
-    const w = byId.get(s.id) as { status: string; detail: string | null; window_end: string } | null | undefined;
-    const base = { id: s.id, name: s.name, note: s.note, lastCoveredAt: w?.window_end };
+    const w = byId.get(s.id);
+    const base = { id: s.id, name: s.name, note: s.note, paid: s.paid, lastCoveredAt: w?.window_end };
     if (!s.configured) return { ...base, state: "not_configured", detail: s.reason };
+    if (!active.has(s.id) && !w) {
+      return { ...base, state: "not_enabled", detail: s.paid ? "Paid source not turned on for this product." : "Not monitored for this product." };
+    }
     if (!w) return { ...base, state: "not_started", detail: "No scan has run for this source yet." };
     if (w.status === "failed") return { ...base, state: "failing", detail: w.detail ?? "The latest collection run failed." };
     if (Date.now() - new Date(w.window_end).getTime() > STALE_MS) {

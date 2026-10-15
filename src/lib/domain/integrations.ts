@@ -4,14 +4,18 @@
 export type IntegrationProvider =
   | "github" | "youtube" | "hackernews" | "stackexchange"
   | "app_store_connect" | "google_play" | "discord"
-  | "reddit" | "x" | "instagram" | "linkedin" | "facebook" | "slack" | "product_hunt";
+  | "reddit" | "x" | "instagram" | "linkedin" | "facebook" | "slack" | "product_hunt"
+  | "bluesky" | "dev" | "app_store" | "threads" | "tiktok" | "substack" | "web" | "news" | "trustpilot";
 
 /**
+ * available    – implemented and verified against the live API
+ * unverified   – implemented and tested with recorded/mock responses; not yet
+ *                validated live (needs credentials, and for paid sources an
+ *                authorized test budget)
  * planned      – officially supported API, implementation scheduled (milestone noted)
- * available    – implemented and verified end-to-end
- * blocked      – needs commercial/partner approval or paid access we do not have
+ * blocked      – needs commercial/partner approval or access we do not have
  */
-export type Availability = "available" | "planned" | "blocked";
+export type Availability = "available" | "unverified" | "planned" | "blocked";
 
 export interface IntegrationInfo {
   provider: IntegrationProvider;
@@ -25,6 +29,10 @@ export interface IntegrationInfo {
   permissions: string;
   limits: string;
   blockedReason?: string;
+  /** Collected through API Direct (paid per request). */
+  paid?: boolean;
+  /** Comments: found by global search, only on selected posts, or not at all. */
+  commentCoverage?: "search" | "selected_posts" | "none";
 }
 
 export const INTEGRATIONS: readonly IntegrationInfo[] = [
@@ -55,7 +63,8 @@ export const INTEGRATIONS: readonly IntegrationInfo[] = [
   {
     provider: "youtube",
     name: "YouTube",
-    availability: "available",
+    availability: "unverified",
+    commentCoverage: "selected_posts",
     publicDiscovery: true,
     requiresAuthorization: false,
     readOnly: true,
@@ -111,13 +120,81 @@ export const INTEGRATIONS: readonly IntegrationInfo[] = [
     permissions: "Bot install by a server admin; reading message content requires Discord's privileged intent.",
     limits: "Message Content intent requires Discord approval once the bot is in 100+ servers.",
   },
-  ...(["reddit", "x", "instagram", "linkedin", "facebook", "slack", "product_hunt"] as const).map(
+  {
+    provider: "bluesky",
+    name: "Bluesky",
+    availability: "unverified",
+    publicDiscovery: true,
+    requiresAuthorization: false,
+    readOnly: true,
+    commentCoverage: "search",
+    dataAccessed: "Public Bluesky posts and replies that contain your keywords.",
+    permissions: "None — uses Bluesky's public search API (AT Protocol AppView).",
+    limits: "One search per keyword (Bluesky search has no OR). Search covers what Bluesky has indexed; it is not a complete archive.",
+  },
+  {
+    provider: "dev",
+    name: "DEV Community",
+    availability: "unverified",
+    publicDiscovery: true,
+    requiresAuthorization: false,
+    readOnly: true,
+    commentCoverage: "selected_posts",
+    dataAccessed: "DEV articles tagged with one of your keywords, and comments on the relevant ones.",
+    permissions: "None — uses the public Forem API.",
+    limits: "DEV's API has no full-text search, so only articles *tagged* with a keyword are found.",
+  },
+  {
+    provider: "app_store",
+    name: "Apple App Store reviews",
+    availability: "unverified",
+    publicDiscovery: false,
+    requiresAuthorization: false,
+    readOnly: true,
+    dataAccessed: "Recent public customer reviews of your app (the App Store URL on your product).",
+    permissions: "None — uses Apple's public customer-reviews feed.",
+    limits: "Most recent reviews only, per storefront; no per-review links.",
+  },
+  ...([
+    ["reddit", "Reddit", "search", "Public posts and comments that mention your keywords — comments are searched directly, even when the post doesn't mention you.", "Comment results link to the thread: the API returns no comment permalink."],
+    ["x", "X (Twitter)", "selected_posts", "Public posts, replies and quote posts that contain your keywords; replies to selected high-engagement posts.", "Search finds replies that mention you; other replies are only read on selected posts."],
+    ["linkedin", "LinkedIn", "none", "Public LinkedIn posts that mention your keywords.", "Posts only — comments are not available."],
+    ["tiktok", "TikTok", "selected_posts", "Public TikTok videos matching your keywords, and comments on selected relevant videos.", "Keyword search matches loosely; comments are only read on selected videos (TikTok shows about 450 per video)."],
+    ["instagram", "Instagram", "selected_posts", "Public Instagram posts matching your keywords, and comments on selected relevant posts.", "Search is relevance-ranked with no date filter, so new posts can be missed."],
+    ["facebook", "Facebook", "selected_posts", "Public Facebook posts matching your keywords, and comments on selected relevant posts.", "Every keyword word must appear; comments only on selected posts."],
+    ["substack", "Substack", "none", "Substack posts and Notes that mention your keywords.", "Post search is relevance-ranked; only the preview text is stored."],
+    ["web", "Web (Google Search)", "none", "Web pages Google returns for your keywords.", "Search snippets only; pages have no publication date, so they are left out of trend charts."],
+    ["news", "News (Google News)", "none", "News articles that mention your keywords; syndicated copies are linked.", "Snippets only, up to 50 articles per check."],
+    ["trustpilot", "Trustpilot", "none", "Reviews on your company's Trustpilot page (from your product's website domain).", "Only your own business page; nothing is found if Trustpilot has no page for your domain."],
+  ] as const).map(([provider, name, commentCoverage, dataAccessed, limits]): IntegrationInfo => ({
+    provider,
+    name,
+    availability: "unverified",
+    paid: true,
+    commentCoverage,
+    publicDiscovery: true,
+    requiresAuthorization: false,
+    readOnly: true,
+    dataAccessed,
+    permissions: "None from you — collected through API Direct, SignalForge's paid data provider.",
+    limits: `${limits} Paid source: runs only when your plan includes paid sources and a spending limit is set.`,
+  })),
+  {
+    provider: "threads",
+    name: "Threads",
+    availability: "blocked",
+    publicDiscovery: false,
+    requiresAuthorization: true,
+    readOnly: true,
+    dataAccessed: "—",
+    permissions: "—",
+    limits: "—",
+    blockedReason: "Keyword search needs Meta's threads_keyword_search permission, which requires app review. Disabled until approved.",
+  },
+  ...(["slack", "product_hunt"] as const).map(
     (provider): IntegrationInfo => ({
       provider,
-      name: {
-        reddit: "Reddit", x: "X (Twitter)", instagram: "Instagram", linkedin: "LinkedIn",
-        facebook: "Facebook", slack: "Slack", product_hunt: "Product Hunt",
-      }[provider],
+      name: { slack: "Slack", product_hunt: "Product Hunt" }[provider],
       availability: "blocked",
       publicDiscovery: false,
       requiresAuthorization: true,

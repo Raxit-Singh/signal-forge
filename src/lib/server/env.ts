@@ -11,6 +11,10 @@ const serverSchema = z.object({
   GITHUB_TOKEN: z.string().optional(),
   STACKEXCHANGE_KEY: z.string().optional(),
   YOUTUBE_API_KEY: z.string().optional(),
+  // Paid social data (API Direct). Collection also needs PAID_SOURCES_ENABLED=true
+  // and an operator-set global budget row (api_budgets, scope 'global').
+  API_DIRECT_API_KEY: z.string().optional(),
+  PAID_SOURCES_ENABLED: z.enum(["true", "false"]).default("false"),
 });
 
 let cached: z.output<typeof serverSchema> | null = null;

@@ -3,7 +3,7 @@ import { AlertTriangle, CircleDashed, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/primitives";
 import { getActiveProduct, requireWorkspace } from "@/lib/server/session";
-import { getCoverageSummary } from "@/lib/server/collection/status";
+import { getCoverageSummary, type SourceCoverage } from "@/lib/server/collection/status";
 
 export function PageHeader({ title, description, actions }: { title: string; description?: React.ReactNode; actions?: React.ReactNode }) {
   return (
@@ -41,6 +41,18 @@ export function EmptyState({
   );
 }
 
+const EXCLUDED_LABEL: Record<string, string> = {
+  not_configured: "not configured", not_enabled: "not enabled", not_started: "not scanned yet", failing: "failing",
+};
+
+/** Free sources are named; paid ones that are simply off are summarized so the line stays readable. */
+function describeExcluded(excluded: SourceCoverage[]): string {
+  const paidOff = excluded.filter((s) => s.paid && (s.state === "not_configured" || s.state === "not_enabled"));
+  const named = excluded.filter((s) => !paidOff.includes(s)).map((s) => `${s.name} (${EXCLUDED_LABEL[s.state] ?? s.state})`);
+  if (paidOff.length) named.push(`${paidOff.length} paid source${paidOff.length === 1 ? "" : "s"} (off)`);
+  return named.join(", ");
+}
+
 /**
  * Every data view states which sources its numbers include, and flags
  * incomplete or failing coverage. Missing data is never presented as zero.
@@ -60,8 +72,7 @@ export async function CoverageNotice() {
         {excluded.length > 0 && (
           <>
             {" · "}
-            <span className="font-medium text-foreground">Not included:</span>{" "}
-            {excluded.map((s) => `${s.name} (${s.state === "not_configured" ? "not configured" : "not scanned yet"})`).join(", ")}
+            <span className="font-medium text-foreground">Not included:</span> {describeExcluded(excluded)}
           </>
         )}
         {" · "}

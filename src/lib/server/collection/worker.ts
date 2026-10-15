@@ -5,6 +5,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { SourceError } from "@/lib/sources/errors";
 import { MonitorJobError, recordCoverage, recordHealth, runMonitorQuery, type JobRow } from "./monitor";
 import { configuredSourceIds, getAdapters, sourceSetup } from "./sources";
+import { syncAllProducts } from "./query-sync";
+import { detectSpikesForActiveProducts } from "../analytics/spikes";
 
 const LEASE_SECONDS = 180;
 const CLAIM_BATCH = 4;
@@ -39,6 +41,7 @@ async function processJob(admin: SupabaseClient, job: JobRow, worker: string, su
     const message = (cause instanceof Error ? cause.message : String(cause)).slice(0, 1000);
 
     // Rate limits and quotas are expected: postpone without spending an attempt.
+    // (Budget refusals are not retried: the window is recorded as a gap and the schedule moves on.)
     if (cause instanceof SourceError && (cause.kind === "rate_limited" || cause.kind === "quota")) {
       const seconds = Math.min(MAX_DEFER_SECONDS, Math.max(5, cause.retryAfterSeconds ?? 60));
       const { data: ok } = await admin.rpc("svc_defer_job", { p_job_id: job.id, p_worker: worker, p_seconds: seconds, p_reason: message });
@@ -94,6 +97,8 @@ export async function runWorker(opts: { budgetMs: number; scanId?: string; admin
 export interface TickSummary {
   scheduled: number;
   purged: number | null;
+  synced: number | null;
+  spikes: number | null;
   worker: WorkerSummary;
 }
 
@@ -103,6 +108,8 @@ export async function tick(budgetMs: number): Promise<TickSummary> {
   const holder = `tick-${randomUUID().slice(0, 8)}`;
   let scheduled = 0;
   let purged: number | null = null;
+  let synced: number | null = null;
+  let spikes: number | null = null;
 
   const { data: gotScheduler } = await admin.rpc("svc_try_acquire_lock", { p_name: "scheduler", p_holder: holder, p_ttl_seconds: 50 });
   if (gotScheduler) {
@@ -119,12 +126,18 @@ export async function tick(budgetMs: number): Promise<TickSummary> {
         for (const s of sourceSetup()) {
           if (!s.configured) await recordHealth(admin, s.id, { status: "not_configured", error: s.reason });
         }
+        // Query groups follow server config / plan changes even when nobody edits keywords.
+        synced = await syncAllProducts(admin);
       }
+
+      // Hourly: spike detection for products with recent mentions.
+      const { data: hourly } = await admin.rpc("svc_try_acquire_lock", { p_name: "analytics:spikes", p_holder: holder, p_ttl_seconds: 55 * 60 });
+      if (hourly) spikes = await detectSpikesForActiveProducts(admin);
     } finally {
       await admin.rpc("svc_release_lock", { p_name: "scheduler", p_holder: holder });
     }
   }
 
   const worker = await runWorker({ budgetMs, admin });
-  return { scheduled, purged, worker };
+  return { scheduled, purged, synced, spikes, worker };
 }

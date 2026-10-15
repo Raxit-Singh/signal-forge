@@ -174,12 +174,14 @@ test("user-typed plain words default to ambiguous; distinctive terms don't", () 
 });
 
 test("integration catalog is honest", () => {
-  // "available" must mean an adapter exists; everything else stays planned or blocked.
+  // "available"/"unverified" must mean an adapter exists; everything else stays planned or blocked.
   assert.deepEqual(
-    INTEGRATIONS.filter((i) => i.availability === "available").map((i) => i.provider).sort(),
+    INTEGRATIONS.filter((i) => i.availability === "available" || i.availability === "unverified").map((i) => i.provider).sort(),
     [...PUBLIC_SOURCES].sort(),
-    "only sources with an implemented adapter are marked available",
+    "only sources with an implemented adapter are marked available or unverified",
   );
+  // Paid sources can't be "available" until validated against the live API.
+  for (const i of INTEGRATIONS.filter((i) => i.paid)) assert.notEqual(i.availability, "available", i.provider);
   for (const i of INTEGRATIONS.filter((i) => i.availability === "blocked")) {
     assert.ok(i.blockedReason, `${i.provider} needs a blocked reason`);
   }

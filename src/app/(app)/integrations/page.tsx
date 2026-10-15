@@ -11,10 +11,10 @@ import { Badge, Card, CardContent, CardHeader, CardTitle } from "@/components/ui
 export const metadata: Metadata = { title: "Integrations" };
 
 const STATE: Record<CoverageState, LiveStatus["tone"]> = {
-  live: "positive", partial: "warning", failing: "negative", not_configured: "neutral", not_started: "neutral",
+  live: "positive", partial: "warning", failing: "negative", not_configured: "neutral", not_enabled: "neutral", not_started: "neutral",
 };
 const STATE_LABEL: Record<CoverageState, string> = {
-  live: "Collecting", partial: "Collecting · incomplete", failing: "Problem", not_configured: "Not configured", not_started: "Not scanned yet",
+  live: "Collecting", partial: "Collecting · incomplete", failing: "Problem", not_configured: "Not configured", not_enabled: "Not enabled", not_started: "Not scanned yet",
 };
 
 interface JobRow {

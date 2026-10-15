@@ -3,7 +3,7 @@
 
 import { evaluateRelevance, type AliasRule, type RuleStatus } from "./relevance.ts";
 import { contentHash, httpsUrl } from "./text.ts";
-import type { CandidateMention } from "./types.ts";
+import type { CandidateMention, CollectionMethod, DataProvider, LinkTarget, MentionType } from "./types.ts";
 
 export interface IngestItem {
   external_id: string;
@@ -23,6 +23,14 @@ export interface IngestItem {
   relevance_status: RuleStatus;
   linked_url: string | null;
   retain_until: string | null;
+  mention_type: MentionType;
+  collection_method: CollectionMethod;
+  data_provider: DataProvider;
+  community: string | null;
+  link_target: LinkTarget;
+  published_at_estimated: boolean;
+  /** Not stored: which paid request returned the item (per-request accounting). */
+  origin_request_id?: string | null;
 }
 
 export interface PrepareResult {
@@ -53,7 +61,9 @@ export function prepareIngest(
       invalid++;
       continue;
     }
-    const match = evaluateRelevance(rules, c.matchText, c.contextText);
+    const match = c.directlyAbout
+      ? { matchedTerms: [c.directlyAbout.reason.slice(0, 100)], score: c.directlyAbout.score, status: "relevant" as RuleStatus }
+      : evaluateRelevance(rules, c.matchText, c.contextText);
     if (!match) {
       filtered++;
       continue;
@@ -78,6 +88,13 @@ export function prepareIngest(
       relevance_status: match.status,
       linked_url: c.linkedUrl ?? null,
       retain_until: retainUntil,
+      mention_type: c.mentionType ?? "post",
+      collection_method: c.collectionMethod ?? "keyword_search",
+      data_provider: c.dataProvider ?? "official",
+      community: c.community?.slice(0, 200) ?? null,
+      link_target: c.linkTarget ?? "item",
+      published_at_estimated: c.publishedAtEstimated ?? false,
+      origin_request_id: c.originRequestId ?? null,
     });
   }
   return { items, fetched: candidates.length, filtered, invalid };

@@ -1,5 +1,5 @@
 import {
-  BarChart3, FileText, LayoutDashboard, Lightbulb, MessageSquareText, Plug, Settings, Swords, Waves,
+  BarChart3, FileText, Gauge, LayoutDashboard, Lightbulb, MessageSquareText, Plug, Settings, Swords, Waves,
   type LucideIcon,
 } from "lucide-react";
 
@@ -16,6 +16,7 @@ export const NAV: readonly NavItem[] = [
   { href: "/feedback", label: "Feedback Intelligence", icon: BarChart3 },
   { href: "/competitors", label: "Competitors", icon: Swords },
   { href: "/insights", label: "Product Insights", icon: Lightbulb },
+  { href: "/monitoring", label: "Smart Monitoring", icon: Gauge },
   { href: "/integrations", label: "Integrations", icon: Plug },
   { href: "/reports", label: "Reports", icon: FileText },
   { href: "/settings", label: "Settings", icon: Settings },

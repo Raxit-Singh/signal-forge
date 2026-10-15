@@ -1,4 +1,4 @@
-import { Ban, Clock, Globe, KeyRound, Lock } from "lucide-react";
+import { Ban, Clock, CreditCard, FlaskConical, Globe, KeyRound, Lock, MessagesSquare } from "lucide-react";
 import { INTEGRATIONS, type IntegrationInfo } from "@/lib/domain/integrations";
 import { Badge } from "@/components/ui/primitives";
 
@@ -8,9 +8,19 @@ export interface LiveStatus {
   lines: string[];
 }
 
+const COMMENTS: Record<NonNullable<IntegrationInfo["commentCoverage"]>, string> = {
+  search: "Comments: searched directly",
+  selected_posts: "Comments: selected posts only",
+  none: "No comments",
+};
+
 function Status({ info, live }: { info: IntegrationInfo; live?: LiveStatus }) {
-  if (info.availability === "available" && live) return <Badge tone={live.tone}>{live.label}</Badge>;
+  const implemented = info.availability === "available" || info.availability === "unverified";
+  if (implemented && live) return <Badge tone={live.tone}>{live.label}</Badge>;
   if (info.availability === "available") return <Badge tone="positive">Available</Badge>;
+  if (info.availability === "unverified") {
+    return <Badge tone="info"><FlaskConical className="size-3" aria-hidden />Built · not yet verified live</Badge>;
+  }
   if (info.availability === "blocked") return <Badge tone="neutral"><Ban className="size-3" aria-hidden />Unavailable</Badge>;
   return <Badge tone="info"><Clock className="size-3" aria-hidden />In development{info.milestone ? ` · M${info.milestone}` : ""}</Badge>;
 }
@@ -28,6 +38,8 @@ export function IntegrationList({ compact = false, live }: { compact?: boolean; 
               <span className="font-medium">{i.name}</span>
               <Status info={i} live={live?.[i.provider]} />
               <span className="ml-auto flex flex-wrap gap-1">
+                {i.paid && <Badge><CreditCard className="size-3" aria-hidden />Paid source</Badge>}
+                {i.commentCoverage && <Badge><MessagesSquare className="size-3" aria-hidden />{COMMENTS[i.commentCoverage]}</Badge>}
                 {i.publicDiscovery && <Badge><Globe className="size-3" aria-hidden />Public discovery</Badge>}
                 {i.requiresAuthorization && <Badge><KeyRound className="size-3" aria-hidden />Needs your authorization</Badge>}
                 {i.readOnly && <Badge><Lock className="size-3" aria-hidden />Read-only</Badge>}
@@ -49,7 +61,7 @@ export function IntegrationList({ compact = false, live }: { compact?: boolean; 
         ))}
       </ul>
       <details className="rounded-md border p-3 text-[13px]">
-        <summary className="cursor-pointer font-medium">Why not Reddit, X, LinkedIn, Instagram…?</summary>
+        <summary className="cursor-pointer font-medium">Why not Threads, Slack or Product Hunt?</summary>
         <ul className="mt-2 grid gap-1.5 text-muted-foreground">
           {blocked.map((i) => (
             <li key={i.provider}><span className="font-medium text-foreground">{i.name}:</span> {i.blockedReason}</li>

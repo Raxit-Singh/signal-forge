@@ -11,6 +11,17 @@ import { failure, invalid, logServerError, type ActionState } from "@/lib/server
 import {
   AuthorizationError, PRODUCT_COOKIE, getActiveWorkspace, requireWorkspaceRole,
 } from "@/lib/server/session";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { syncOptimizedQueries } from "@/lib/server/collection/query-sync";
+
+/** Rebuilds a product's per-platform query groups (after the caller's authorization check). */
+async function resyncQueries(productId: string) {
+  try {
+    await syncOptimizedQueries(createAdminClient(), productId);
+  } catch (e) {
+    logServerError("syncQueries", e);
+  }
+}
 
 const COOKIE_OPTS = { httpOnly: true, sameSite: "lax" as const, secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 24 * 365 };
 
@@ -80,6 +91,8 @@ export async function updateProductAction(_: ActionState, formData: FormData): P
   }
   const { error } = await supabase.from("products").update(productColumns(parsed.data)).eq("id", id.data);
   if (error) return productWriteError(error, "updateProduct");
+  // Website / App Store URL drive Trustpilot and App Store collection.
+  await resyncQueries(id.data);
   revalidatePath("/", "layout");
   return { status: "success", message: "Product saved." };
 }
@@ -129,6 +142,7 @@ export async function saveAliasesAction(_: ActionState, formData: FormData): Pro
     logServerError("saveAliases", error);
     return failure(error.code === "23505" ? "Each keyword can only appear once." : "Couldn't save keywords.");
   }
+  await resyncQueries(productId);
 
   if (mode === "onboarding") {
     if ((product.onboarding_step as number) < 3) {
