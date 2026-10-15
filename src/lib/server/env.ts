@@ -1,0 +1,22 @@
+import "server-only";
+import { z } from "zod";
+
+const serverSchema = z.object({
+  SUPABASE_SECRET_KEY: z.string().min(20, { error: "SUPABASE_SECRET_KEY is required" }),
+  CREDENTIALS_ENCRYPTION_KEY: z.string().optional(),
+  CREDENTIALS_KEY_VERSION: z.string().default("1"),
+  CREDENTIALS_PREVIOUS_KEYS: z.string().default(""),
+  JOBS_TICK_SECRET: z.string().optional(),
+  // Data sources (all optional; see ENVIRONMENT_SETUP.md §3).
+  GITHUB_TOKEN: z.string().optional(),
+  STACKEXCHANGE_KEY: z.string().optional(),
+  YOUTUBE_API_KEY: z.string().optional(),
+});
+
+let cached: z.output<typeof serverSchema> | null = null;
+
+/** Lazily validated so a missing optional secret only fails the feature that needs it. */
+export function serverEnv() {
+  cached ??= serverSchema.parse(process.env);
+  return cached;
+}

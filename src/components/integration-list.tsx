@@ -1,0 +1,61 @@
+import { Ban, Clock, Globe, KeyRound, Lock } from "lucide-react";
+import { INTEGRATIONS, type IntegrationInfo } from "@/lib/domain/integrations";
+import { Badge } from "@/components/ui/primitives";
+
+export interface LiveStatus {
+  tone: "positive" | "warning" | "negative" | "neutral";
+  label: string;
+  lines: string[];
+}
+
+function Status({ info, live }: { info: IntegrationInfo; live?: LiveStatus }) {
+  if (info.availability === "available" && live) return <Badge tone={live.tone}>{live.label}</Badge>;
+  if (info.availability === "available") return <Badge tone="positive">Available</Badge>;
+  if (info.availability === "blocked") return <Badge tone="neutral"><Ban className="size-3" aria-hidden />Unavailable</Badge>;
+  return <Badge tone="info"><Clock className="size-3" aria-hidden />In development{info.milestone ? ` · M${info.milestone}` : ""}</Badge>;
+}
+
+/** Honest catalog of data sources with what each can access. */
+export function IntegrationList({ compact = false, live }: { compact?: boolean; live?: Record<string, LiveStatus> }) {
+  const supported = INTEGRATIONS.filter((i) => i.availability !== "blocked");
+  const blocked = INTEGRATIONS.filter((i) => i.availability === "blocked");
+  return (
+    <div className="grid gap-4">
+      <ul className="divide-y rounded-md border">
+        {supported.map((i) => (
+          <li key={i.provider} className="grid gap-2 p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium">{i.name}</span>
+              <Status info={i} live={live?.[i.provider]} />
+              <span className="ml-auto flex flex-wrap gap-1">
+                {i.publicDiscovery && <Badge><Globe className="size-3" aria-hidden />Public discovery</Badge>}
+                {i.requiresAuthorization && <Badge><KeyRound className="size-3" aria-hidden />Needs your authorization</Badge>}
+                {i.readOnly && <Badge><Lock className="size-3" aria-hidden />Read-only</Badge>}
+              </span>
+            </div>
+            <p className="text-[13px]">{i.dataAccessed}</p>
+            {live?.[i.provider]?.lines.map((l) => (
+              <p key={l} className="text-xs text-muted-foreground">{l}</p>
+            ))}
+            {!compact && (
+              <dl className="grid gap-1 text-xs text-muted-foreground sm:grid-cols-[110px_1fr]">
+                <dt className="font-medium">Permissions</dt>
+                <dd>{i.permissions}</dd>
+                <dt className="font-medium">Limits</dt>
+                <dd>{i.limits}</dd>
+              </dl>
+            )}
+          </li>
+        ))}
+      </ul>
+      <details className="rounded-md border p-3 text-[13px]">
+        <summary className="cursor-pointer font-medium">Why not Reddit, X, LinkedIn, Instagram…?</summary>
+        <ul className="mt-2 grid gap-1.5 text-muted-foreground">
+          {blocked.map((i) => (
+            <li key={i.provider}><span className="font-medium text-foreground">{i.name}:</span> {i.blockedReason}</li>
+          ))}
+        </ul>
+      </details>
+    </div>
+  );
+}

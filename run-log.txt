@@ -1,0 +1,91 @@
+date: Wed Oct 14 15:11:39 IST 2026
+node: v24.14.0
+npm: 11.9.0
+arm64
+
+===== npm install =====
+npm warn deprecated eslint@9.39.5: This version is no longer supported. Please see https://eslint.org/version-support for other options.
+
+added 492 packages in 1m
+----- exit 0 -----
+
+===== unit tests =====
+
+> signalforge@0.1.0 test:unit
+> node --test "src/**/*.test.ts"
+
+✔ defaults to 30 days, inclusive of today (UTC) (1.60425ms)
+✔ 24h is a rolling window (0.1235ms)
+✔ 7d starts at UTC midnight six days ago (0.085625ms)
+✔ custom range is inclusive and clamps the end to today (0.203375ms)
+✔ invalid custom ranges fall back to the default (0.175167ms)
+✔ previous window has equal length and abuts the current one (0.107958ms)
+✔ normalizeWebsiteUrl adds https and extracts domain (1.057ms)
+✔ normalizeWebsiteUrl keeps path, drops fragment (0.349958ms)
+✔ normalizeWebsiteUrl rejects unsafe or private targets (0.19475ms)
+✔ parseGithubRepo accepts common forms (0.398875ms)
+✔ parseGithubRepo rejects malformed input (0.244167ms)
+✔ parseAppStoreUrl extracts app id and strips tracking params (0.174042ms)
+✔ parsePlayStoreUrl extracts package name (0.203167ms)
+✔ safeRedirectPath blocks open redirects (0.108125ms)
+✔ splitWords handles CamelCase, acronyms and separators (1.056208ms)
+✔ ambiguity detection flags common and short names (0.262625ms)
+✔ suggestAliases for a distinctive CamelCase name (9.131042ms)
+✔ ambiguous product name gets context terms, or is disabled without any (0.153833ms)
+✔ contextKeywords excludes stopwords and the name itself (0.152042ms)
+✔ plan helpers (18.424708ms)
+✔ AI key shape checks and hints (0.240459ms)
+✔ integration catalog is honest (0.104375ms)
+✔ round-trips and never contains the plaintext (2.227875ms)
+✔ uses a fresh IV each time (0.259334ms)
+✔ binds ciphertext to its workspace (AAD) (0.304417ms)
+✔ detects tampering (0.164541ms)
+✔ rotation: old rows decrypt with previous key, new rows use current (0.535167ms)
+✔ rejects bad key configuration (0.201916ms)
+✔ product schema normalizes and parses optional URLs (3.036208ms)
+✔ product schema reports field-level errors (0.709833ms)
+✔ alias list rules (1.035709ms)
+✔ password policy and confirmation (0.728417ms)
+✔ workspace name trimmed and bounded (0.249166ms)
+ℹ tests 33
+ℹ suites 0
+ℹ pass 33
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 161.626833
+----- exit 0 -----
+
+===== typecheck =====
+----- exit 0 -----
+
+===== lint =====
+
+Oops! Something went wrong! :(
+
+ESLint: 9.39.5
+
+TypeError: Converting circular structure to JSON
+    --> starting at object with constructor 'Object'
+    |     property 'configs' -> object with constructor 'Object'
+    |     property 'flat' -> object with constructor 'Object'
+    |     ...
+    |     property 'plugins' -> object with constructor 'Object'
+    --- property 'react' closes the circle
+Referenced from: 
+    at JSON.stringify (<anonymous>)
+    at file:///Users/raxit/Downloads/signalforge/node_modules/@eslint/eslintrc/lib/shared/config-validator.js:308:45
+    at Array.map (<anonymous>)
+    at ConfigValidator.formatErrors (file:///Users/raxit/Downloads/signalforge/node_modules/@eslint/eslintrc/lib/shared/config-validator.js:299:23)
+    at ConfigValidator.validateConfigSchema (file:///Users/raxit/Downloads/signalforge/node_modules/@eslint/eslintrc/lib/shared/config-validator.js:330:84)
+    at ConfigArrayFactory._normalizeConfigData (file:///Users/raxit/Downloads/signalforge/node_modules/@eslint/eslintrc/lib/config-array-factory.js:676:19)
+    at ConfigArrayFactory._loadConfigData (file:///Users/raxit/Downloads/signalforge/node_modules/@eslint/eslintrc/lib/config-array-factory.js:641:21)
+    at ConfigArrayFactory._loadExtendedShareableConfig (file:///Users/raxit/Downloads/signalforge/node_modules/@eslint/eslintrc/lib/config-array-factory.js:946:21)
+    at ConfigArrayFactory._loadExtends (file:///Users/raxit/Downloads/signalforge/node_modules/@eslint/eslintrc/lib/config-array-factory.js:814:25)
+    at ConfigArrayFactory._normalizeObjectConfigDataBody (file:///Users/raxit/Downloads/signalforge/node_modules/@eslint/eslintrc/lib/config-array-factory.js:752:25)
+----- exit 2 -----
+
+===== build: SKIPPED (no .env.local yet — see ENVIRONMENT_SETUP.md) =====
+
+DONE. Full log saved to /Users/raxit/Downloads/signalforge/run-log.txt — tell Claude it's finished.

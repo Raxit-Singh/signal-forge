@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "incremental": false, "plugins": [], "types": ["node"], "lib": ["es2023"] },
+  "include": ["src/lib/domain/**/*.ts", "src/lib/server/crypto*.ts", "src/lib/validation/**/*.ts"]
+}
