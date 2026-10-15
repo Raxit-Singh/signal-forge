@@ -79,18 +79,22 @@ export async function createWorkspaceWithProduct(user: TestUser, product = "Fixt
 }
 
 export interface FixtureMention {
-  source: "hackernews" | "github" | "stackexchange";
+  source: "hackernews" | "github" | "stackexchange" | "bluesky" | "reddit";
   externalId: string;
   title: string;
   content?: string;
   hoursAgo: number;
   url?: string;
+  author?: string;
+  status?: "relevant" | "irrelevant" | "pending";
+  type?: "post" | "comment" | "reply";
+  linkedUrl?: string;
 }
 
 /** Inserts synthetic mentions through the same ingest path the worker uses, plus a coverage window. */
-export async function seedMentions(productId: string, workspaceId: string, items: FixtureMention[]) {
+export async function seedMentions(productId: string, workspaceId: string, items: FixtureMention[], coverageDays = 30) {
   const now = Date.now();
-  for (const source of ["hackernews", "github", "stackexchange"] as const) {
+  for (const source of ["hackernews", "github", "stackexchange", "bluesky", "reddit"] as const) {
     const batch = items.filter((i) => i.source === source).map((i) => ({
       external_id: i.externalId,
       source_url: i.url ?? `https://example.com/e2e/${source}/${i.externalId}`,
@@ -101,7 +105,10 @@ export async function seedMentions(productId: string, workspaceId: string, items
       engagement_score: 1,
       matched_terms: ["FixtureFlow"],
       relevance_score: 0.9,
-      relevance_status: "relevant",
+      relevance_status: i.status ?? "relevant",
+      author_external_id: i.author ?? null,
+      mention_type: i.type ?? "post",
+      linked_url: i.linkedUrl ?? null,
     }));
     if (batch.length === 0) continue;
     await call("/rest/v1/rpc/svc_ingest_mentions", {
@@ -112,7 +119,7 @@ export async function seedMentions(productId: string, workspaceId: string, items
       method: "POST", headers: adminHeaders(),
       body: JSON.stringify({
         workspace_id: workspaceId, product_id: productId, provider: source, status: "complete",
-        window_start: new Date(now - 30 * 86_400_000).toISOString(), window_end: new Date(now).toISOString(),
+        window_start: new Date(now - coverageDays * 86_400_000).toISOString(), window_end: new Date(now).toISOString(),
       }),
     });
   }
@@ -131,4 +138,13 @@ export async function deleteUser(id: string) {
   await call("/rest/v1/rpc/svc_prepare_account_deletion", { method: "POST", headers: adminHeaders(), body: JSON.stringify({ p_user_id: id }) })
     .catch(() => undefined);
   await call(`/auth/v1/admin/users/${id}`, { method: "DELETE", headers: adminHeaders() }).catch(() => undefined);
+}
+
+/** Service-role insert (fixtures only, e.g. a stored spike). */
+export async function adminInsert(table: string, row: Record<string, unknown>) {
+  await call(`/rest/v1/${table}`, { method: "POST", headers: adminHeaders(), body: JSON.stringify(row) });
+}
+
+export async function adminSelect<T>(path: string): Promise<T> {
+  return call<T>(`/rest/v1/${path}`, { headers: adminHeaders() });
 }

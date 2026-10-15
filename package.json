@@ -18,7 +18,8 @@
     "check": "npm run typecheck && npm run lint && npm run test:unit",
     "typecheck:core": "tsc -p tsconfig.core.json",
     "test:e2e": "playwright test",
-    "dev:cron": "node scripts/dev-cron.mjs"
+    "dev:cron": "node scripts/dev-cron.mjs",
+    "test:apidirect-live": "node scripts/apidirect-live-test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.7.0",

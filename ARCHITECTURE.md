@@ -28,7 +28,11 @@ Supabase Postgres
 | `server/` | `import "server-only"`. Session + authorization (`requireWorkspaceRole`), credential encryption, env. |
 | `supabase/admin.ts` | Service-role client. Only after an explicit authorization check, always scoped by workspace id. |
 | `sources/` | Pure TypeScript, no Next/Supabase imports: one adapter per public source, relevance rules, text normalization, ingest preparation. HTTP goes through an injected `SourceContext`, so every adapter is tested with deterministic fixtures. |
-| `server/collection/` | Server-only glue: rate-limited HTTP context, `monitor.query` job, worker loop, scheduler tick, coverage/scan status. |
+| `sources/apidirect/` | Pure: API Direct client (validation, `X-API-Key`, retries, error mapping, documented billing rules), endpoint catalog, zod response schemas, normalizers, the 10 paid connectors. |
+| `sources/query-optimizer.ts`, `adaptive.ts`, `expansion.ts` | Pure, deterministic engines: per-platform query grouping + fingerprints, refresh-interval decisions, comment-expansion selection. |
+| `analytics/` | Pure buzz math: series with coverage gaps, growth, virality, spike detection, time zones. |
+| `server/collection/` | Server-only glue: rate-limited + budget-reserving HTTP context, `monitor.query` job (shared fetches, expansion, adaptive scheduling, audits), worker loop, scheduler tick, query sync, coverage/scan status, Smart Monitoring overview. |
+| `server/analytics/` | Buzz dashboard queries (RLS) and the hourly spike-detection job (service role). |
 | `ai/` (M4) | Provider abstraction: `classify`, `summarize`, `embed?`, token accounting, budget checks. |
 
 ### Source adapter interface
@@ -36,8 +40,13 @@ Supabase Postgres
 `src/lib/sources/types.ts`:
 
 ```ts
-interface SourceAdapter {                       // public, keyword-searchable sources
-  id: "hackernews" | "github" | "stackexchange" | "youtube";
+interface SourceAdapter {                       // public, keyword-searchable sources (17 platforms)
+  id: PublicSourceId;
+  dataProvider?: "official" | "apidirect"; paid?: boolean; shareable?: boolean;
+  streams?: StreamSpec[];                       // separate checkpoints, e.g. Reddit posts / comments;
+                                                // each declares QueryCapabilities (OR syntax, length,
+                                                // terms, date filter, sort, pagination, page cap)
+  expandComments?(parents, ctx): Promise<SearchResult>;   // platforms without global comment search
   configured(): { ok: true } | { ok: false; reason };     // server has the keys it needs
   rateLimit(endpoint?): RateLimitPolicy;        // shared Postgres token bucket(s)
   retentionDays?: number;                       // platform storage limits (YouTube: 30)
@@ -48,7 +57,26 @@ interface AuthorizedSourceAdapter {             // reserved for App Store Connec
   connect(); disconnect(); validateCredentials(); fetchMention(); getIntegrationHealth();
 }
 ```
-Normalization (`normalizeHnHit`, `normalizeGithubIssue`, `normalizeSeItem`, `normalizeVideo`, `normalizeCommentThread`) is pure and exported per adapter. Rate-limit status is reported with each search result and stored in `source_health`.
+Normalization is pure and exported per adapter. Rate-limit status is reported with each search result and stored in `source_health`. Paid requests go through `SourceContext.paidRequest`, which reserves budget **before** the HTTP call and must be settled with the provider's billing outcome afterwards; the API Direct client does this for every call, including retries.
+
+### Multi-platform monitoring (Milestone 2.5)
+
+```
+keywords ──► query optimizer (per platform stream, capabilities-aware) ──► query groups + fingerprints
+                                                                              │ apply_query_groups
+scheduler (adaptive interval, plan floor) ──► monitor.query job ──► shared fetch (same fingerprint ⇒ one
+                                                                     upstream call for every product)
+   budget reservation (global → provider → platform → workspace/product/boost, advisory-locked)
+   → API Direct / official API → normalize → per-product relevance → ingest (per paid request)
+   → selective comment expansion → coverage window → adaptive decision → execution log
+```
+
+- **Query optimizer** (`planQueries`): OR-combines brand aliases where the platform supports OR, within length/term limits; phrases that contain a searched brand alias as a separate word are "covered"; ambiguous keywords are only searched with their context terms (platforms with grouping); category phrases get their own group; platforms without OR get one query per keyword, capped by mode (paid: eco 1 / balanced 2 / priority 4). Every keyword still drives local relevance matching, and skipped keywords are shown with the reason.
+- **Shared query registry:** `monitoring_queries.fingerprint` = sha256(platform, stream, normalized expression, language, region, filters). One job fetches once (under a named lock) and ingests for every product with the same fingerprint, each with its own relevance rules; cost is split across their budgets. Results are not cached afterwards. Product-specific sources (Trustpilot, App Store) include the product in the fingerprint, so they never share.
+- **Checkpoints:** `cursor.until` per query group (so per stream). Optimizer-managed groups never advance after a capped run (saturated pages or plan limit); the next run re-searches from the old checkpoint with one more page. Milestone 2 sources keep their original behaviour (advance, record the gap).
+- **Adaptive engine** (`decideInterval`): intervals 1/2/3/4/6/12/24 h from recent activity, growth, spikes, saturation, audit misses, platform importance, cost (eco) and mode; bounded by mode, the plan floor (a Launch Boost may go down to the plan's boost minimum) and source limits (YouTube 24 h). Safety: never above 24 h; lengthens at most one step per decision and not at all with low coverage confidence; failures schedule a quicker recovery run; weekly (eco: fortnightly for paid) completeness audits re-search 7 days and count what regular checks missed. Every decision stores human-readable reasons.
+- **Comment expansion** (`selectExpansions`): relevant parent posts scored by relevance × log(comments) × recency; revisited only when the discussion grew; ≤1/2/4 parents per run by mode, one page each; cost tracked under its own purpose.
+- **Cost control:** `provider_pricing` is the only price list. `reserve_api_spend` checks the global budget (no row ⇒ no paid calls), provider, platform, then each member's workspace allowance (plan allowance, optionally lowered), product budget and boost cap; members who can't pay are dropped. `settle_api_spend` applies the documented billing rules (answered = billed, including zero results; `pages=N` bills N; unanswered requests stay counted at their estimate as `unknown`). `billing_reconciliations` records invoices against the ledger.
 
 ### Collection pipeline
 
@@ -62,14 +90,15 @@ Normalization (`normalizeHnHit`, `normalizeGithubIssue`, `normalizeSeItem`, `nor
 
 ## Data model
 
-Migrations: `supabase/migrations/2026101400000{1..7}_*.sql` (7 = collection: scans, rate-limit buckets, source health, scheduler, ingest).
+Migrations: `supabase/migrations/2026101400000{1..7}_*.sql` (7 = collection: scans, rate-limit buckets, source health, scheduler, ingest) and `202610150000{01..03}` (M2.5 platforms; monitoring v2 + cost control; M3 analytics functions). All additive.
 
 - **Tenancy:** `profiles` (1:1 auth.users) · `workspaces` · `workspace_members(role: owner/admin/member/viewer)`. A deferred constraint trigger guarantees every workspace keeps an owner.
 - **Plans & billing:** `plans` (all limits and prices are rows, not code) · `subscriptions` (written only by the server from verified webhooks) · `billing_events` (webhook idempotency) · `usage_counters`. `private.effective_plan_id` drops lapsed subscriptions to `free`.
 - **Products:** `products` · `product_aliases` (kind, ambiguity flag, required context terms, negative terms) · `competitors` · `product_events` (launch markers).
 - **Sources:** `integrations` (non-secret config + health) · `credential_secrets` (ciphertext only, no client access) · `ai_provider_connections` (metadata + last-4 hint) · `oauth_states` · `monitoring_queries` (query, cursor, next_run_at).
 - **Jobs:** `jobs` (idempotency key, attempts, lease) · `job_runs` (history per attempt) · `job_locks` (named distributed locks) · `coverage_windows` (which time windows each source actually covered) · `api_usage_events`.
-- **Mentions & analysis:** `mentions` (unique on product+source+external_id; content hash; repost link; publication and discovery time; relevance, sentiment, category with confidences) · `mention_classifications` (full history incl. manual corrections) · `feedback_clusters` + members · `daily_mention_stats` (UTC-day aggregates that all charts read) · `ai_usage_records` · `ai_investigations` (confirmed / hypotheses / assumptions + evidence) · `notification_preferences` · `notifications` (dedupe key) · `reports` · `audit_logs`.
+- **Monitoring (M2.5):** `product_source_settings` · `launch_boosts` · `monitoring_executions` (per-run log incl. interval decision and reasons, no prices) · `comment_expansions` · service-only `provider_pricing`, `plan_paid_allowances`, `api_budgets`, `api_cost_ledger`, `api_cost_allocations`, `billing_reconciliations`.
+- **Mentions & analysis:** `mentions` (unique on product+source+external_id; content hash; repost link; publication and discovery time; mention type, collection method, data provider, community, link target, estimated-date flag; relevance, sentiment, category with confidences) · `buzz_spikes` · `mention_classifications` (full history incl. manual corrections) · `feedback_clusters` + members · `daily_mention_stats` (UTC-day aggregates that all charts read) · `ai_usage_records` · `ai_investigations` (confirmed / hypotheses / assumptions + evidence) · `notification_preferences` · `notifications` (dedupe key) · `reports` · `audit_logs`.
 
 Cross-tenant linking is structurally impossible: child tables reference `(id, workspace_id)` composite keys, so an alias, mention or cluster cannot point at another workspace's product even via the service role.
 
@@ -94,9 +123,11 @@ Cross-tenant linking is structurally impossible: child tables reference `(id, wo
 - Trigger: Supabase Cron calls `/api/jobs/tick` every 2 minutes with `JOBS_TICK_SECRET` (constant-time compare). Each tick enqueues due `monitoring_queries` and works for ~50 s at most. Nothing depends on a browser being open. History: `job_runs` per attempt; recent runs are shown on the Integrations page.
 - Server reaches private functions through `public.svc_*` wrappers executable only by `service_role`.
 
-## Analytics principles (M3)
+## Analytics (M3)
 
-- Charts read `daily_mention_stats`, never raw mentions.
-- Growth: `(cur − prev) / prev × 100`; when `prev = 0` the UI shows "new activity" (or "no change" when both are 0), never ∞% or a fabricated percentage.
-- Spike detection uses a rolling baseline with minimum-volume thresholds so 1 → 3 mentions is not an alert.
-- Every analytics view lists the sources included and marks windows where `coverage_windows` shows failed/partial monitoring as gaps, not zeros.
+- **Live SQL, caller's RLS:** `buzz_series` (per bucket × platform: relevant / irrelevant / pending, posts / comments, engagement), `buzz_totals` (per platform, incl. distinct authors, excluded duplicates, undated rows) and `buzz_coverage` (share of each bucket covered by complete / partial windows, merged with `range_agg`) are `SECURITY INVOKER`, so users can only aggregate their own workspace. Day buckets follow the viewer's IANA time zone (cookie set by the browser). `daily_mention_stats` (UTC) is not used: it can't follow time zones.
+- **Counting rules:** originals only (exact duplicates and reposts excluded); publication time, not discovery time; rows with no publication date (web results) stay out of time series and are counted separately; late-arriving mentions update past periods.
+- **Gaps:** a platform's bucket is *measured* when monitoring covered ≥50% of it (or it has data); otherwise it is `null`. Unmonitored buckets render grey ("not monitored"), never zero. Partially monitored buckets are flagged.
+- **Growth:** `(cur − prev) / prev`; prev = 0 ⇒ "New activity"; previous period essentially unmonitored ⇒ "No earlier data to compare"; either period < 90% completely monitored ⇒ flagged "incomplete data".
+- **Virality (experimental, 0–100):** mention growth vs the product's own 28-day baseline (35%), distinct-author growth (20%), engagement per mention (15%), platform spread (15%), acceleration vs the previous day (15%); ratios on a log scale with pseudo-counts, then damped by volume (n/(n+5)) so 1 → 3 isn't viral and size alone never scores. Uses only platforms completely monitored over the baseline. Not sentiment.
+- **Spikes:** rolling 28-day (daily) / 7-day (hourly) baseline of *completely monitored* periods: median + MAD (Poisson floor), and the value must also beat 1.2 × the 90th percentile; minimum counts 8/day, 6/hour. Stored idempotently in `buzz_spikes` by the hourly tick, with a slot for a later AI explanation.

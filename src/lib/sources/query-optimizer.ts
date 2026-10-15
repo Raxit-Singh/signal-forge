@@ -97,10 +97,11 @@ export function planQueries(keywords: OptimizerKeyword[], caps: QueryCapabilitie
   const category = list.filter((k) => !k.isAmbiguous && !BRAND_KINDS.has(k.kind) && isCategory(k, brandTerms));
   const brandish = list.filter((k) => !k.isAmbiguous && k.kind === "custom" && !isCategory(k, brandTerms));
 
-  // Custom keywords that contain a brand alias ("FocusFlow pricing") are covered by searching the alias.
+  // Custom phrases that contain a brand alias as a separate word ("FocusFlow pricing") are covered by
+  // searching the alias. Punctuation-joined terms (domains, handles) are not: search engines tokenize them differently.
   const primary: OptimizerKeyword[] = [...brand];
   for (const k of brandish) {
-    const by = brandTerms.find((b) => containsTerm(k.term, b));
+    const by = /\s/.test(k.term) ? brandTerms.find((b) => containsTerm(k.term, b)) : undefined;
     if (caps.wordMatch && by) skipped.push({ term: k.term, reason: "covered", detail: `Found by searching "${by}"` });
     else primary.push(k);
   }

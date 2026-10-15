@@ -16,6 +16,51 @@ Legend: ✅ verified by an automated check that ran · 🟡 written, not yet exe
 
 Test users created for the walk-through were removed afterwards via the app's own deletion path.
 
+## Milestones 2.5 + 3 — multi-platform monitoring, cost control, Buzz Analytics (2026-10-15)
+
+Local git checkpoints: `4c94fa1` (before M2.5), then M2.5/M3 commits.
+
+### Checks
+| Check | Result |
+|---|---|
+| `npm run test:unit` | ✅ 119/119 (adds 52: API Direct client + 10 connectors on mocked doc-shaped responses, billing rules, error/retry mapping, Reddit comment discovery, X reply/quote discovery, query optimizer + fingerprints, adaptive engine, Launch Boost, comment expansion, Bluesky/DEV/App Store normalizers, series/growth/virality/spikes/time zones) |
+| `npm run test:db` | ✅ 202/202 (adds 72: pricing/budget/ledger privacy, reservations at every budget scope, zero-result billing, unanswered = unknown spend, shared-cost split, stale reservations, boost authorization + cap, source settings, query groups + streams, adaptive scheduler bucket, extended mention model, buzz series/totals/coverage incl. time zones, reconciliation of series vs totals, analytics isolation, spikes/executions isolation) |
+| `npm run test:e2e` | ✅ 9/9 (adds 4: Buzz counts exclude reposts, gaps not zeros + data table, relevance view/platform filter/spike list, Smart Monitoring mode + Launch Boost create/cancel) |
+| typecheck, lint, `npm run build` | ✅ (new routes `/buzz`, `/monitoring`) |
+| Migrations 20261015000001–3 applied to the linked Supabase project | ✅ (`supabase db push`, dry-run first; all additive) |
+
+### Verified live (dev Supabase project, throwaway account, free official APIs only)
+- ✅ **Bluesky:** first scan stored 82 "Excalidraw" mentions (55 posts, 27 replies); **all 82 re-fetched from Bluesky's `getPosts` exist and mention Excalidraw**; 5/5 sampled links 200.
+- ✅ **DEV:** tag feed returns real articles (newest first); 4/5 sampled links 200, **1 returns 404 although DEV's API still lists it**; comment expansion returned 13 comments with working links.
+- ✅ **App Store feed:** 46 recent reviews for a public app; listing link 200. (Wired end-to-end only through unit tests: the test product had no App Store URL.)
+- ✅ Optimizer created Bluesky/DEV query groups automatically when keywords were saved; a daily re-sync covers products nobody edits.
+- ✅ Adaptive scheduling on the real database: first scheduled run was an automatic completeness audit (7-day look-back, 0 missed); decisions stored with reasons ("About 5 relevant mentions a day", "Your plan checks at most every 24 h").
+- ✅ Launch Boost from the UI: boosted platforms moved 24 h → 6 h (Free plan's boost minimum) with reason "Launch Boost active until …"; unboosted GitHub stayed 24 h; times converted from the browser's zone correctly.
+- ✅ Buzz Analytics with real data in Asia/Calcutta time: KPIs, stacked chart, relevant-vs-not view, data table, distributions, virality factors, spike list, coverage warnings; mobile 375 px without horizontal scroll; light and dark themes.
+- ✅ Paid sources everywhere show "Not configured on this server" and cannot be turned on; the live-test script refuses without `--confirm`/budget and without a key.
+
+### NOT verified live (built + mocked tests only)
+- ⬜ **All 10 API Direct connectors** (Reddit posts + comments, X, LinkedIn, TikTok, Instagram, Facebook, Substack, web, news, Trustpilot): no `API_DIRECT_API_KEY`; **no paid request has been made**. Response schemas and the UTC reading of dates come from the docs' examples. Run the capped live test after authorizing it.
+- ⬜ YouTube (no key), Supabase Cron in production (needs a deployment).
+- ⬜ Shared fetches across *different workspaces* exercised only in DB tests (cost split) and unit logic, not in a live multi-customer run.
+
+### Bugs found and fixed during verification
+- Adaptive decisions read activity *before* the run stored its results ("No recent relevant mentions" right after storing 74). Context is now reloaded after ingest.
+- **False spikes:** GitHub's capped backfill piled 87 issues onto two days while earlier days, covered only by a *partial* window, looked like zero → 8 "major" spikes. Spike baselines and virality now use only completely monitored periods/platforms (virality for the same data: 71 → 6).
+- "Grew from zero" when the previous period was simply unmonitored. Now "No earlier data to compare".
+- "100% fewer checks than hourly polling" before any check had run. Efficiency now counts only the time monitoring has actually run.
+- A new Launch Boost didn't take effect until the next day (scheduler job key still in the old 24 h bucket). Starting a boost now moves boosted groups to the boost interval.
+- Domains/handles (`excalidraw.com`) were treated as "covered" by the product name; DEV got a nonsense tag for a domain. Fixed; covered only for space-separated phrases, DEV keeps tag-like keywords.
+- Chart date labels caused a hydration mismatch (browser vs server locale). Fixed locale.
+- Coverage notices listed 10 paid sources individually and empty states promised sources that weren't enabled. Paid sources are summarized; "not enabled" is its own state.
+
+### Known limitations
+- Reddit comment results have no comment permalink (API returns the thread); stored links say "opens the thread". Comment ids are derived (author + time + thread).
+- Instagram, Substack posts and web search are relevance-ranked: coverage is always "partial" and confidence never "high".
+- Bluesky uses search, not Jetstream; Discord, Threads, Google Play not implemented (bot gateway process / Meta app review / customer Play credentials).
+- Spike detection runs hourly from the tick; spikes have no AI explanation yet (column reserved for M4). Negative-sentiment spikes need M4 classification.
+- Plan paid allowances (Free $0 / Starter $1 / Pro $5 / Business $20) are proposals awaiting a founder decision.
+
 ## Milestone 2 — real data collection (2026-10-14)
 
 ### Checks

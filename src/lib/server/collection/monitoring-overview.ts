@@ -159,7 +159,10 @@ export async function getMonitoringOverview(productId: string, workspaceId: stri
   // Efficiency over the last 7 days vs. checking every enabled group every hour.
   const activeGroups = qs.filter((q) => q.enabled).length;
   const realChecks = ex.filter((x) => x.status !== "skipped" && x.status !== "covered_by_shared").length;
-  const eff = checksAvoided(realChecks, activeGroups, 168);
+  // Compare with hourly polling only over the time monitoring has actually run (≤ 7 days).
+  const firstRun = ex.find((x) => x.status !== "skipped")?.finished_at;
+  const hoursRunning = firstRun ? Math.max(1, Math.ceil((Date.now() - new Date(firstRun).getTime()) / 3_600_000)) : 0;
+  const eff = checksAvoided(realChecks, activeGroups, Math.min(168, hoursRunning));
   let intervalChanges = 0;
   const lastByQuery = new Map<string, number | null>();
   for (const x of ex) {

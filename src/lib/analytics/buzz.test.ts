@@ -23,6 +23,16 @@ test("unmonitored buckets are gaps (null), not zeros; partially monitored bucket
   assert.deepEqual(s[1]!.unmeasured, ["reddit"]);
 });
 
+test("capped (partial) coverage is charted but excluded from the complete-only counts used for spikes", () => {
+  const s = buildSeries(B.slice(0, 2), ["github", "hackernews"],
+    [row(B[1]!, "github", 40), row(B[1]!, "hackernews", 2)],
+    [cov(B[0]!, "github", 1, 0), cov(B[1]!, "github", 1, 0), cov(B[0]!, "hackernews", 1), cov(B[1]!, "hackernews", 1)]);
+  assert.equal(s[1]!.relevant, 42, "charted");
+  assert.equal(s[1]!.relevantComplete, 2, "only completely monitored sources");
+  assert.equal(s[1]!.bySourceComplete.github, null);
+  assert.equal(s[0]!.coverage, "partial");
+});
+
 test("a bucket with mentions counts as measured even without a coverage window", () => {
   const s = buildSeries([B[0]!], ["github"], [row(B[0]!, "github", 4)], []);
   assert.equal(s[0]!.relevant, 4);
@@ -57,6 +67,9 @@ test("growth handles zero denominators and flags unreliable periods", () => {
   assert.equal(growth(15, 10).label, "+50%");
   assert.equal(growth(5, 10).label, "-50%");
   assert.equal(growth(12, 10, { current: 1, previous: 0.4 }).reliable, false);
+  const unmonitored = growth(174, 0, { current: 1, previous: 0 });
+  assert.equal(unmonitored.change, null);
+  assert.equal(unmonitored.label, "No earlier data to compare", "an unmonitored past is not growth from zero");
 });
 
 // ------------------------------------------------------------------ virality

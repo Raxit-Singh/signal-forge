@@ -153,10 +153,13 @@ export async function createBoostAction(_: ActionState, formData: FormData): Pro
     });
     if (error) throw error;
     // A boost that starts now takes effect at once instead of waiting for the old interval.
+    // The scheduler's job key is per interval bucket, so the interval must change too or today's
+    // bucket (already used) would block the earlier run.
     if (startsAt.getTime() <= Date.now() + 60_000) {
-      await admin.from("monitoring_queries").update({ next_run_at: new Date().toISOString() })
+      const boostMin = Number((ctx as { boost_min_minutes?: number } | null)?.boost_min_minutes ?? 60);
+      await admin.from("monitoring_queries").update({ next_run_at: new Date().toISOString(), interval_minutes: boostMin })
         .eq("product_id", d.productId).eq("enabled", true).in("provider", platforms)
-        .gt("next_run_at", new Date(Date.now() + 60 * 60_000).toISOString());
+        .gt("interval_minutes", boostMin);
     }
   } catch (e) {
     if (e instanceof AuthorizationError) return failure(e.message);

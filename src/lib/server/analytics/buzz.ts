@@ -46,8 +46,8 @@ export interface BuzzDashboard {
   daily: Growth;
   weekly: Growth;
   monthly: Growth;
-  coverage: { range: number; gaps: number; partial: number };
-  virality: Virality;
+  coverage: { range: number; complete: number; gaps: number; partial: number };
+  virality: Virality & { basis: string[] };
   spikes: Array<{ id: string; platform: string | null; granularity: string; period_start: string; period_end: string; observed: number; expected: number; ratio: number | null; severity: string }>;
   events: Array<{ id: string; title: string; kind: string; occurred_at: string; url: string | null }>;
 }
@@ -76,13 +76,16 @@ async function coverageRows(sb: SupabaseClient, productId: string, from: Date, t
   return (data ?? []) as CoverageRow[];
 }
 
-/** Share of [from,to) that monitoring covered, averaged across the given sources. */
-function coveredShare(rows: CoverageRow[], sources: string[]): number {
+/**
+ * Share of [from,to) that monitoring covered, averaged across the given sources.
+ * `complete` counts only windows that weren't cut short by page caps.
+ */
+function coveredShare(rows: CoverageRow[], sources: string[], field: "covered" | "complete" = "covered"): number {
   if (sources.length === 0) return 0;
   const buckets = new Set(rows.map((r) => new Date(r.bucket_start).getTime()));
   if (buckets.size === 0) return 0;
   let sum = 0;
-  for (const r of rows) if (r.source && sources.includes(r.source)) sum += Math.min(1, Number(r.covered));
+  for (const r of rows) if (r.source && sources.includes(r.source)) sum += Math.min(1, Number(r[field]));
   return sum / (buckets.size * sources.length);
 }
 
@@ -117,7 +120,7 @@ export async function getBuzzDashboard(
     totals(sb, productId, new Date(now.getTime() - 30 * D), now, sourceFilter),
     totals(sb, productId, new Date(now.getTime() - 60 * D), new Date(now.getTime() - 30 * D), sourceFilter),
     totals(sb, productId, new Date(now.getTime() - 29 * D), new Date(now.getTime() - D), sourceFilter),
-    coverageRows(sb, productId, new Date(now.getTime() - 60 * D), now, "day", "UTC", sourceFilter),
+    coverageRows(sb, productId, new Date(Math.min(now.getTime() - 60 * D, prev.from.getTime())), now, "day", "UTC", sourceFilter),
     sb.from("buzz_spikes")
       .select("id, platform, granularity, period_start, period_end, observed, expected, ratio, severity")
       .eq("product_id", productId)
@@ -147,7 +150,7 @@ export async function getBuzzDashboard(
       const t = new Date(c.bucket_start).getTime();
       return t >= fromD.getTime() - D && t < toD.getTime();
     });
-    return coveredShare(inRange, sources);
+    return coveredShare(inRange, sources, "complete");
   };
 
   const baselineDays = (() => {
@@ -161,18 +164,34 @@ export async function getBuzzDashboard(
   })();
   const baselineDivisor = Math.max(baselineDays, 1);
 
-  const platforms24h = t24.bySource.filter((s) => Number(s.relevant) > 0).length;
-  const virality = viralityScore({
-    last24h: t24.relevant,
-    prev24h: p24.relevant,
-    baselineDaily: base.relevant / baselineDivisor,
-    baselineDays,
-    authors24h: t24.uniqueAuthors,
-    baselineAuthorsDaily: base.uniqueAuthors / baselineDivisor,
-    engagementPerMention24h: t24.relevant ? t24.engagement / t24.relevant : 0,
-    baselineEngagementPerMention: base.relevant ? base.engagement / base.relevant : 0,
-    platforms24h,
+  // Virality compares the last day with the usual level, so it only uses platforms that were
+  // completely monitored over the whole baseline: a capped backfill would fake "growth".
+  const completeSources = sources.filter((src) => {
+    const rows = covGrowth.filter((c) => c.source === src && new Date(c.bucket_start).getTime() >= now.getTime() - 29 * D);
+    return rows.length > 0 && rows.reduce((a, c) => a + Number(c.complete), 0) / rows.length >= 0.9;
   });
+  const sameSet = completeSources.length === sources.length;
+  const [vt24, vp24, vbase] = sameSet ? [t24, p24, base] : completeSources.length === 0 ? [null, null, null] : await Promise.all([
+    totals(sb, productId, new Date(now.getTime() - D), now, completeSources),
+    totals(sb, productId, new Date(now.getTime() - 2 * D), new Date(now.getTime() - D), completeSources),
+    totals(sb, productId, new Date(now.getTime() - 29 * D), new Date(now.getTime() - D), completeSources),
+  ]);
+  const virality: Virality & { basis: string[] } = vt24 && vp24 && vbase
+    ? {
+        ...viralityScore({
+          last24h: vt24.relevant,
+          prev24h: vp24.relevant,
+          baselineDaily: vbase.relevant / baselineDivisor,
+          baselineDays,
+          authors24h: vt24.uniqueAuthors,
+          baselineAuthorsDaily: vbase.uniqueAuthors / baselineDivisor,
+          engagementPerMention24h: vt24.relevant ? vt24.engagement / vt24.relevant : 0,
+          baselineEngagementPerMention: vbase.relevant ? vbase.engagement / vbase.relevant : 0,
+          platforms24h: vt24.bySource.filter((s) => Number(s.relevant) > 0).length,
+        }),
+        basis: completeSources,
+      }
+    : { score: null, confidence: "low", factors: [], basis: [], note: "No platform was completely monitored over the last 4 weeks, so attention growth can't be measured reliably yet." };
 
   return {
     bucket,
@@ -180,7 +199,7 @@ export async function getBuzzDashboard(
     series,
     totals: rangeTotals,
     previousTotals: prevTotals,
-    rangeGrowth: growth(rangeTotals.relevant, prevTotals.relevant),
+    rangeGrowth: growth(rangeTotals.relevant, prevTotals.relevant, { current: share(from, range.to), previous: share(prev.from, prev.to) }),
     today: today.relevant,
     yesterday: yesterday.relevant,
     daily: growth(t24.relevant, p24.relevant, { current: share(new Date(now.getTime() - D), now), previous: share(new Date(now.getTime() - 2 * D), new Date(now.getTime() - D)) }),
@@ -188,6 +207,7 @@ export async function getBuzzDashboard(
     monthly: growth(m.relevant, pm.relevant, { current: share(new Date(now.getTime() - 30 * D), now), previous: share(new Date(now.getTime() - 60 * D), new Date(now.getTime() - 30 * D)) }),
     coverage: {
       range: coveredShare(cov, sources),
+      complete: coveredShare(cov, sources, "complete"),
       gaps: series.filter((p) => p.coverage === "none").length,
       partial: series.filter((p) => p.coverage === "partial").length,
     },

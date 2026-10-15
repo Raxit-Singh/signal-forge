@@ -2,7 +2,7 @@
 
 Social listening, buzz analytics and product intelligence for software teams: where people talk about your product, how often, what they like and dislike, which bugs and feature requests come up, and what to look at next — with every number traceable to stored data.
 
-**Status: Milestone 1 (foundation) — code complete, partially verified.** See [PROGRESS.md](PROGRESS.md) for exactly what has and hasn't been verified. No monitoring runs yet; the app says so instead of showing sample data.
+**Status (2026-10-15): Milestones 1, 2, 2.5 and 3 implemented.** Free sources (Hacker News, GitHub, Stack Overflow, Bluesky, DEV, App Store reviews) are verified against their live APIs. YouTube and all ten API Direct (paid) connectors are built and tested with mocked responses only — they need credentials (and, for paid sources, an authorized test budget) before they can be called verified. Buzz Analytics and Smart Monitoring are verified in the browser. See [PROGRESS.md](PROGRESS.md) for the exact verification log.
 
 ## Stack
 
@@ -25,12 +25,13 @@ Full setup (Supabase auth settings, email templates, Google OAuth, keys): [ENVIR
 
 | Command | What it runs | Needs |
 |---|---|---|
-| `npm run test:unit` | Domain logic, validation, encryption, source adapters (fixtures), relevance, formatting (`node --test`) | Node ≥ 22.18 |
-| `npm run test:db` | All migrations + 130 RLS / isolation / plan-limit / job-queue / ingestion tests on a throwaway local Postgres | Nothing extra — uses the `embedded-postgres` dev dependency (set `PGBIN` to use a system Postgres) |
+| `npm run test:unit` | 119 tests: domain logic, validation, encryption, source adapters incl. API Direct (mocked responses), query optimizer, adaptive scheduling, comment expansion, analytics math (`node --test`) | Node ≥ 22.18 |
+| `npm run test:db` | All migrations + 202 RLS / isolation / plan-limit / job-queue / ingestion / budget / analytics tests on a throwaway local Postgres | Nothing extra — uses the `embedded-postgres` dev dependency (set `PGBIN` to use a system Postgres) |
 | `npm run typecheck` | `tsc --noEmit` over the whole app | `npm install` |
 | `npm run lint` | ESLint (next/core-web-vitals + typescript) | `npm install` |
 | `npm run build` | Production build | `npm install`, env vars |
-| `npm run test:e2e` | Playwright: onboarding flow; mentions list, pagination, filters, relevance (deterministic fixtures) | `.env.local`, `npx playwright install chromium` |
+| `npm run test:e2e` | Playwright (9 tests): onboarding; mentions list, pagination, filters, relevance; Buzz Analytics; Smart Monitoring + Launch Boost (deterministic fixtures) | `.env.local`, `npx playwright install chromium` |
+| `npm run test:apidirect-live -- --confirm --max-usd 0.05` | **Paid.** Budget-capped live check of API Direct connectors. Never runs in CI or without `--confirm` | `API_DIRECT_API_KEY`, your authorization |
 | `npm run dev:cron` | Calls the scheduler every 120 s during local development | `JOBS_TICK_SECRET` |
 
 ## Docs
@@ -58,8 +59,12 @@ src/
   lib/
     domain/          pure logic (urls, aliases, plans, date ranges, catalogs) + tests
     validation/      zod schemas + tests
-    sources/         source adapters (HN, GitHub, Stack Exchange, YouTube), relevance, text + tests
-    server/          session/authorization, encryption, env; collection/ = worker, scheduler, status
+    sources/         source adapters (HN, GitHub, Stack Exchange, YouTube, Bluesky, DEV, App Store),
+                     apidirect/ (client, endpoint catalog, schemas, normalizers, 10 paid connectors),
+                     query optimizer, adaptive engine, comment expansion, relevance, text + tests
+    analytics/       buzz math: series with gaps, growth, virality, spike detection + tests
+    server/          session/authorization, encryption, env; collection/ = worker, monitor, scheduler,
+                     query sync, cost-aware context, status; analytics/ = dashboard + spike jobs
     supabase/        server / browser / admin clients
   proxy.ts           session refresh + route protection (Next 16 "proxy")
 supabase/
@@ -68,4 +73,5 @@ supabase/
 e2e/                 Playwright specs + throwaway-account helpers
 scripts/test-db.mjs  runs migrations + DB tests on a temporary Postgres 17 cluster
 scripts/dev-cron.mjs local scheduler
+scripts/apidirect-live-test.ts  authorized, budget-capped paid connector check
 ```

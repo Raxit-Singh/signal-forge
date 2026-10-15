@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { appStoreIds } from "@/lib/sources/official";
+import { appStoreIds, devTag } from "@/lib/sources/official";
 import { NON_OR_QUERY_CAP, planQueries, queryFingerprint, type MonitoringMode, type OptimizerKeyword } from "@/lib/sources/query-optimizer";
 import { isLegacySource, PUBLIC_SOURCES, streamsOf } from "@/lib/sources/registry";
 import type { PublicSourceId, SourceAdapter } from "@/lib/sources/types";
@@ -112,6 +112,20 @@ export async function syncOptimizedQueries(admin: SupabaseClient, productId: str
       if (keywords.length === 0) continue;
       const cap = a.paid ? NON_OR_QUERY_CAP[product.monitoring_mode] : FREE_NON_OR_CAP;
       const plan = planQueries(keywords, s.capabilities, cap);
+      if (e.id === "dev") {
+        // DEV searches tag feeds: one query per distinct tag; terms that aren't tag-like are skipped.
+        const tags = new Set<string>();
+        plan.groups = plan.groups.filter((g) => {
+          const term = g.terms[0] ?? "";
+          const tag = /^[\p{L}\p{N} -]+$/u.test(term) ? devTag(term) : null;
+          if (!tag || tags.has(tag)) {
+            plan.skipped.push({ term, reason: "covered", detail: tag ? `Same DEV tag as another keyword (#${tag})` : "Not usable as a DEV tag" });
+            return false;
+          }
+          tags.add(tag);
+          return true;
+        });
+      }
       for (const g of plan.groups) {
         groups.push({
           provider: e.id, stream: s.id, query: g.expression,

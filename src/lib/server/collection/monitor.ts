@@ -203,9 +203,9 @@ export async function runMonitorQuery(
     return { provider, stream: q.stream, skipped: "not_configured" };
   }
 
-  // A sibling's shared fetch already covered this query moments ago.
+  // Refreshed minutes ago (by a scan, or by an identical query's shared fetch): don't fetch again.
   if (!isScan && q.fingerprint && adapter.shareable && q.last_success_at && now.getTime() - new Date(q.last_success_at).getTime() < 10 * 60_000) {
-    await logExecution(admin, { q, job, started, status: "covered_by_shared", detail: "Covered by an identical query's fetch" });
+    await logExecution(admin, { q, job, started, status: "covered_by_shared", detail: "Already checked in the last 10 minutes" });
     return { provider, stream: q.stream, skipped: "covered_by_shared" };
   }
 
@@ -276,11 +276,15 @@ export async function runMonitorQuery(
       }
     }
     const allItems = [...search.items, ...(expansion?.items ?? [])];
+    // Milestone 2 adapters report caps as "incomplete" only; treat that as saturation.
+    if (search.saturated === undefined && !search.complete) search.saturated = true;
 
     const perRequest = new Map<string, { relevant: number; duplicates: number }>();
     const results: MonitorResult[] = [];
     for (const m of members) {
       const r = await ingestForMember(admin, provider, adapter, m, allItems, search, now, perRequest);
+      // Activity must include what this run just stored.
+      if (r.inserted > 0) m.ctx = (await loadContext(admin, m.q.product_id, provider).catch(() => null)) ?? m.ctx;
       const decision = scheduleFor(m, provider, adapter, search, 0, r.auditMissed);
       await finishMember(admin, m, provider, job, started, r, search, decision, {
         audit: audit && m.q.id === q.id, sharedWith: members.length,

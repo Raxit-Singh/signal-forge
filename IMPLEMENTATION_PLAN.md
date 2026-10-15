@@ -52,7 +52,7 @@ Implemented as planned with these changes: GitHub searches issues only (one comb
 11. Playwright E2E: signup → onboarding → scan → mentions.
 **Acceptance:** genuine mentions are discovered, stored once, and displayed with working source links.
 
-### M2.5 Multi-platform monitoring infrastructure — *plan written 2026-10-15*
+### M2.5 Multi-platform monitoring infrastructure — *implemented 2026-10-15; free sources verified live, API Direct connectors mocked-only (no key)* (see PROGRESS.md)
 Constraints: API Direct is the only paid social-data provider; no paid call is made automatically during development, in tests or in CI; paid collection needs a key **and** an operator-set global budget **and** `PAID_SOURCES_ENABLED=true`.
 
 Facts from API Direct's docs (github.com/joshwallerr/apidirect-docs, read 2026-10-15) that shape the design:
@@ -72,7 +72,7 @@ Steps:
 7. Comment expansion engine for platforms without global comment search.
 8. Official sources: Bluesky (AppView search), DEV (Forem tag feed + comments), App Store (customer-review feed). Discord, Threads and Google Play stay disabled (need a bot gateway process, Meta app review, or the customer's Play Console credentials).
 
-### M3 Buzz analytics
+### M3 Buzz analytics — *implemented and verified 2026-10-15* (see PROGRESS.md)
 Implemented on live SQL over deduplicated mentions (originals only) rather than the UTC `daily_mention_stats` table, so days follow the viewer's time zone; mentions with estimated dates (web results) are excluded from time series and counted separately.
 Daily aggregation job (idempotent recompute per day/product/source), charts (24h/7d/30d/90d/custom, per-platform filter), growth with zero-denominator handling, source distribution, unique authors, engagement, share of voice, experimental virality score with factor breakdown, spike detection (rolling median/MAD baseline + minimum counts), event markers.
 **Acceptance:** every displayed metric reconciles with stored rows (property tests on the aggregation).

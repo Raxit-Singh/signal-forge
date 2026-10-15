@@ -83,7 +83,10 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
               hint={t.withAuthor < t.relevant ? `Measurable for ${t.withAuthor} of ${t.relevant} mentions` : "Per-platform identities"} />
             <Kpi label="Engagement" value={formatCount(t.engagement)} hint="Likes, comments, points… as each platform reports them" />
             <Kpi label="Monitoring coverage" value={`${Math.round(d.coverage.range * 100)}%`}
-              hint={d.coverage.gaps ? `${d.coverage.gaps} period${d.coverage.gaps === 1 ? "" : "s"} not monitored` : d.coverage.partial ? `${d.coverage.partial} partially monitored` : "Every period monitored"} />
+              hint={[
+                d.coverage.gaps ? `${d.coverage.gaps} period${d.coverage.gaps === 1 ? "" : "s"} not monitored` : null,
+                d.coverage.complete < d.coverage.range - 0.01 ? `${Math.round(d.coverage.complete * 100)}% complete — some checks hit page limits` : null,
+              ].filter(Boolean).join(" · ") || "Every period fully monitored"} />
           </section>
 
           <Card>
@@ -110,6 +113,11 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
                   <p className="text-[13px] text-muted-foreground">{d.virality.note}</p>
                 ) : (
                   <>
+                    {d.virality.basis.length < d.sources.length && (
+                      <p className="text-xs text-muted-foreground">
+                        Based on {d.virality.basis.map(nameOf).join(", ")} — the platforms monitored completely over the last 4 weeks.
+                      </p>
+                    )}
                     <p className="flex items-baseline gap-2">
                       <span className="text-3xl font-semibold tabular" aria-label={`Virality ${d.virality.score} out of 100`}>{d.virality.score}</span>
                       <span className="text-[13px] text-muted-foreground">/ 100 · {d.virality.confidence} confidence</span>
@@ -137,6 +145,7 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
                 <Distribution
                   items={t.bySource.filter((r) => r.relevant > 0).map((r) => ({ label: nameOf(r.source), value: Number(r.relevant) }))}
                   empty="No relevant mentions in this period."
+                  label="Mentions by platform"
                 />
               </CardContent>
             </Card>
@@ -150,6 +159,7 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
                 <Distribution
                   items={[{ label: "Posts, videos, articles & reviews", value: t.posts }, { label: "Comments & replies", value: t.comments }].filter((x) => x.value > 0)}
                   empty="No relevant mentions in this period."
+                  label="Mentions by type"
                 />
                 <dl className="grid grid-cols-3 gap-2 text-xs">
                   <div><dt className="text-muted-foreground">Relevant</dt><dd className="tabular text-sm">{formatCount(t.relevant)}</dd></div>
@@ -221,11 +231,11 @@ function Kpi({ label, value, growth, hint }: { label: string; value: string; gro
   );
 }
 
-function Distribution({ items, empty }: { items: Array<{ label: string; value: number }>; empty: string }) {
+function Distribution({ items, empty, label }: { items: Array<{ label: string; value: number }>; empty: string; label: string }) {
   const total = items.reduce((a, i) => a + i.value, 0);
   if (total === 0) return <p className="text-[13px] text-muted-foreground">{empty}</p>;
   return (
-    <ul className="grid gap-2">
+    <ul className="grid gap-2" aria-label={label}>
       {[...items].sort((a, b) => b.value - a.value).map((i, n) => (
         <li key={i.label} className="grid gap-1">
           <div className="flex justify-between gap-2 text-xs"><span className="truncate">{i.label}</span><span className="tabular text-muted-foreground">{i.value} · {Math.round((i.value / total) * 100)}%</span></div>

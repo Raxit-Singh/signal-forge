@@ -30,8 +30,9 @@ export async function detectSpikesForProduct(admin: SupabaseClient, product: { i
     const step = r.bucket === "day" ? 86_400_000 : 3_600_000;
 
     const candidates = [
-      { platform: null as string | null, pts: points.map((p) => ({ start: p.start, value: p.relevant })) },
-      ...sources.map((s) => ({ platform: s, pts: points.map((p) => ({ start: p.start, value: p.bySource[s] ?? null })) })),
+      // Only completely monitored periods count: capped (partial) collection is excluded.
+      { platform: null as string | null, pts: points.map((p) => ({ start: p.start, value: p.relevantComplete })) },
+      ...sources.map((s) => ({ platform: s, pts: points.map((p) => ({ start: p.start, value: p.bySourceComplete[s] ?? null })) })),
     ];
     for (const c of candidates) {
       // Only recent periods are (re)stored; older ones were evaluated when they were recent.

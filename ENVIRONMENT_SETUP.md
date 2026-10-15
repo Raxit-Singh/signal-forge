@@ -44,6 +44,8 @@ Copy `.env.example` to `.env.local` (and set the same in your host's dashboard):
 | `GITHUB_TOKEN` | GitHub issue search — optional; raises the limit from 10 to 30 searches/min | **yes** |
 | `STACKEXCHANGE_KEY` | Stack Exchange — optional; raises quota from 300 to 10,000 requests/day | no (app keys are public by design), keep private anyway |
 | `YOUTUBE_API_KEY` | YouTube — **required** for that source; without it YouTube shows "Not configured" | **yes** |
+| `API_DIRECT_API_KEY` | Paid sources (Reddit, X, LinkedIn, TikTok, Instagram, Facebook, Substack, web, news, Trustpilot). Server only; sent as `X-API-Key`, never logged | **yes** |
+| `PAID_SOURCES_ENABLED` | `true` to allow paid collection at all (default `false`). Also needs a global budget row — see §3b | no |
 
 Generate the encryption key:
 ```bash
@@ -61,6 +63,33 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 - **Stack Exchange:** register an app at stackapps.com/apps/oauth/register; copy the *Key* (not the secret) into `STACKEXCHANGE_KEY`.
 - **YouTube:** Google Cloud Console → enable *YouTube Data API v3* → Credentials → API key. Restrict it to that API. Put it in `YOUTUBE_API_KEY`. Default quota: 100 searches/day for the whole project (see API_LIMITATIONS.md).
 
+### 3b. Paid sources — API Direct (optional; costs money)
+
+Paid collection needs **all three**: `API_DIRECT_API_KEY`, `PAID_SOURCES_ENABLED=true`, and a global monthly budget in the database. With any one missing, paid sources show "Not configured" / "switched off" and no paid request is made.
+
+1. Create an account at apidirect.io, add a payment method, and **set daily and monthly spending limits in its billing dashboard** (a second, provider-side cap). Create an API key (`ak_live_…`) and put it in `API_DIRECT_API_KEY` on the server only.
+2. Set budgets (SQL editor, service role). Amounts are US$ per calendar month (UTC):
+   ```sql
+   insert into public.api_budgets (scope, monthly_limit_usd, note) values ('global', 10, 'all paid sources');
+   -- optional caps:
+   insert into public.api_budgets (scope, provider, monthly_limit_usd) values ('provider', 'apidirect', 10);
+   insert into public.api_budgets (scope, platform, monthly_limit_usd) values ('platform', 'x', 3);
+   insert into public.api_budgets (scope, workspace_id, monthly_limit_usd) values ('workspace', '<uuid>', 2);
+   -- per-plan allowance (proposed defaults: free 0, starter 1, pro 5, business 20):
+   update public.plan_paid_allowances set monthly_usd = 5, max_boost_paid_checks = 400 where plan_id = 'pro';
+   ```
+3. Set `PAID_SOURCES_ENABLED=true` and redeploy. Each product admin must still turn each paid platform on (Smart Monitoring → More platforms) and confirm the spending authorization.
+4. **Live validation** (authorized, capped, never in CI): `npm run test:apidirect-live -- --confirm --max-usd 0.05`. It reads prices from `provider_pricing`, stops before exceeding the cap, writes nothing to the database, and prints each call's status, billed units and results.
+5. **Reconciliation** (monthly): compare the API Direct invoice with the ledger and record it:
+   ```sql
+   insert into public.billing_reconciliations (provider, period_start, invoiced_usd, estimated_usd, charged_usd)
+   select 'apidirect', date '2026-10-01', <invoice total>, sum(estimated_usd), sum(coalesce(charged_usd, estimated_usd))
+     from public.api_cost_ledger where period_start = date '2026-10-01' and status <> 'released';
+   ```
+   Per-request detail (platform, endpoint, purpose, status, billed units, results, relevant mentions, duplicates, duration) is in `api_cost_ledger`; cost per workspace/product via `api_cost_allocations`.
+
+Prices change in one place: insert a row into `provider_pricing` with a new `effective_from`.
+
 ## 4. Local development
 
 ```bash
@@ -71,7 +100,7 @@ npm run check        # typecheck + lint + unit tests
 npm run test:db      # self-contained: throwaway Postgres 17 from the embedded-postgres dev dependency
 npm run test:e2e     # Playwright; uses .env.local's Supabase project with throwaway sf-e2e-* accounts it deletes
 ```
-First E2E run: `npx playwright install chromium`. E2E tests never call external data sources; they insert synthetic fixtures into their own throwaway workspace.
+First E2E run: `npx playwright install chromium`. E2E tests never call external data sources; they insert synthetic fixtures into their own throwaway workspace. No automated test makes a paid request: API Direct connectors are tested with mocked responses only.
 
 ## 5. Hosting
 
@@ -81,7 +110,7 @@ First E2E run: `npx playwright install chromium`. E2E tests never call external 
 
 ## 6. Scheduler
 
-Recurring monitoring is driven by `POST /api/jobs/tick` (header `Authorization: Bearer $JOBS_TICK_SECRET`). Each call: enqueues due monitoring queries (idempotent), runs daily maintenance once per day (retention purge), then works the job queue for up to ~50 s. Calling it more often than needed is harmless.
+Recurring monitoring is driven by `POST /api/jobs/tick` (header `Authorization: Bearer $JOBS_TICK_SECRET`). Each call: enqueues due monitoring queries (idempotent; interval chosen per query group by the adaptive engine), runs daily maintenance once per day (retention purge, query-group re-sync for every product), runs spike detection once per hour, then works the job queue for up to ~50 s. Calling it more often than needed is harmless.
 
 **Production — Supabase Cron** (Database → Extensions: enable `pg_cron` and `pg_net`; then in the SQL editor):
 ```sql

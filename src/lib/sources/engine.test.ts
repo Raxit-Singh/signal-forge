@@ -32,6 +32,12 @@ test("OR-capable platform: brand aliases become ONE query; phrases containing th
   ]);
 });
 
+test("domains and handles are searched in their own right, not treated as covered by the name", () => {
+  const plan = planQueries([kw("Excalidraw"), kw("excalidraw.com", "custom"), kw("@excalidraw", "custom")], CAPS.blueskyPosts, 5);
+  assert.deepEqual(plan.groups.map((g) => g.expression), ["Excalidraw", '"@excalidraw"', '"excalidraw.com"']);
+  assert.equal(plan.skipped.length, 0);
+});
+
 test("platform without OR: one query per keyword, capped by monitoring mode, the rest reported", () => {
   const eco = planQueries(FOCUSFLOW, CAPS.tiktokVideos, NON_OR_QUERY_CAP.eco);
   assert.deepEqual(eco.groups.map((g) => g.expression), ["FocusFlow"]);

@@ -66,7 +66,8 @@ type Row = Record<string, number | string | null> & { start: string; label: stri
 
 export function BuzzChart({ points, sources, bucket, tz, events, spikes }: ChartProps) {
   const [view, setView] = useState<"platform" | "relevance">("platform");
-  const fmt = useMemo(() => new Intl.DateTimeFormat(undefined, bucket === "hour"
+  // Fixed locale: server and browser must render identical labels (hydration).
+  const fmt = useMemo(() => new Intl.DateTimeFormat("en-US", bucket === "hour"
     ? { timeZone: tz, month: "short", day: "numeric", hour: "numeric" }
     : { timeZone: tz, month: "short", day: "numeric" }), [bucket, tz]);
 

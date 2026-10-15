@@ -136,7 +136,7 @@ export default async function MentionsPage({ searchParams }: { searchParams: Pro
       {neverCollected ? (
         <EmptyState icon={MessageSquareText} title="No mentions collected yet">
           <p>
-            Run a first scan to search {coverage.sources.filter((s) => s.state !== "not_configured").map((s) => s.name).join(", ")} for
+            Run a first scan to search {coverage.sources.filter((s) => s.state !== "not_configured" && s.state !== "not_enabled").map((s) => s.name).join(", ")} for
             the last 30 days. After that, monitoring runs automatically.
           </p>
           {canScan && <div className="mt-4 flex justify-center"><StartScanButton productId={product.id} kind="initial" /></div>}

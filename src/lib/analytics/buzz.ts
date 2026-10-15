@@ -36,6 +36,13 @@ export interface SeriesPoint {
   irrelevant: number | null;
   pending: number | null;
   bySource: Record<string, number | null>;
+  /**
+   * Same counts, but only for sources whose monitoring of this bucket was
+   * complete (not cut short by page caps). Spike baselines use these, so a
+   * capped backfill that piles recent items up can't look like a spike.
+   */
+  bySourceComplete: Record<string, number | null>;
+  relevantComplete: number | null;
   coverage: BucketCoverage;
   /** Sources with no coverage in this bucket (their counts are unknown, not zero). */
   unmeasured: string[];
@@ -56,13 +63,22 @@ export function buildSeries(bucketStarts: string[], sources: string[], rows: Ser
     let pending = 0;
     let measuredAny = false;
     let allFull = sources.length > 0;
+    let completeAny = false;
+    let relevantComplete = 0;
     const bySource: Record<string, number | null> = {};
+    const bySourceComplete: Record<string, number | null> = {};
     const unmeasured: string[] = [];
     for (const s of sources) {
       const r = counts.get(key(b, s));
       const c = cov.get(key(b, s));
       const has = (r?.relevant ?? 0) + (r?.irrelevant ?? 0) + (r?.pending ?? 0) > 0;
       const measured = (c?.covered ?? 0) >= MEASURED || has;
+      const complete = (c?.complete ?? 0) >= MEASURED;
+      bySourceComplete[s] = complete ? r?.relevant ?? 0 : null;
+      if (complete) {
+        completeAny = true;
+        relevantComplete += r?.relevant ?? 0;
+      }
       if (!measured) {
         bySource[s] = null;
         unmeasured.push(s);
@@ -82,6 +98,8 @@ export function buildSeries(bucketStarts: string[], sources: string[], rows: Ser
       irrelevant: measuredAny ? irrelevant : null,
       pending: measuredAny ? pending : null,
       bySource,
+      bySourceComplete,
+      relevantComplete: completeAny ? relevantComplete : null,
       coverage: !measuredAny ? "none" : allFull ? "full" : "partial",
       unmeasured,
     };
@@ -98,8 +116,15 @@ export interface Growth {
   reliable: boolean;
 }
 
-/** Period-over-period growth with explicit zero handling. */
+/**
+ * Period-over-period growth with explicit zero handling. `coverage` is the share
+ * of each period that was completely monitored: an unmonitored previous period
+ * means "no data to compare", never "grew from zero".
+ */
 export function growth(current: number, previous: number, coverage?: { current: number; previous: number }): Growth {
+  if (coverage && coverage.previous < 0.1) {
+    return { current, previous, change: null, label: "No earlier data to compare", reliable: false };
+  }
   const reliable = !coverage || (coverage.current >= 0.9 && coverage.previous >= 0.9);
   if (previous === 0 && current === 0) return { current, previous, change: 0, label: "No change", reliable };
   if (previous === 0) return { current, previous, change: null, label: "New activity (none before)", reliable };

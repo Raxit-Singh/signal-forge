@@ -10,7 +10,7 @@ import { BoostForm, CancelBoost, ModeForm, SourceToggle } from "./monitoring-cli
 
 export const metadata: Metadata = { title: "Smart Monitoring" };
 
-const hours = (m: number) => (m % 60 === 0 ? `${m / 60} h` : `${m} min`);
+const hours = (m: number) => (m < 60 ? `${m} min` : `${Math.round(m / 60)} h`);
 const STATE: Record<string, { tone: "positive" | "warning" | "negative" | "neutral" | "info"; label: string }> = {
   live: { tone: "positive", label: "Monitoring" },
   partial: { tone: "warning", label: "Monitoring · incomplete" },
@@ -60,7 +60,7 @@ export default async function MonitoringPage() {
           <Stat
             label="Fewer checks than hourly polling"
             value={o.efficiency.hourlyEquivalent ? `${o.efficiency.percentFewer}%` : "—"}
-            hint={o.efficiency.hourlyEquivalent ? `${o.efficiency.avoided.toLocaleString()} of ${o.efficiency.hourlyEquivalent.toLocaleString()} hourly checks avoided` : "No active sources yet"}
+            hint={o.efficiency.hourlyEquivalent ? `${o.efficiency.avoided.toLocaleString()} of ${o.efficiency.hourlyEquivalent.toLocaleString()} hourly checks avoided since monitoring started` : "No checks have run yet"}
           />
           <Stat label="Shared fetches" value={o.efficiency.sharedFetches.toLocaleString()} hint="Checks served by an identical query" />
           <Stat label="Interval adjustments" value={o.efficiency.intervalChanges.toLocaleString()} hint="Times a check interval changed" />
@@ -157,7 +157,7 @@ export default async function MonitoringPage() {
             {canEdit ? (
               <BoostForm
                 productId={product.id}
-                platforms={active.map((p) => ({ id: p.id, name: p.name, paid: p.paid }))}
+                platforms={active.filter((p) => p.state !== "not_configured").map((p) => ({ id: p.id, name: p.name, paid: p.paid }))}
                 maxPaidChecks={o.paid.maxBoostPaidChecks}
                 boostMinHours={Math.round(o.paid.boostMinMinutes / 60)}
               />
@@ -201,8 +201,8 @@ function PlatformRow({ p, productId, canEdit, now }: { p: PlatformMonitoring; pr
       <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-5">
         <div><dt className="text-muted-foreground">Checks every</dt><dd className="tabular">{p.intervalMinutes ? hours(p.intervalMinutes) : "not set yet"}</dd></div>
         <div><dt className="text-muted-foreground">Last check</dt><dd title={p.lastScanAt ? formatUtc(p.lastScanAt) : undefined}>{p.lastScanAt ? formatRelative(p.lastScanAt) : "—"}</dd></div>
-        <div><dt className="text-muted-foreground">Next check</dt><dd title={p.nextScanAt ? formatUtc(p.nextScanAt) : undefined}>{p.nextScanAt ? (new Date(p.nextScanAt).getTime() <= now ? "due now" : formatRelative(p.nextScanAt)) : "—"}</dd></div>
-        <div><dt className="text-muted-foreground">Expected discovery</dt><dd>{p.discovery ? `~${hours(Math.max(15, Math.round(p.discovery.typical / 15) * 15))} (≤ ${hours(Math.round(p.discovery.worst / 15) * 15)})` : "—"}</dd></div>
+        <div><dt className="text-muted-foreground">Next check</dt><dd title={p.nextScanAt ? formatUtc(p.nextScanAt) : undefined}>{p.nextScanAt && p.state !== "not_configured" ? (new Date(p.nextScanAt).getTime() <= now ? "due now" : formatRelative(p.nextScanAt)) : "—"}</dd></div>
+        <div><dt className="text-muted-foreground">Expected discovery</dt><dd>{p.discovery && p.state !== "not_configured" ? `~${hours(p.discovery.typical)}, at most ${hours(p.discovery.worst)}` : "—"}</dd></div>
         <div><dt className="text-muted-foreground">Relevant mentions (7 days)</dt><dd className="tabular">{p.mentions7d}</dd></div>
       </dl>
       {p.reasons.length > 0 && (
