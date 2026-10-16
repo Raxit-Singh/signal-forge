@@ -1,6 +1,9 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { auditDue, expansionsPerRun, formatInterval, nextRunAt, type Confidence } from "@/lib/sources/adaptive";
+import { escalationPages, pagesToRequest, updateEstimate, upperRate, type GroupEstimate } from "@/lib/sources/arrival";
+import { collectionProfile, jobCapacity, type CollectionProfile } from "@/lib/sources/collection-profile";
+import { decideResume, observedSpanMinutes, oldestPublished, type Gap, type ResumeDecision } from "@/lib/sources/resume";
 import { expansionParentOf } from "@/lib/sources/apidirect/adapters";
 import { SourceError } from "@/lib/sources/errors";
 import { selectExpansions, type ExpansionCandidate, type ExpansionHistory } from "@/lib/sources/expansion";
@@ -10,7 +13,7 @@ import { prepareIngest, type IngestItem } from "@/lib/sources/pipeline";
 import { isLegacySource, isPaidSource, isPublicSource, streamsOf } from "@/lib/sources/registry";
 import type { AliasRule } from "@/lib/sources/relevance";
 import type { CandidateMention, ExpansionParent, PublicSourceId, SearchResult, SearchWindow, SourceAdapter } from "@/lib/sources/types";
-import { refreshActivity } from "./activity";
+import { estimateFromRow, groupIntervalMinutes, refreshActivity } from "./activity";
 import { createSourceContext, type BillingMember, type PaidCall, type UsageEvent } from "./context";
 import { paidCollectionEnabled } from "./sources";
 import { websiteDomain } from "./query-sync";
@@ -23,7 +26,8 @@ const MAX_LOOKBACK_MS = 90 * 86_400_000;
 /** Paid scheduled runs never look back further than this (scans pass their own `since`). */
 const PAID_MAX_SCHEDULED_LOOKBACK_MS = 7 * 86_400_000;
 const AUDIT_LOOKBACK_MS = 7 * 86_400_000;
-const DEFAULT_MAX_PAGES = 2;
+/** A continuation of an overflowing window runs this soon after the run that left it. */
+const CONTINUATION_DELAY_MS = 30_000;
 const INGEST_CHUNK = 250;
 /** A shared fetch serves sibling queries that haven't been refreshed for this long. */
 const SHARED_FRESH_MS = 30 * 60_000;
@@ -60,6 +64,9 @@ export interface MonitorResult {
   expansions?: number;
   audit?: boolean;
   nextIntervalMinutes?: number;
+  continuation?: boolean;
+  gapLeft?: boolean;
+  pagesRequested?: number;
 }
 
 /** Error that knows which window/query it belongs to, so a final failure can be recorded as a coverage gap. */
@@ -90,7 +97,7 @@ interface QueryRow {
   stream: string;
   query: string;
   params: { terms?: string[]; rotation?: Rotation };
-  cursor: { until?: string; pages?: number; audit_missed?: number };
+  cursor: { until?: string; pages?: number; audit_missed?: number; gap?: Gap | null; continuations?: number };
   enabled: boolean;
   fingerprint: string | null;
   managed_by: "legacy" | "optimizer";
@@ -164,6 +171,39 @@ function windowFor(q: QueryRow, now: Date, paid: boolean, requestedSince: Date |
   return { since, until: now };
 }
 
+/** Search + (for page-billed sources without resume) one right-sized escalation when the first call overflowed. */
+export async function searchWithEscalation(
+  adapter: SourceAdapter,
+  req: Parameters<SourceAdapter["searchMentions"]>[0],
+  sctx: Parameters<SourceAdapter["searchMentions"]>[1],
+  profile: CollectionProfile,
+  capPages: number,
+): Promise<SearchResult & { escalated: boolean }> {
+  const first = await adapter.searchMentions(req, sctx);
+  const requested = first.pagesRequested ?? req.maxPages;
+  if (!adapter.paid || profile.billing !== "pages" || profile.resume === "range" || !first.saturated || requested >= capPages) {
+    return { ...first, escalated: false };
+  }
+  const oldest = oldestPublished(first.items);
+  const pages = escalationPages({
+    returned: first.items.length, spanMinutes: observedSpanMinutes(first.items, req.window),
+    remainingMinutes: oldest ? Math.max(0, (oldest.getTime() - req.window.since.getTime()) / 60_000) : (req.window.until.getTime() - req.window.since.getTime()) / 60_000,
+    perPage: profile.perPage, maxPages: capPages, requested,
+  });
+  if (pages <= requested) return { ...first, escalated: false };
+  try {
+    // One call with more pages (it bills every page again, so it happens at most once per run).
+    const again = await adapter.searchMentions({ ...req, maxPages: pages }, sctx);
+    const items = new Map(first.items.map((i) => [i.externalId, i]));
+    for (const i of again.items) items.set(i.externalId, i);
+    return { ...again, items: [...items.values()], pagesRequested: requested + (again.pagesRequested ?? pages), escalated: true };
+  } catch (e) {
+    // A refused budget reservation keeps the first results (recorded as partial).
+    if (e instanceof SourceError && e.kind === "budget") return { ...first, escalated: false };
+    throw e;
+  }
+}
+
 export async function runMonitorQuery(
   admin: SupabaseClient,
   job: JobRow,
@@ -185,12 +225,16 @@ export async function runMonitorQuery(
   const paid = Boolean(adapter.paid);
   const requestedSince = typeof job.payload.since === "string" ? new Date(job.payload.since) : null;
   const isScan = Boolean(job.scan_id) || requestedSince !== null;
-  // Activity score from the last ranking (null while the platform is new) sets audit cadence and expansion budget.
+  const stream = streamsOf(adapter).find((s) => s.id === q.stream) ?? streamsOf(adapter)[0]!;
+  const profile = collectionProfile(provider, stream.id);
+  // An earlier run that overflowed left part of its window unread: continue it first.
+  const gap = !isScan && profile.resume !== "none" && q.cursor?.gap ? q.cursor.gap : null;
+  // Activity importance from the last ranking (null while the platform is new) sets audit cadence and expansion budget.
   const { data: act } = await admin.from("platform_activity").select("score, phase")
     .eq("product_id", q.product_id).eq("platform", provider).maybeSingle<{ score: number | null; phase: string }>();
   const score = act?.phase === "ranked" ? act.score : null;
-  const audit = !isScan && !isLegacySource(provider) && auditDue(q.last_audit_at ? new Date(q.last_audit_at) : null, paid, score, now);
-  const leadWindow = windowFor(q, now, paid, requestedSince, audit);
+  const audit = !isScan && !gap && !isLegacySource(provider) && auditDue(q.last_audit_at ? new Date(q.last_audit_at) : null, paid, score, now);
+  const leadWindow = gap ? { since: new Date(gap.since), until: new Date(gap.until) } : windowFor(q, now, paid, requestedSince, audit);
   const scope = { workspace_id: q.workspace_id, product_id: q.product_id };
 
   const setup = adapter.configured();
@@ -204,15 +248,16 @@ export async function runMonitorQuery(
   }
 
   // Refreshed minutes ago (by a scan, or by an identical query's shared fetch): don't fetch again.
-  if (!isScan && q.fingerprint && adapter.shareable && q.last_success_at && now.getTime() - new Date(q.last_success_at).getTime() < 10 * 60_000) {
+  if (!isScan && !gap && q.fingerprint && adapter.shareable && q.last_success_at && now.getTime() - new Date(q.last_success_at).getTime() < 10 * 60_000) {
     await logExecution(admin, { q, job, started, status: "covered_by_shared", detail: "Already checked in the last 10 minutes" });
     return { provider, stream: q.stream, skipped: "covered_by_shared" };
   }
 
-  // Shared query registry: one upstream fetch serves every product with the same fingerprint.
+  // Shared query registry: one upstream fetch serves every product with the same fingerprint
+  // (continuations work on one product's own unread window, so they aren't shared).
   let lockHolder: string | null = null;
   const members: Member[] = [{ q, ctx, rules: await loadRules(admin, q.product_id), window: leadWindow }];
-  if (!isScan && q.fingerprint && adapter.shareable) {
+  if (!isScan && !gap && q.fingerprint && adapter.shareable) {
     lockHolder = `job:${job.id}`;
     const { data: got } = await admin.rpc("svc_try_acquire_lock", { p_name: `fp:${q.fingerprint.slice(0, 40)}`, p_holder: lockHolder, p_ttl_seconds: 170 });
     if (!got) throw new MonitorJobError(new SourceError("rate_limited", "An identical query is being fetched", { retryAfterSeconds: 90 }), provider, leadWindow, scope);
@@ -225,6 +270,7 @@ export async function runMonitorQuery(
       .limit(MAX_SHARED_MEMBERS);
     for (const s of (siblings ?? []) as QueryRow[]) {
       if (s.last_success_at && now.getTime() - new Date(s.last_success_at).getTime() < SHARED_FRESH_MS) continue;
+      if (s.cursor?.gap) continue; // it has its own unread window to finish first
       const sctx = await loadContext(admin, s.product_id, provider).catch(() => null);
       if (!sctx || sctx.archived) continue;
       if (paid && sctx.paid_allowance_usd <= 0) continue;
@@ -234,11 +280,22 @@ export async function runMonitorQuery(
 
   const fetchWindow: SearchWindow = {
     since: new Date(Math.min(...members.map((m) => m.window.since.getTime()))),
-    until: now,
+    until: gap ? leadWindow.until : now,
   };
-  const stream = streamsOf(adapter).find((s) => s.id === q.stream) ?? streamsOf(adapter)[0]!;
-  const basePages = Number(job.payload.max_pages ?? q.cursor?.pages ?? DEFAULT_MAX_PAGES);
-  const maxPages = Math.max(1, Math.min(stream.capabilities.maxPagesPerRun, isLegacySource(provider) ? 5 : 10, basePages + (audit ? 1 : 0)));
+  // Page right-sizing: page-billed calls request what this search's arrival rate needs
+  // (one page while it's new); others page on by themselves and stop at a partial page.
+  const { data: est } = await admin.from("arrival_estimates")
+    .select("query_id, raw_alpha, raw_beta, rel_alpha, rel_beta, observations, saturations, exposure_hours, last_observed_at")
+    .eq("query_id", q.id).maybeSingle();
+  const estimate = estimateFromRow(est ?? undefined);
+  const capPages = Math.max(1, Math.min(stream.capabilities.maxPagesPerRun, profile.maxPagesPerJob, isLegacySource(provider) ? 5 : 10));
+  const planned = profile.billing === "pages"
+    ? pagesToRequest({
+      ratePerHour: upperRate(estimate.raw), windowMinutes: (fetchWindow.until.getTime() - fetchWindow.since.getTime()) / 60_000,
+      perPage: profile.perPage, maxPages: capPages, billing: "pages", learning: estimate.observations === 0,
+    })
+    : capPages;
+  const maxPages = Math.min(capPages, planned + (audit ? 1 : 0));
 
   const usage: UsageEvent[] = [];
   const paidCalls: PaidCall[] = [];
@@ -251,19 +308,20 @@ export async function runMonitorQuery(
   try {
     const terms = (q.params?.terms ?? []).filter((t) => typeof t === "string" && t.trim()).slice(0, 10);
     const app = appStoreIds(ctx.app_store_url);
-    const search = await adapter.searchMentions({
+    const search = await searchWithEscalation(adapter, {
       terms: terms.length ? terms : [ctx.name],
       window: fetchWindow,
       maxPages,
+      startPage: gap?.page,
       stream: q.stream === "default" ? undefined : q.stream,
       query: q.managed_by === "optimizer" ? q.query : undefined,
       target: { websiteDomain: websiteDomain(ctx.website_url), appStoreId: app?.id ?? null, appStoreCountry: app?.country ?? null },
-    }, sctx);
+    }, sctx, profile, capPages);
 
     // Selective comment expansion for platforms without global comment search.
     let expansion: SearchResult | null = null;
     let expandedParents: ExpansionParent[] = [];
-    if (adapter.expandComments && !audit) {
+    if (adapter.expandComments && !audit && !gap) {
       expandedParents = await chooseExpansions(admin, provider, search.items, members, expansionsPerRun(score), now);
       if (expandedParents.length > 0) {
         try {
@@ -283,14 +341,18 @@ export async function runMonitorQuery(
     const results: MonitorResult[] = [];
     for (const m of members) {
       const r = await ingestForMember(admin, provider, adapter, m, allItems, search, now, perRequest);
-      const decision = await finishMember(admin, m, provider, job, started, r, search, {
-        audit: audit && m.q.id === q.id, sharedWith: members.length,
+      const resume = decideResume({
+        profile, window: m.window, items: search.items.filter((i) => i.publishedAt >= m.window.since), saturated: Boolean(search.saturated),
+        pagesRead: search.pagesRequested ?? maxPages, previous: m.q.id === q.id ? gap : null, platformName: adapter.name,
+      });
+      const decision = await finishMember(admin, m, provider, job, started, r, search, resume, {
+        audit: audit && m.q.id === q.id, sharedWith: members.length, continuation: m.q.id === q.id && gap !== null,
         expansions: m.q.id === q.id ? expandedParents.length : 0,
         paidRequests: m.q.id === q.id ? paidCalls.length : 0,
         pages: m.q.id === q.id ? search.pagesRequested ?? maxPages : 0,
-        nextPages: search.saturated ? Math.min(stream.capabilities.maxPagesPerRun, maxPages + 1) : Math.max(1, maxPages - (audit ? 1 : 0)),
+        profile,
       });
-      results.push({ ...r.result, nextIntervalMinutes: decision.intervalMinutes });
+      results.push({ ...r.result, nextIntervalMinutes: decision.intervalMinutes, continuation: gap !== null, gapLeft: resume.gap !== null, pagesRequested: search.pagesRequested ?? maxPages });
     }
     if (expandedParents.length > 0) await recordExpansions(admin, provider, members, expandedParents, expansion, now);
     for (const [ledgerId, v] of perRequest) {
@@ -304,7 +366,7 @@ export async function runMonitorQuery(
     if (err.kind !== "budget") {
       await recordHealth(admin, provider, { status: err.kind === "auth" ? "error" : "degraded", error: err.message });
     }
-    // Checkpoints don't move; the next run re-searches the gap (sooner after failures).
+    // Checkpoints (and any unread gap) don't move; the next run re-searches (sooner after failures).
     for (const m of members) {
       const failures = m.q.consecutive_failures + 1;
       const interval = m.q.interval_minutes ?? m.ctx.plan_min_minutes;
@@ -317,7 +379,7 @@ export async function runMonitorQuery(
           ? "Paid-source budget reached: checked again at the normal interval"
           : `Retrying sooner after ${failures} failed check${failures === 1 ? "" : "s"}`],
       }).eq("id", m.q.id);
-      await logExecution(admin, { q: m.q, job, started, status: "failed", detail: err.message, paidRequests: m.q.id === q.id ? paidCalls.length : 0 });
+      await logExecution(admin, { q: m.q, job, started, status: "failed", detail: err.message, paidRequests: m.q.id === q.id ? paidCalls.length : 0, continuation: m.q.id === q.id && gap !== null });
     }
     throw new MonitorJobError(err, provider, leadWindow, scope);
   } finally {
@@ -326,6 +388,24 @@ export async function runMonitorQuery(
       await admin.from("api_usage_events").insert(usage.map((u) => ({ ...u, workspace_id: q.workspace_id })));
     }
   }
+}
+
+/** Ingests one product's historical results (no shared fetch, no audit bookkeeping). */
+export async function ingestForBackfill(
+  admin: SupabaseClient, provider: PublicSourceId, adapter: SourceAdapter, productId: string, items: CandidateMention[], now: Date,
+): Promise<{ inserted: number; duplicates: number; overLimit: number; relevant: number }> {
+  const rules = await loadRules(admin, productId);
+  const prepared = prepareIngest(items, rules, { now, retentionDays: adapter.retentionDays });
+  const rows = prepared.items.map(({ origin_request_id: _o, ...rest }) => rest);
+  const totals = { inserted: 0, duplicates: 0, overLimit: 0 };
+  for (let i = 0; i < rows.length; i += INGEST_CHUNK) {
+    const { data, error } = await admin.rpc("svc_ingest_mentions", { p_product_id: productId, p_source: provider, p_items: rows.slice(i, i + INGEST_CHUNK) });
+    if (error) throw new SourceError("transient", `Couldn't store mentions (${error.code ?? "db"})`);
+    totals.inserted += Number(data?.inserted ?? 0);
+    totals.duplicates += Number(data?.duplicates ?? 0);
+    totals.overLimit += Number(data?.over_limit ?? 0);
+  }
+  return { ...totals, relevant: prepared.items.length };
 }
 
 interface MemberIngest {
@@ -398,6 +478,17 @@ async function ingestForMember(
   };
 }
 
+/** Where the read part of a window starts, given what remains unread or unreachable. */
+export function readSince(window: SearchWindow, resume: ResumeDecision, items: CandidateMention[]): Date {
+  if (resume.gap?.page !== undefined) {
+    const oldest = oldestPublished(items);
+    return oldest && oldest > window.since && oldest < window.until ? oldest : window.until;
+  }
+  if (resume.gap) return new Date(Math.min(window.until.getTime(), new Date(resume.gap.until).getTime()));
+  if (resume.lost) return new Date(Math.min(window.until.getTime(), resume.lost.until.getTime()));
+  return window.since;
+}
+
 async function finishMember(
   admin: SupabaseClient,
   m: Member,
@@ -406,22 +497,36 @@ async function finishMember(
   started: Date,
   r: MemberIngest,
   search: SearchResult,
-  extra: { audit: boolean; sharedWith: number; expansions: number; paidRequests: number; pages: number; nextPages: number },
+  resume: ResumeDecision,
+  extra: { audit: boolean; sharedWith: number; continuation: boolean; expansions: number; paidRequests: number; pages: number; profile: CollectionProfile },
 ): Promise<Schedule> {
   const now = new Date();
   const scope = { workspace_id: m.q.workspace_id, product_id: m.q.product_id };
-  await recordCoverage(admin, scope, provider, m.window, r.complete ? "complete" : "partial", r.reasons.join(" ") || null, job.id);
+  const overLimit = (r.result.overLimit ?? 0) > 0;
+  const memberItems = search.items.filter((i) => i.publishedAt >= m.window.since);
+
+  // Coverage: the part read is complete (unless the source is inherently partial or the mention
+  // allowance held items back); an unreachable part is partial with the reason; an unread gap is
+  // recorded when a continuation reads it.
+  const readFrom = readSince(m.window, resume, memberItems);
+  const otherReasons = r.reasons.filter((x) => x !== search.incompleteReason || (!search.saturated && !search.complete));
+  const readComplete = !overLimit && (search.complete || Boolean(search.saturated));
+  await recordCoverage(admin, scope, provider, { since: readFrom, until: m.window.until }, readComplete && otherReasons.length === 0 ? "complete" : "partial",
+    otherReasons.join(" ") || null, job.id);
+  if (resume.lost) await recordCoverage(admin, scope, provider, { since: resume.lost.since, until: resume.lost.until }, "partial", resume.lost.reason, job.id);
+
+  // Checkpoint: a regular run advances to its window end — what it didn't read is kept as a gap
+  // (resumable sources) or recorded as lost (others). It holds when the mention allowance held
+  // items back, so they're searched again once it renews. Continuations never move it.
   const prevUntil = m.q.cursor?.until ? new Date(m.q.cursor.until).getTime() : 0;
-  // The checkpoint never advances past a run that was cut short (page cap hit, or the
-  // plan's mention limit dropped items): the next run re-searches from the old one.
-  // Milestone 2 sources keep their original behaviour (always advance, gap recorded).
-  const capped = Boolean(search.saturated) || (r.result.overLimit ?? 0) > 0;
-  const advance = isLegacySource(provider) || !capped;
-  const until = advance ? Math.max(m.window.until.getTime(), prevUntil) : prevUntil;
+  const until = extra.continuation || overLimit ? prevUntil : Math.max(m.window.until.getTime(), prevUntil);
+  const gap = overLimit ? (m.q.cursor?.gap ?? null) : resume.gap;
   const cursor: QueryRow["cursor"] = {
     until: until > 0 ? new Date(until).toISOString() : undefined,
-    pages: extra.nextPages,
+    pages: extra.pages || m.q.cursor?.pages,
     audit_missed: extra.audit ? r.auditMissed : m.q.cursor?.audit_missed ?? 0,
+    gap,
+    continuations: gap ? (m.q.cursor?.continuations ?? 0) + 1 : 0,
   };
   await admin.from("monitoring_queries").update({
     cursor,
@@ -432,35 +537,79 @@ async function finishMember(
     ...(extra.audit ? { last_audit_at: now.toISOString() } : {}),
   }).eq("id", m.q.id);
 
+  // Arrival-rate estimate (audits re-read old windows, so they'd double count).
+  const span = observedSpanMinutes(memberItems, m.window);
+  if (!extra.audit) await updateArrival(admin, m, provider, extra.profile, {
+    results: memberItems.length, relevant: r.relevant, windowStart: m.window.since, windowEnd: m.window.until,
+    saturated: Boolean(search.saturated), observedSpanMinutes: span, at: now,
+  });
+
   // Re-rank the product's platforms with what this run stored (no API calls), then schedule this group.
   const ranking = await refreshActivity(admin, m.q.product_id, { exceptQueryId: m.q.id }).catch((e) => {
     console.error(`[monitor] ranking refresh failed: ${e instanceof Error ? e.message : e}`);
     return null;
   });
   const p = ranking?.get(provider);
-  // A search that takes turns with others (keyword rotation) runs in its own time slots.
+  // A search that takes turns with others (keyword rotation) runs in its own time slots,
+  // unless it would overflow before its turn (then it's checked out of turn).
   const rotation = m.q.params?.rotation ?? null;
   const platformInterval = p?.decision.interval ?? null;
-  const d: Schedule = p
+  const g = p ? groupIntervalMinutes(p, m.q.id, rotation, p.decision.interval) : null;
+  const d: Schedule = p && g
     ? {
-      intervalMinutes: keywordIntervalMinutes(p.decision.interval, rotation),
-      reasons: [...p.assessment.notes, ...p.decision.reasons, ...(rotation ? [rotationReason(rotation, p.decision.interval)] : [])],
+      intervalMinutes: g.minutes,
+      reasons: [...p.assessment.notes, ...p.decision.reasons,
+        ...(g.outOfTurn ? [`Busy search: checked every ${formatInterval(g.minutes)}, ahead of its turn, so its results don't overflow`] : rotation ? [rotationReason(rotation, p.decision.interval)] : [])],
       confidence: p.assessment.confidence,
     }
     : { intervalMinutes: m.q.interval_minutes ?? m.ctx.plan_min_minutes, reasons: ["Kept the current interval (ranking unavailable)"], confidence: r.complete ? "medium" : "low" };
+  if (gap) d.reasons.unshift("More results than one check can read: the rest of the window is being collected by follow-up checks");
   await admin.from("monitoring_queries").update({
     interval_minutes: d.intervalMinutes,
     interval_reasons: d.reasons,
     coverage_confidence: d.confidence,
-    next_run_at: (rotation && platformInterval ? rotationNextRun(now, platformInterval, rotation) : nextRunAt(now, d.intervalMinutes, 0)).toISOString(),
+    next_run_at: (rotation && platformInterval && !g?.outOfTurn ? rotationNextRun(now, platformInterval, rotation) : nextRunAt(now, d.intervalMinutes, 0)).toISOString(),
   }).eq("id", m.q.id);
+  if (gap) {
+    // Continue the unread window shortly (own idempotency key: the scheduler's bucket key would collide).
+    await admin.rpc("svc_enqueue_job", {
+      p_kind: "monitor.query", p_idempotency_key: `mq-cont:${m.q.id}:${until}:${cursor.continuations}`,
+      p_payload: { query_id: m.q.id }, p_workspace_id: m.q.workspace_id, p_product_id: m.q.product_id,
+      p_run_after: new Date(now.getTime() + CONTINUATION_DELAY_MS).toISOString(), p_priority: 90,
+    });
+  }
   await logExecution(admin, {
-    q: m.q, job, started, status: r.complete ? "succeeded" : "partial",
+    q: m.q, job, started, status: r.complete && !resume.lost ? "succeeded" : "partial",
     window: m.window, pages: extra.pages, fetched: r.fetched, relevant: r.relevant, inserted: r.inserted, duplicates: r.duplicates,
     saturated: Boolean(search.saturated), paidRequests: extra.paidRequests, sharedWith: extra.sharedWith, expansions: extra.expansions,
-    decision: d, detail: [extra.audit ? `Completeness audit: ${r.auditMissed} missed mention(s) found.` : null, r.reasons.join(" ") || null].filter(Boolean).join(" ") || null,
+    decision: d, observedSpan: span, continuation: extra.continuation,
+    detail: [extra.audit ? `Completeness audit: ${r.auditMissed} missed mention(s) found.` : null, r.reasons.join(" ") || null, resume.lost?.reason ?? null,
+      gap ? "Continuing the rest of the window in a follow-up check." : null].filter(Boolean).join(" ") || null,
   });
+  await emitEvent(admin, m.q.workspace_id, m.q.product_id, r.inserted > 0 ? "mentions" : "monitoring", { inserted: r.inserted, platform: provider });
   return d;
+}
+
+async function updateArrival(
+  admin: SupabaseClient, m: Member, provider: PublicSourceId, profile: CollectionProfile, o: Parameters<typeof updateEstimate>[1],
+) {
+  const { data: row } = await admin.from("arrival_estimates")
+    .select("query_id, raw_alpha, raw_beta, rel_alpha, rel_beta, observations, saturations, exposure_hours, last_observed_at")
+    .eq("query_id", m.q.id).maybeSingle();
+  const next: GroupEstimate = updateEstimate(estimateFromRow(row ?? undefined), o);
+  const { error } = await admin.from("arrival_estimates").upsert({
+    query_id: m.q.id, workspace_id: m.q.workspace_id, product_id: m.q.product_id, platform: provider, stream: m.q.stream,
+    raw_alpha: next.raw.alpha, raw_beta: next.raw.beta, rel_alpha: next.rel.alpha, rel_beta: next.rel.beta,
+    observations: next.observations, saturations: next.saturations, exposure_hours: next.exposureHours,
+    capacity_per_check: jobCapacity(profile), last_observed_at: o.at.toISOString(), updated_at: new Date().toISOString(),
+  }, { onConflict: "query_id" });
+  if (error) console.error(`[monitor] arrival estimate not stored (${error.code ?? "db"})`);
+}
+
+/** Workspace-scoped change signal for live dashboards (counts only; coalesced in the database). */
+export async function emitEvent(admin: SupabaseClient, workspaceId: string, productId: string | null, kind: "mentions" | "monitoring" | "backfill" | "usage" | "spikes", payload: Record<string, unknown> = {}) {
+  const { error } = await admin.rpc("svc_emit_workspace_event", { p_workspace_id: workspaceId, p_product_id: productId, p_kind: kind, p_payload: payload });
+  if (error) console.error(`[events] not emitted (${error.code ?? "db"})`);
 }
 
 export function rotationReason(r: Rotation, platformIntervalMinutes: number): string {
@@ -520,6 +669,7 @@ async function logExecution(
     q: QueryRow; job: JobRow; started: Date; status: "succeeded" | "partial" | "failed" | "skipped" | "covered_by_shared";
     window?: SearchWindow; pages?: number; fetched?: number; relevant?: number; inserted?: number; duplicates?: number;
     saturated?: boolean; paidRequests?: number; sharedWith?: number; expansions?: number; decision?: Schedule; detail?: string | null;
+    observedSpan?: number | null; continuation?: boolean; backfillTaskId?: string;
   },
 ) {
   await admin.from("monitoring_executions").insert({
@@ -531,6 +681,7 @@ async function logExecution(
     paid_requests: e.paidRequests ?? 0, shared_with: e.sharedWith ?? 1, expansions: e.expansions ?? 0,
     next_interval_minutes: e.decision?.intervalMinutes ?? null, interval_reasons: e.decision?.reasons ?? [],
     coverage_confidence: e.decision?.confidence ?? null, detail: e.detail?.slice(0, 500) ?? null,
+    observed_span_minutes: e.observedSpan ?? null, continuation: e.continuation ? 1 : 0, backfill_task_id: e.backfillTaskId ?? null,
   });
 }
 

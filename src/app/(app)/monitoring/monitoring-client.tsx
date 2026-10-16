@@ -129,6 +129,11 @@ export interface RankingRow {
   rank: number | null;
   learning: boolean;
   score: number | null;
+  /** V2: share of this product's relevant mentions (%), relevant/day, overflow risk. */
+  sharePct: number | null;
+  arrivalPerDay: number | null;
+  risk: "none" | "watch" | "at_risk" | "unavoidable" | null;
+  riskDetail: string | null;
   mentions7d: number;
   trend: "rising" | "stable" | "falling" | "new" | "unknown";
   growthPct: number | null;
@@ -173,16 +178,22 @@ function Trend({ r }: { r: RankingRow }) {
 }
 
 function Score({ r }: { r: RankingRow }) {
-  if (r.score === null) return <span className="text-muted-foreground">Learning</span>;
-  return (
-    <span className="inline-flex items-center gap-2">
-      <span className="tabular font-medium">{r.score}<span className="text-muted-foreground">/100</span></span>
-      <span className="hidden h-1.5 w-14 overflow-hidden rounded-full bg-muted sm:inline-block" aria-hidden>
-        <span className="block h-full rounded-full bg-primary" style={{ width: `${r.score}%` }} />
+  if (r.learning) return <span className="text-muted-foreground">Learning</span>;
+  if (r.sharePct !== null) {
+    return (
+      <span className="inline-flex items-center gap-2" title="Share of this product's relevant mentions over the last 4 weeks">
+        <span className="tabular font-medium">{r.sharePct}%</span>
+        <span className="hidden h-1.5 w-14 overflow-hidden rounded-full bg-muted sm:inline-block" aria-hidden>
+          <span className="block h-full rounded-full bg-primary" style={{ width: `${Math.min(100, r.sharePct)}%` }} />
+        </span>
       </span>
-    </span>
-  );
+    );
+  }
+  if (r.score === null) return <span className="text-muted-foreground">Learning</span>;
+  return <span className="tabular font-medium">{r.score}<span className="text-muted-foreground">/100</span></span>;
 }
+
+const RISK_LABEL = { watch: "Busy — watched closely", at_risk: "Overflow risk", unavoidable: "More than checks can read" } as const;
 
 function Coverage({ r }: { r: RankingRow }) {
   if (!r.confidence) return <span className="text-muted-foreground">—</span>;
@@ -198,7 +209,10 @@ function Details({ r, productId, canEdit }: { r: RankingRow; productId: string; 
           <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Why this rank</h4>
           <p>{r.rankText}</p>
           {r.components.length > 0 && (
-            <ul className="mt-1 grid gap-0.5 text-xs" aria-label={`${r.name} score breakdown`}>
+            <p className="mt-1 text-xs font-medium text-muted-foreground">Measured signals (context; intervals come from arrival rates)</p>
+          )}
+          {r.components.length > 0 && (
+            <ul className="grid gap-0.5 text-xs" aria-label={`${r.name} measured signals`}>
               {r.components.map((c) => (
                 <li key={c.id} className="flex justify-between gap-3">
                   <span className={c.measured ? "" : "text-muted-foreground"} title={c.detail}>
@@ -230,8 +244,13 @@ function Details({ r, productId, canEdit }: { r: RankingRow; productId: string; 
             <Badge tone={r.stateTone}>{r.stateLabel}</Badge>
             {r.paid && <Badge>Paid</Badge>}
             {r.saturated && <Badge tone="warning">Hit page limit recently</Badge>}
+            {r.risk && r.risk !== "none" && <Badge tone={r.risk === "watch" ? "info" : "warning"}>{RISK_LABEL[r.risk]}</Badge>}
             {r.failures > 0 && <Badge tone="negative">{r.failures} failed check{r.failures === 1 ? "" : "s"}</Badge>}
           </p>
+          {r.riskDetail && <p className="text-xs text-warning">{r.riskDetail}</p>}
+          {r.arrivalPerDay !== null && !r.learning && (
+            <p className="text-xs">About {r.arrivalPerDay >= 10 ? Math.round(r.arrivalPerDay) : r.arrivalPerDay} relevant mention{r.arrivalPerDay === 1 ? "" : "s"} a day here (estimated from recent checks).</p>
+          )}
           {r.completeSharePct !== null && (
             <p className="text-xs">{r.completeSharePct}% of the last 7 days was covered by complete checks.</p>
           )}
@@ -286,7 +305,7 @@ export function RankingTable({ rows, productId, canEdit }: { rows: RankingRow[];
             <tr className="border-b text-left text-xs text-muted-foreground">
               <th scope="col" className="py-2 pr-2 font-medium">Rank</th>
               <th scope="col" className="py-2 pr-2 font-medium">Platform</th>
-              <th scope="col" className="py-2 pr-2 font-medium">Activity score</th>
+              <th scope="col" className="py-2 pr-2 font-medium">Share of activity</th>
               <th scope="col" className="py-2 pr-2 text-right font-medium">Mentions (7 days)</th>
               <th scope="col" className="py-2 pr-2 font-medium">Trend</th>
               <th scope="col" className="py-2 pr-2 font-medium">Refresh interval</th>
@@ -355,7 +374,7 @@ export function RankingTable({ rows, productId, canEdit }: { rows: RankingRow[];
                 <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open === r.id && "rotate-180")} aria-hidden />
               </span>
               <span className="grid grid-cols-3 gap-2 text-xs">
-                <span className="grid"><span className="text-muted-foreground">Score</span><Score r={r} /></span>
+                <span className="grid"><span className="text-muted-foreground">Share</span><Score r={r} /></span>
                 <span className="grid"><span className="text-muted-foreground">7 days</span><span className="tabular">{r.mentions7d}</span></span>
                 <span className="grid"><span className="text-muted-foreground">Trend</span><Trend r={r} /></span>
                 <span className="grid"><span className="text-muted-foreground">Every</span><span className="tabular">{r.interval}{r.keywordInterval && <span className="block text-muted-foreground">kw {r.keywordInterval}</span>}</span></span>

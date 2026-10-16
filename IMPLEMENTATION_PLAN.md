@@ -89,6 +89,15 @@ Every configured keyword monitored wherever it can be searched: OR consolidation
 ### Refinement: subscription restructure, mention allowances, API Direct live validation — *implemented and verified 2026-10-16* (see PROGRESS.md)
 Free/Pro/Scale plans from the `plans` table; workspace keyword allowance (DB trigger + editor); billing periods anchored on the subscription; billable-mention metering with row-locked usage periods, refunds within the period, a bounded overflow queue and paid-collection pause at 100 %; 80/90/100 % warnings; plan keyword refresh targets (7 d / 24 h / 6 h) with recorded conflicts; paid-budget pacing (Pro $25, Scale $75 internal targets); scheduler priority by plan. Capped API Direct live test ($0.048 of $0.05): 9 endpoints verified, LinkedIn date bug fixed. Migration `20261016000005`.
 
+### Refinement: Discovery Engine V2 — pagination, adaptive monitoring, historical search, spikes, realtime — *implemented and verified 2026-10-16* (see PROGRESS.md)
+1. Pagination audit and collection profiles (provider vs application limits, history depth); page right-sizing for page-billed endpoints with one escalation; exact page counts; fixed caps (e.g. Bluesky's 300 posts) replaced by resumable collection — gaps continued by date-range splitting or page offsets, unreachable parts recorded as partial.
+2. Product-adaptive engine: per-query-group Gamma–Poisson arrival rates; importance (product-relative share), urgency (freshness + brand-safe bound) and uncertainty kept separate; quiet-platform exploration; hysteresis; brand-safe budget pacing that reports risk instead of slowing busy searches.
+3. Historical search: onboarding question (default 30 days, launch date required for "since launch", plan window enforced, exact dates shown), broad-keyword and allowance warnings (estimates only from measured data), resumable backfill tasks with real states and allowance pause.
+4. Spikes: audit (why none were stored), statistical detection against each product's own baseline at product, platform and keyword level with confirmed / possible / insufficient data; coverage "partial wins".
+5. Realtime: workspace-scoped events → Supabase Realtime → refetch, with recovery, fallback polling, and the Mentions "new mentions" notice.
+Migrations `20261016000007/8`. Budgets, prices and mention allowances unchanged; no paid calls.
+**Acceptance:** see the checklist in PROGRESS.md — all automated checks pass; coverage limits are shown, never hidden.
+
 ### M3 Buzz analytics — *implemented and verified 2026-10-15* (see PROGRESS.md)
 Implemented on live SQL over deduplicated mentions (originals only) rather than the UTC `daily_mention_stats` table, so days follow the viewer's time zone; mentions with estimated dates (web results) are excluded from time series and counted separately.
 Daily aggregation job (idempotent recompute per day/product/source), charts (24h/7d/30d/90d/custom, per-platform filter), growth with zero-denominator handling, source distribution, unique authors, engagement, share of voice, experimental virality score with factor breakdown, spike detection (rolling median/MAD baseline + minimum counts), event markers.

@@ -38,6 +38,12 @@ export interface PlatformMonitoring {
     computedAt: string;
     rankText: string;
     intervalText: string;
+    /** V2: share of this product's relevant mentions (0..1), relevant/day, brand-safe bound and overflow risk. */
+    importanceShare: number | null;
+    arrivalPerDay: number | null;
+    safeMinutes: number | null;
+    risk: "none" | "watch" | "at_risk" | "unavoidable" | null;
+    riskDetail: string | null;
   } | null;
   mentions7d: number;
   intervalMinutes: number | null;
@@ -135,6 +141,12 @@ interface ActivityRow {
   slowest_keyword_minutes: number | null;
   keyword_conflict: string | null;
   budget_paced: boolean;
+  importance_share: number | null;
+  arrival_per_day: number | null;
+  safe_interval_minutes: number | null;
+  collection_risk: "none" | "watch" | "at_risk" | "unavoidable" | null;
+  risk_detail: string | null;
+  model: "score_v1" | "arrival_v2";
 }
 
 const CONF_RANK = { low: 0, medium: 1, high: 2 } as const;
@@ -177,7 +189,7 @@ export async function getMonitoringOverview(productId: string, workspaceId: stri
     sb.from("product_aliases").select("term, kind, is_ambiguous, context_terms").eq("product_id", productId).eq("enabled", true),
     getCoverageSummary(productId),
     sb.from("platform_activity")
-      .select("platform, phase, score, rank, components, discovery, mentions_7d, baseline_weekly, growth_pct, trend, coverage_confidence, complete_share, recommended_interval, interval_minutes, plan_limited, reasons, computed_at, slowest_keyword_minutes, keyword_conflict, budget_paced")
+      .select("platform, phase, score, rank, components, discovery, mentions_7d, baseline_weekly, growth_pct, trend, coverage_confidence, complete_share, recommended_interval, interval_minutes, plan_limited, reasons, computed_at, slowest_keyword_minutes, keyword_conflict, budget_paced, importance_share, arrival_per_day, safe_interval_minutes, collection_risk, risk_detail, model")
       .eq("product_id", productId),
     sb.from("monitoring_interval_changes").select("id").eq("product_id", productId).gte("created_at", since7d).limit(1000),
     admin.rpc("svc_schedule_context", { p_product_id: productId, p_platform: "reddit" }),
@@ -240,12 +252,18 @@ export async function getMonitoringOverview(productId: string, workspaceId: stri
       const ex2 = {
         name: a.name, rank: act.rank, assessment, n7: act.mentions_7d, mostMentions: act.mentions_7d === maxMentions,
         interval: act.interval_minutes, recommended: act.recommended_interval, planLimited: act.plan_limited, planName, boosted: activeBoost.has(id),
+        v2: act.model === "arrival_v2" && act.importance_share !== null
+          ? { share: Number(act.importance_share), arrivalPerDay: Number(act.arrival_per_day ?? 0), safeMinutes: act.safe_interval_minutes, risk: act.collection_risk }
+          : undefined,
       };
       ranking = {
         phase: act.phase, rank: act.rank, score: act.score, components: act.components ?? [], trend: act.trend,
         growthPct: assessment.growthPct, baselineWeekly: assessment.baselineWeekly,
         recommendedMinutes: act.recommended_interval, planLimited: act.plan_limited, computedAt: act.computed_at,
         rankText: explainRank(ex2), intervalText: explainInterval(ex2),
+        importanceShare: act.importance_share === null ? null : Number(act.importance_share),
+        arrivalPerDay: act.arrival_per_day === null ? null : Number(act.arrival_per_day),
+        safeMinutes: act.safe_interval_minutes, risk: act.collection_risk, riskDetail: act.risk_detail,
       };
     }
     return {

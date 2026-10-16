@@ -897,8 +897,8 @@ select t.ok((select sum(relevant) from s_utc) = (select sum(relevant) from tot),
 create temp table cov as select * from public.buzz_coverage((select v from ids where k = 'p_d'), '2026-08-31T00:00:00Z', '2026-09-03T00:00:00Z', 'day', 'UTC');
 select t.ok((select covered from cov where bucket_start = '2026-08-31T00:00:00Z' and source = 'reddit') = 0, 'day before monitoring is uncovered (a gap, not zero)');
 select t.ok((select covered from cov where bucket_start = '2026-09-02T00:00:00Z' and source = 'hackernews') = 1
-  and (select complete from cov where bucket_start = '2026-09-02T00:00:00Z' and source = 'hackernews') = 0.5,
-  'overlapping windows are merged; partial coverage is separated from complete');
+  and (select complete from cov where bucket_start = '2026-09-02T00:00:00Z' and source = 'hackernews') = 0.25,
+  'overlapping windows are merged; a partial window wins over a complete one where they overlap (06:00-12:00 is a lower bound)');
 select t.ok((select covered from cov where bucket_start = '2026-09-01T00:00:00Z' and source = 'hackernews') = 0, 'per-source coverage');
 select t.throws($$select * from public.buzz_series(gen_random_uuid(), now() - interval '1 day', now(), 'day', 'Mars/Base')$$, 'unknown time zones are rejected', 'time zone');
 select t.throws($$select * from public.buzz_series(gen_random_uuid(), now() - interval '30 days', now(), 'hour', 'UTC')$$, 'hourly ranges are bounded', 'too long');
@@ -1030,6 +1030,98 @@ select t.ok((select count(*) from public.internal_plan_grants) = 0, 'other works
 reset role;
 update public.internal_plan_grants set revoked_at = now() where workspace_id = (select v from ids where k = 'ws_d');
 select t.ok(private.effective_plan_id((select v from ids where k = 'ws_d')) = 'free', 'revoking a grant falls back to the subscription immediately');
+
+-- ===================================================================== discovery engine v2
+-- Realtime change events: service-only writes, coalesced, readable only inside the workspace.
+select t.ok(public.svc_emit_workspace_event((select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d'), 'mentions', '{"inserted": 3}'),
+  'service role emits a workspace event');
+select t.ok(not public.svc_emit_workspace_event((select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d'), 'mentions', '{"inserted": 1}'),
+  'identical events within 2 seconds are coalesced (no per-mention fan-out)');
+select t.ok(public.svc_emit_workspace_event((select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d'), 'backfill', '{}'),
+  'a different kind of change is still delivered');
+select t.throws(format($$insert into public.workspace_events (workspace_id, kind, payload) values (%L, 'mentions', jsonb_build_object('x', repeat('a', 2000)))$$,
+  (select v from ids where k = 'ws_d')), 'event payloads are size-limited (counts only, no content)', 'check');
+select t.throws(format($$insert into public.workspace_events (workspace_id, kind) values (%L, 'secrets')$$, (select v from ids where k = 'ws_d')),
+  'unknown event kinds are rejected', 'check');
+
+-- Historical backfill rows.
+with x as (
+  insert into public.backfill_runs (workspace_id, product_id, mode, range_start, range_end, status)
+  values ((select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d'), '30d', now() - interval '30 days', now(), 'queued')
+  returning id)
+insert into ids select 'bf_run', id from x;
+with x as (
+  insert into public.backfill_tasks (run_id, workspace_id, product_id, platform, stream, status, cursor, next_run_at)
+  values ((select v from ids where k = 'bf_run'), (select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d'), 'bluesky', 'posts', 'queued',
+          jsonb_build_object('since', now() - interval '30 days', 'until', now()), now() - interval '1 minute')
+  returning id)
+insert into ids select 'bf_task', id from x;
+insert into public.arrival_estimates (query_id, workspace_id, product_id, platform, stream, raw_alpha, raw_beta, rel_alpha, rel_beta, observations)
+select id, workspace_id, product_id, provider, stream, 10.5, 24, 5.5, 24, 3 from public.monitoring_queries
+ where product_id = (select v from ids where k = 'p_d') limit 1;
+insert into public.buzz_keyword_spikes (workspace_id, product_id, keyword, granularity, period_start, period_end, observed, expected, baseline_periods, severity, confidence)
+values ((select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d'), 'daveapp', 'day', '2026-09-05T00:00:00Z', '2026-09-06T00:00:00Z', 40, 3, 20, 'major', 'confirmed');
+insert into public.spike_evaluations (product_id, workspace_id, scope, scope_key, granularity, status, baseline_periods, needed_periods)
+values ((select v from ids where k = 'p_d'), (select v from ids where k = 'ws_d'), 'product', '', 'day', 'insufficient_data', 1, 3);
+select t.throws(format($$insert into public.buzz_keyword_spikes (workspace_id, product_id, keyword, granularity, period_start, period_end, observed, expected, baseline_periods, severity, confidence)
+  values (%L, %L, 'x', 'day', '2026-09-05T00:00:00Z', '2026-09-06T00:00:00Z', 1, 1, 1, 'notable', 'certain')$$, (select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d')),
+  'spike confidence is confirmed or possible only', 'check');
+select t.throws(format($$update public.products set history_mode = 'forever' where id = %L$$, (select v from ids where k = 'p_d')),
+  'history preference must be a supported option', 'check');
+
+select t.as_user('00000000-0000-0000-0000-00000000000d');
+set role authenticated;
+select t.ok((select count(*) from public.workspace_events) = 2, 'members receive their workspace''s events');
+select t.ok((select count(*) from public.backfill_runs) = 1 and (select count(*) from public.backfill_tasks) = 1,
+  'members see their historical search progress');
+select t.ok((select count(*) from public.arrival_estimates) = 1 and (select count(*) from public.buzz_keyword_spikes) = 1
+  and (select count(*) from public.spike_evaluations) = 1, 'members see arrival estimates, keyword spikes and spike evaluations');
+select t.throws(format($$insert into public.workspace_events (workspace_id, kind) values (%L, 'mentions')$$, (select v from ids where k = 'ws_d')),
+  'members cannot forge events', 'permission denied');
+select t.throws($$update public.backfill_tasks set status = 'completed'$$, 'members cannot alter backfill progress', 'permission denied');
+select t.throws($$select public.svc_emit_workspace_event(gen_random_uuid(), null, 'mentions', '{}')$$, 'members cannot call the event emitter', 'permission denied');
+select t.throws($$select public.svc_enqueue_job('backfill.task', 'x', '{}', null, null)$$, 'members cannot enqueue jobs', 'permission denied');
+select t.throws($$select public.svc_schedule_backfills(array['bluesky'])$$, 'members cannot run the backfill scheduler', 'permission denied');
+select t.ok((select count(*) from public.keyword_series((select v from ids where k = 'p_d'), now() - interval '400 days', now(), 'day', 'UTC'))
+  = (select count(*) from public.keyword_series((select v from ids where k = 'p_d'), now() - interval '400 days', now(), 'day', 'UTC')),
+  'keyword series runs for members');
+reset role;
+select t.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+select t.ok((select count(*) from public.workspace_events where workspace_id = (select v from ids where k = 'ws_d')) = 0,
+  'other workspaces never receive these events');
+select t.ok((select count(*) from public.backfill_runs) = 0 and (select count(*) from public.backfill_tasks) = 0
+  and (select count(*) from public.arrival_estimates where product_id = (select v from ids where k = 'p_d')) = 0
+  and (select count(*) from public.buzz_keyword_spikes) = 0 and (select count(*) from public.spike_evaluations) = 0,
+  'other workspaces cannot see backfill progress, estimates or spikes');
+select t.ok((select count(*) from public.keyword_series((select v from ids where k = 'p_d'), now() - interval '400 days', now(), 'day', 'UTC')) = 0,
+  'keyword series respects RLS (security invoker)');
+reset role;
+
+-- Backfill scheduling: due tasks become jobs once; an exhausted allowance pauses them until renewal.
+-- (Earlier billing tests used up ws_d's Free allowance: start from a fresh period state.)
+select private.lock_usage_period((select v from ids where k = 'ws_d'));
+update public.mention_usage_periods set mentions_consumed = 0, exhausted_at = null
+ where workspace_id = (select v from ids where k = 'ws_d') and period_start = (select period_start from private.billing_period((select v from ids where k = 'ws_d'), now()));
+select t.ok(private.schedule_backfills(array['bluesky']) = 1, 'a due backfill task is enqueued');
+select t.ok((select count(*) from public.jobs where kind = 'backfill.task' and payload ->> 'task_id' = (select v from ids where k = 'bf_task')::text) = 1,
+  'as one backfill job');
+select t.ok(private.schedule_backfills(array['bluesky']) = 0, 'it is not enqueued twice while its job is pending');
+select t.ok(private.schedule_backfills(array['reddit']) = 0, 'tasks of sources not running on this server are left alone');
+update public.backfill_tasks set next_run_at = now() - interval '1 minute' where id = (select v from ids where k = 'bf_task');
+select private.lock_usage_period((select v from ids where k = 'ws_d'));
+update public.mention_usage_periods set mentions_consumed = mention_allowance, exhausted_at = now()
+ where workspace_id = (select v from ids where k = 'ws_d') and period_start = (select period_start from private.billing_period((select v from ids where k = 'ws_d'), now()));
+select t.ok(private.schedule_backfills(array['bluesky']) = 0, 'nothing is enqueued while the mention allowance is used up');
+select t.ok((select status from public.backfill_tasks where id = (select v from ids where k = 'bf_task')) = 'paused'
+  and (select next_run_at from public.backfill_tasks where id = (select v from ids where k = 'bf_task'))
+      = (select period_end from private.billing_period((select v from ids where k = 'ws_d'), now()))
+  and (select status from public.backfill_runs where id = (select v from ids where k = 'bf_run')) = 'paused',
+  'an exhausted mention allowance pauses the historical search until the period renews (progress kept)');
+update public.mention_usage_periods set mentions_consumed = 0, exhausted_at = null
+ where workspace_id = (select v from ids where k = 'ws_d') and period_start = (select period_start from private.billing_period((select v from ids where k = 'ws_d'), now()));
+select t.ok((select cursor ->> 'since' from public.backfill_tasks where id = (select v from ids where k = 'bf_task')) is not null,
+  'a paused task keeps its cursor');
 
 -- ===================================================================== summary
 do $$

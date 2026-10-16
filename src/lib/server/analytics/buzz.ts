@@ -48,7 +48,9 @@ export interface BuzzDashboard {
   monthly: Growth;
   coverage: { range: number; complete: number; gaps: number; partial: number };
   virality: Virality & { basis: string[] };
-  spikes: Array<{ id: string; platform: string | null; granularity: string; period_start: string; period_end: string; observed: number; expected: number; ratio: number | null; severity: string }>;
+  spikes: Array<{ id: string; platform: string | null; granularity: string; period_start: string; period_end: string; observed: number; expected: number; ratio: number | null; severity: string; confidence: "confirmed" | "possible"; note: string | null; keyword?: string }>;
+  /** Product-level spike evaluation state (insufficient data is shown, not hidden). */
+  spikeEvaluation: { status: "evaluated" | "insufficient_data"; baselinePeriods: number; neededPeriods: number; evaluatedAt: string } | null;
   events: Array<{ id: string; title: string; kind: string; occurred_at: string; url: string | null }>;
 }
 
@@ -106,7 +108,7 @@ export async function getBuzzDashboard(
   const todayStart = zonedDayStart(now, tz);
   const yesterdayStart = zonedDayStart(now, tz, -1);
 
-  const [seriesRes, cov, rangeTotals, prevTotals, t24, p24, today, yesterday, w, pw, m, pm, base, covGrowth, spikesRes, eventsRes] = await Promise.all([
+  const [seriesRes, cov, rangeTotals, prevTotals, t24, p24, today, yesterday, w, pw, m, pm, base, covGrowth, spikesRes, eventsRes, kwSpikesRes, evalRes] = await Promise.all([
     sb.rpc("buzz_series", { p_product_id: productId, p_from: from.toISOString(), p_to: range.to.toISOString(), p_bucket: bucket, p_tz: tz, p_sources: sourceFilter }),
     coverageRows(sb, productId, from, range.to, bucket, tz, sourceFilter),
     totals(sb, productId, from, range.to, sourceFilter),
@@ -122,7 +124,7 @@ export async function getBuzzDashboard(
     totals(sb, productId, new Date(now.getTime() - 29 * D), new Date(now.getTime() - D), sourceFilter),
     coverageRows(sb, productId, new Date(Math.min(now.getTime() - 60 * D, prev.from.getTime())), now, "day", "UTC", sourceFilter),
     sb.from("buzz_spikes")
-      .select("id, platform, granularity, period_start, period_end, observed, expected, ratio, severity")
+      .select("id, platform, granularity, period_start, period_end, observed, expected, ratio, severity, confidence, note")
       .eq("product_id", productId)
       .gte("period_start", prev.from.toISOString())
       .order("period_start", { ascending: false })
@@ -133,6 +135,14 @@ export async function getBuzzDashboard(
       .gte("occurred_at", from.toISOString())
       .lt("occurred_at", range.to.toISOString())
       .order("occurred_at"),
+    sb.from("buzz_keyword_spikes")
+      .select("id, keyword, granularity, period_start, period_end, observed, expected, ratio, severity, confidence, note")
+      .eq("product_id", productId)
+      .gte("period_start", prev.from.toISOString())
+      .order("period_start", { ascending: false })
+      .limit(30),
+    sb.from("spike_evaluations").select("status, baseline_periods, needed_periods, evaluated_at, granularity")
+      .eq("product_id", productId).eq("scope", "product").eq("scope_key", "").eq("granularity", bucket).maybeSingle(),
   ]);
   if (seriesRes.error) throw new Error(`buzz_series failed (${seriesRes.error.code ?? "db"})`);
 
@@ -212,7 +222,13 @@ export async function getBuzzDashboard(
       partial: series.filter((p) => p.coverage === "partial").length,
     },
     virality,
-    spikes: (spikesRes.data ?? []) as BuzzDashboard["spikes"],
+    spikes: [
+      ...((spikesRes.data ?? []) as BuzzDashboard["spikes"]),
+      ...((kwSpikesRes.data ?? []) as Array<BuzzDashboard["spikes"][number] & { keyword: string }>).map((k) => ({ ...k, platform: null, id: `kw-${k.id}` })),
+    ].sort((a, b) => b.period_start.localeCompare(a.period_start)),
+    spikeEvaluation: evalRes.data
+      ? { status: evalRes.data.status as "evaluated" | "insufficient_data", baselinePeriods: evalRes.data.baseline_periods as number, neededPeriods: evalRes.data.needed_periods as number, evaluatedAt: evalRes.data.evaluated_at as string }
+      : null,
     events: (eventsRes.data ?? []) as BuzzDashboard["events"],
   };
 }

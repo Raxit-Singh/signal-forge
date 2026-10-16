@@ -16,6 +16,8 @@ export interface ExplainInput {
   planLimited: boolean;
   planName?: string;
   boosted: boolean;
+  /** V2 (arrival-rate engine): share of this product's relevant mentions, rate, brand-safe bound, risk. */
+  v2?: { share: number; arrivalPerDay: number; safeMinutes: number | null; risk: string | null };
 }
 
 const mentions = (n: number) => `${n} relevant mention${n === 1 ? "" : "s"}`;
@@ -28,9 +30,11 @@ export function explainRank(i: ExplainInput): string {
   const growth = a.growthPct !== null && Math.abs(a.growthPct) >= 15
     ? `activity ${a.growthPct > 0 ? "increased" : "decreased"} ${Math.abs(a.growthPct)}% compared with its previous baseline`
     : null;
-  const lead = i.rank === 1 && i.mostMentions && i.n7 > 0
-    ? `${i.name} ranks #1 because it generated the most relevant mentions this week (${i.n7})`
-    : `${i.name} ranks #${i.rank} with an activity score of ${a.score}/100 and ${mentions(i.n7)} in the last 7 days`;
+  const lead = i.v2
+    ? `${i.name} ranks #${i.rank}: about ${Math.round(i.v2.share * 100)}% of this product's relevant mentions over the last 4 weeks (${mentions(i.n7)} in the last 7 days)`
+    : i.rank === 1 && i.mostMentions && i.n7 > 0
+      ? `${i.name} ranks #1 because it generated the most relevant mentions this week (${i.n7})`
+      : `${i.name} ranks #${i.rank} with an activity score of ${a.score}/100 and ${mentions(i.n7)} in the last 7 days`;
   const extras = [
     growth,
     a.trend === "unknown" ? "there isn't enough complete coverage yet to compare with earlier weeks" : null,
@@ -49,6 +53,12 @@ export function explainInterval(i: ExplainInput): string {
   else if (a.spikeRecent) why = "activity spiked recently";
   else if (a.saturatedRecently) why = "recent checks returned more results than one check could read";
   else if (a.confidence === "low") why = "coverage is incomplete, so low activity can't be confirmed and it isn't slowed down";
+  else if (i.v2 && i.v2.safeMinutes !== null && i.v2.safeMinutes <= i.interval * 1.5) why = "results arrive fast enough that waiting longer could overflow what one check can read";
+  else if (i.v2) {
+    why = i.v2.arrivalPerDay > 0
+      ? `about ${i.v2.arrivalPerDay >= 10 ? Math.round(i.v2.arrivalPerDay) : Math.round(i.v2.arrivalPerDay * 10) / 10} relevant mentions a day arrive here, so each check finds a few new ones`
+      : "no relevant mentions have been seen here yet; it's still checked regularly in case that changes";
+  }
   else if (a.score >= 55) why = "activity is high";
   else if (a.score >= 25) why = "activity is moderate";
   else if (a.trend === "falling") why = "recent activity is low and falling";

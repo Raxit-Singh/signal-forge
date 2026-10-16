@@ -79,6 +79,7 @@ export const hackerNews: SourceAdapter = {
     const items = new Map<string, CandidateMention>();
     let complete = true;
     let reason: string | undefined;
+    let pagesRequested = 0;
 
     for (const term of req.terms) {
       for (let page = 0; page < req.maxPages; page++) {
@@ -90,6 +91,7 @@ export const hackerNews: SourceAdapter = {
           page: String(page),
         });
         const res = await ctx.request({ url: `${API}/search_by_date?${params}`, endpoint: "search_by_date", signal: req.signal });
+        pagesRequested++;
         if (!res.ok) throw httpError("Hacker News", res);
         const body = (await res.json()) as HnResponse;
         if (!Array.isArray(body.hits)) throw new SourceError("transient", "Hacker News: unexpected response shape");
@@ -104,7 +106,7 @@ export const hackerNews: SourceAdapter = {
         }
       }
     }
-    return { items: [...items.values()], complete, incompleteReason: reason };
+    return { items: [...items.values()], complete, incompleteReason: reason, pagesRequested };
   },
 
   async validateCredentials(ctx) {

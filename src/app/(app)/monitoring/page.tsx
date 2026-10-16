@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PackagePlus, Rocket, Sparkles } from "lucide-react";
-import { getActiveProduct, hasRole, requireWorkspace } from "@/lib/server/session";
+import { getActiveProduct, getWorkspaceUsage, hasRole, requireWorkspace } from "@/lib/server/session";
+import { getBackfillStatus } from "@/lib/server/collection/backfill-status";
+import { loadHistoryFormProps } from "@/lib/server/history-form";
+import { HistoryForm } from "@/components/history/history-form";
+import { BackfillProgress } from "@/components/history/backfill-progress";
 import { getMonitoringOverview, type KeywordCoverageRow, type PlatformMonitoring } from "@/lib/server/collection/monitoring-overview";
 import { formatInterval } from "@/lib/sources/adaptive";
 import { formatRelative, formatUtc } from "@/lib/format";
@@ -32,6 +36,10 @@ function toRow(p: PlatformMonitoring, now: number, planName: string, planMin: nu
     rank: r?.phase === "ranked" ? r.rank : null,
     learning: !r || r.phase === "discovery",
     score: r?.phase === "ranked" ? r.score : null,
+    sharePct: r?.phase === "ranked" && r.importanceShare !== null ? Math.round(r.importanceShare * 100) : null,
+    arrivalPerDay: r?.arrivalPerDay ?? null,
+    risk: r?.risk ?? null,
+    riskDetail: r?.riskDetail ?? null,
     mentions7d: p.mentions7d,
     trend: r?.trend ?? "new",
     growthPct: r?.growthPct ?? null,
@@ -78,8 +86,14 @@ export default async function MonitoringPage() {
       </>
     );
   }
-  const o = await getMonitoringOverview(product.id, workspace.id);
   const canEdit = hasRole(workspace.role, "admin");
+  const [o, backfill, usage] = await Promise.all([
+    getMonitoringOverview(product.id, workspace.id),
+    getBackfillStatus(product.id),
+    getWorkspaceUsage(workspace.id),
+  ]);
+  const backfillActive = Boolean(backfill && ["queued", "searching", "paused"].includes(backfill.status));
+  const historyForm = canEdit && !backfillActive ? await loadHistoryFormProps(product.id) : null;
   const now = requestTime();
   const runnable = (p: PlatformMonitoring) => p.groups > 0 && p.state !== "not_configured" && p.state !== "not_enabled";
   const active = o.platforms.filter(runnable);
@@ -107,9 +121,10 @@ export default async function MonitoringPage() {
               <Badge tone="positive">On</Badge>
             </CardTitle>
             <CardDescription>
-              Nothing to configure. Each platform gets an activity score from the mentions SignalForge has collected, and busier platforms
-              are checked more often. Intervals speed up quickly when activity rises and slow down only gradually, never while
-              coverage is incomplete. Your {o.plan.name} plan checks each platform at most every {formatInterval(o.plan.minIntervalMinutes)}
+              Nothing to configure. SignalForge learns, for this product alone, how fast relevant mentions arrive on each platform and
+              how fast results fill each search, then checks each platform often enough to find new mentions promptly and before results
+              overflow what one check can read. Quiet platforms are still checked regularly. Intervals speed up at once when activity
+              rises and slow down only gradually, never while coverage is incomplete. Your {o.plan.name} plan checks each platform at most every {formatInterval(o.plan.minIntervalMinutes)}
               {" "}and targets searching every keyword within {formatInterval(o.plan.keywordTargetMinutes)} (a scheduling target, not a guaranteed discovery time).
               {o.paid.includedInPlan ? " Paid sources are included in your plan." : ""}
               {paidNote ? ` ${paidNote}` : ""}
@@ -157,8 +172,8 @@ export default async function MonitoringPage() {
           <CardHeader>
             <CardTitle>Platform ranking</CardTitle>
             <CardDescription>
-              Ranked by activity score (recent and historical relevant mentions, growth, unique authors, engagement and spikes).
-              Open a platform for the reasons behind its score and interval.
+              Ranked by each platform&apos;s share of this product&apos;s relevant mentions over the last 4 weeks — relative to this product,
+              not to other products. Open a platform for the reasons behind its rank and interval.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -202,6 +217,28 @@ export default async function MonitoringPage() {
             ) : (
               <KeywordCoverageList rows={o.keywordCoverage} />
             )}
+          </CardContent>
+        </Card>
+
+        <Card id="history">
+          <CardHeader>
+            <CardTitle>Historical search</CardTitle>
+            <CardDescription>
+              Collected separately from ongoing monitoring, in resumable steps. Platforms that can&apos;t search as far back say so; a
+              platform that can&apos;t expose everything is marked partially collected, never complete.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            {backfill && (
+              <BackfillProgress status={backfill} allowanceRemaining={usage?.mentionsRemaining ?? null} renewsOn={usage ? usage.periodEnd.slice(0, 10) : null} />
+            )}
+            {historyForm && (backfill ? (
+              <details className="rounded-md border p-3">
+                <summary className="cursor-pointer text-[13px] font-medium">Search a different period</summary>
+                <div className="mt-3"><HistoryForm {...historyForm} /></div>
+              </details>
+            ) : <HistoryForm {...historyForm} />)}
+            {!backfill && !historyForm && <p className="text-[13px] text-muted-foreground">No historical search has run for this product. Workspace admins can start one.</p>}
           </CardContent>
         </Card>
 

@@ -33,6 +33,8 @@ export interface SearchRequest {
   window: SearchWindow;
   /** Upper bound on result pages, so one run can't exhaust a shared quota. */
   maxPages: number;
+  /** First page offset (page-resumable sources continuing an earlier run). Defaults to 1. */
+  startPage?: number;
   signal?: AbortSignal;
   /** Stream of a multi-stream source (e.g. Reddit "posts" / "comments"). Defaults to "default". */
   stream?: string;

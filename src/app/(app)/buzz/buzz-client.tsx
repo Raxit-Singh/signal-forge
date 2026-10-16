@@ -59,7 +59,7 @@ interface ChartProps {
   bucket: "hour" | "day";
   tz: string;
   events: Array<{ id: string; title: string; occurred_at: string }>;
-  spikes: Array<{ period_start: string; platform: string | null; severity: string }>;
+  spikes: Array<{ period_start: string; platform: string | null; severity: string; confidence?: string; keyword?: string }>;
 }
 
 type Row = Record<string, number | string | null> & { start: string; label: string; coverage: string };
@@ -113,7 +113,7 @@ export function BuzzChart({ points, sources, bucket, tz, events, spikes }: Chart
               const x = bucketOf(e.occurred_at);
               return x ? <ReferenceLine key={e.id} x={x} stroke="var(--info)" strokeDasharray="4 3" label={{ value: e.title.slice(0, 24), position: "insideTopLeft", fontSize: 10, fill: "var(--info)" }} /> : null;
             })}
-            {spikes.filter((s) => !s.platform).map((s) => {
+            {spikes.filter((s) => !s.platform && !s.keyword && s.confidence !== "possible").map((s) => {
               const x = bucketOf(s.period_start);
               return x ? <ReferenceLine key={s.period_start} x={x} stroke="var(--warning)" strokeWidth={2} /> : null;
             })}
@@ -172,7 +172,7 @@ export function BuzzChart({ points, sources, bucket, tz, events, spikes }: Chart
             ))}
         <li className="flex items-center gap-1"><span className="size-2.5 rounded-sm bg-muted ring-1 ring-border" aria-hidden />Not monitored</li>
         {events.length > 0 && <li className="flex items-center gap-1"><span className="h-2.5 w-0 border-l-2 border-dashed border-info" aria-hidden />Your events</li>}
-        {spikes.some((s) => !s.platform) && <li className="flex items-center gap-1"><span className="h-2.5 w-0 border-l-2 border-warning" aria-hidden />Spike</li>}
+        {spikes.some((s) => !s.platform && !s.keyword && s.confidence !== "possible") && <li className="flex items-center gap-1"><span className="h-2.5 w-0 border-l-2 border-warning" aria-hidden />Confirmed spike</li>}
       </ul>
       <details className="text-xs">
         <summary className="cursor-pointer text-muted-foreground">Show as table</summary>

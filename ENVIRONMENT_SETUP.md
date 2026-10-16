@@ -120,7 +120,7 @@ node scripts/grant-internal-plan.ts --workspace <uuid> --plan pro            # d
 node scripts/grant-internal-plan.ts --workspace <uuid> --plan pro --apply   # optional --days N
 node scripts/grant-internal-plan.ts --workspace <uuid> --revoke --apply
 ```
-Then re-plan its products (`node scripts/resync-queries.ts --product <uuid> --apply`). Billing shows "Internal testing entitlement — not a paid subscription". Paid collection still needs `PAID_SOURCES_ENABLED=true` and a global budget. `node scripts/simulate-plan-costs.ts` estimates Pro/Scale paid cost and keyword freshness (read-only). `/settings/billing` shows the current period's mention usage, keyword allowance and plan options; warnings appear app-wide at 80 / 90 / 100 %.
+Then re-plan its products (`node scripts/resync-queries.ts --product <uuid> --apply`). Billing shows "Internal testing entitlement — not a paid subscription". Paid collection still needs `PAID_SOURCES_ENABLED=true` and a global budget. `node scripts/simulate-plan-costs.ts` estimates Pro/Scale paid cost, mentions found, completeness, keyword freshness and historical-backfill cost with the V2 engine (read-only; `--v1` = previous engine, `--json` = full detail). `/settings/billing` shows the current period's mention usage, keyword allowance and plan options; warnings appear app-wide at 80 / 90 / 100 %.
 
 ## 5. Hosting
 
@@ -153,3 +153,11 @@ Every two minutes is ~21,600 calls/month: inside Vercel Hobby's included invocat
 **Development:** `npm run dev:cron`.
 
 **Initial scans** don't wait for the scheduler: starting a scan processes its jobs immediately in the background of that request (`after()`); anything left is picked up by the next tick.
+
+## Realtime dashboard updates (2026-10-16)
+
+Migration `20261016000007` adds `public.workspace_events` to the `supabase_realtime` publication (skipped automatically on plain Postgres). Nothing else to configure on Supabase: Realtime is on by default, and postgres_changes applies each subscriber's RLS, so members receive only their workspace's events (counts only). Check it in the dashboard: **Database → Publications → supabase_realtime** should list `workspace_events`. If Realtime is unavailable, pages fall back to refreshing every 60 s while visible ("Reconnecting" indicator). The table is purged daily (events older than a day).
+
+## Historical search (2026-10-16)
+
+Customers choose the period at onboarding (step 5) or on **Smart Monitoring → Historical search**. Steps run from the scheduler (`/api/jobs/tick` also schedules due backfill tasks), so `npm run dev:cron` (or Supabase Cron in production) must be running for a search to progress beyond its first batch. Paid platforms wait ("paused") while `PAID_SOURCES_ENABLED` is not `true`; every step goes through the same budget reservation and mention allowance as monitoring.

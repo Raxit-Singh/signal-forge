@@ -7,7 +7,7 @@ test.afterEach(async () => {
   userId = null;
 });
 
-test("registration → verification → workspace → product → keywords → sources → AI → first scan", async ({ page }) => {
+test("registration → verification → workspace → product → keywords → sources → AI → historical search", async ({ page }) => {
   const user = await createUnconfirmedUser();
   userId = user.id;
 
@@ -52,9 +52,27 @@ test("registration → verification → workspace → product → keywords → s
   await page.getByRole("button", { name: "Use SignalForge credits" }).click();
   await expect(page).toHaveURL(/\/scan$/);
 
-  // The scan step names the sources it will search; nothing is run or estimated before the user starts it.
-  await expect(page.getByRole("button", { name: "Start scan" })).toBeVisible();
+  // Historical search: the user chooses how far back; nothing runs or is estimated before they start it.
+  await expect(page.getByText("How far back should SignalForge search for mentions?")).toBeVisible();
   await expect(page.getByText(/Results are what the sources actually return/)).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Last 30 days" })).toBeChecked();
+  await expect(page.getByTestId("history-range")).toContainText(/Searches from \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC to \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC \(30 days\)/);
+  // Free plan: 30 days of history; longer presets are offered but disabled with the reason.
+  await expect(page.getByRole("radio", { name: "Last 90 days" })).toBeDisabled();
+  await expect(page.getByText("Beyond your plan").first()).toBeVisible();
+  // Since launch needs the real launch date (never assumed).
+  await page.getByRole("radio", { name: "Since product launch" }).check();
+  await expect(page.getByRole("button", { name: "Start historical search" })).toBeDisabled();
+  await expect(page.getByTestId("history-range")).toContainText("Enter your product's launch date");
+  const recent = new Date(Date.now() - 10 * 86_400_000).toISOString().slice(0, 10);
+  await page.getByLabel("Product launch date").fill(recent);
+  await expect(page.getByTestId("history-range")).toContainText(`Searches from ${recent} 00:00 UTC`);
+  await expect(page.getByRole("button", { name: "Start historical search" })).toBeEnabled();
+  // Custom dates outside the plan's window are refused with the limit stated.
+  await page.getByRole("radio", { name: "Custom date" }).check();
+  await page.getByLabel("Search from").fill(new Date(Date.now() - 200 * 86_400_000).toISOString().slice(0, 10));
+  await expect(page.getByTestId("history-range")).toContainText("Your Free plan searches back up to 30 days");
+  await expect(page.getByRole("button", { name: "Start historical search" })).toBeDisabled();
 
   await page.getByRole("button", { name: "Skip for now" }).click();
   await expect(page).toHaveURL(/\/overview$/);

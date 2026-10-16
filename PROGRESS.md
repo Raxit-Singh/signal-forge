@@ -16,6 +16,39 @@ Legend: ✅ verified by an automated check that ran · 🟡 written, not yet exe
 
 Test users created for the walk-through were removed afterwards via the app's own deletion path.
 
+## Discovery Engine V2 — pagination, adaptive monitoring, historical search, spikes, realtime (2026-10-16)
+
+Follow-up work committed first as `a12e21c` ("feat: internal testing grants and keyword cost simulations"; no secrets staged — none of the `.env.local` values occur in the diff). Migrations `20261016000007_discovery_engine_v2` and `20261016000008_coverage_partial_wins` (both additive / function replacements; no data changed) applied to the dev project after dry runs. No paid API calls (`PAID_SOURCES_ENABLED=false`); no budgets, prices or allowances changed.
+
+### Checks
+| Check | Result |
+|---|---|
+| `npm run test:unit` | ✅ 199/199 (adds 45: arrival-rate estimation and forgetting, saturated-check exposure, quantiles, hour-of-day profile, brand-safe interval, page right-sizing and escalation, right-sized cost, product-relative ranking (200 vs 3,000 mentions), rate-scaled intervals, importance tilt, brand-safe pacing incl. "unavoidable", budget pacing never past the safe interval, quiet-platform exploration, learning phase, no risk from the prior alone, stability/hysteresis, resumable gaps (range, whole-day, page, none, stall), collection profiles, provider history depth, backfill planning and run status, history date selection and validation, broad-keyword warnings, spike math and confidence (confirmed / possible / insufficient data, low/high volume, seasonality, unmonitored and partial periods, backfill-safe, fallback "possible", product-level completeness)) |
+| `npm run test:db` | ✅ 284/284 (adds 26: workspace events coalesced, size-limited, kind-checked, member-only, unforgeable, other workspaces see none; backfill runs/tasks, arrival estimates, keyword spikes and spike evaluations member-read-only and isolated; `keyword_series` respects RLS; service RPCs not callable by members; backfill scheduling enqueues once, skips sources not running, pauses at an exhausted allowance until renewal and keeps the cursor; partial coverage wins over complete) |
+| `npm run test:e2e` | ✅ 21/21 (adds 4 and updates 2; run in two batches because Supabase Auth rate-limited test sign-ups (HTTP 429) — no assertion failures): realtime update of page 1 without reload (after the first-connect catch-up, so only the event can explain it); "1 new mention found — View latest" on page 2 with filters kept; **Realtime workspace isolation** (a second user subscribing to the first workspace's events receives nothing while each owner receives theirs); historical progress states without percentages, live update of progress; product-relative share and overflow risk in Smart Monitoring; confirmed/possible/keyword spikes and "insufficient data" on Buzz; onboarding history step (default 30 days with exact dates, launch date required, plan window enforced) |
+| typecheck, lint, `npm run build` | ✅ |
+| Visual | Historical search step and progress, Smart Monitoring history card and form with a broad-keyword warning, at desktop and 375 px (no horizontal scroll, no console errors); throwaway account deleted |
+
+### Verified live on free sources (dev project, throwaway Free workspace "Excalidraw", deleted afterwards)
+- ✅ Scheduler ticks ran the V2 monitor on HN / GitHub / Stack Overflow / Bluesky / DEV for the dev products and the throwaway one: arrival estimates written per query group, `platform_activity` rows on `arrival_v2` (learning until 3 checks and 48 h of exposure), events emitted per finished job.
+- ✅ A 7-day historical search: HN and Stack Overflow completed; GitHub returned 453 results, stored 20 and **paused at the Free plan's 100-mention allowance** (354 held, cursor kept for renewal); run status "paused" with the reason.
+- ⚠️ YouTube returned **403 "access denied"** on every check (also at 11:07 UTC, before these changes) — the configured key is rejected (possibly rotated or the Data API not enabled). Not fixable from here.
+- Found and fixed during the live run: prior-only rates/risk shown for never-checked searches (now none), legacy sources not reporting pages requested (now exact), a self-paused run without a reason (now recorded), spike evaluation limited to products with mentions in the last 2 h (now also any monitored product not evaluated in a day).
+
+### Spike audit (Starlink: "Starlink", "SpaceX", "Elon Musk")
+- **Why no spikes were stored before:** (1) the hourly detector only ran inside scheduler ticks, and none ran between Starlink's creation (09:35 UTC) and the audit; (2) it only stored periods from the last 48 h (daily) / 6 h (hourly), so **history added by the 30-day initial scan was never evaluated**; (3) write errors were silently ignored; (4) baselines used fixed minimums (≥ 8 mentions, ≥ 2.5×).
+- **What the data supports:** the 30-day initial scan was **cut off** on Hacker News, GitHub and Bluesky (newest results only), but coverage was recorded per platform, so a complete window from another keyword's search marked those days "complete" — the rise from ~8/day to 102 on Oct 14 is at least partly a truncation artifact. Migration 008 makes any partial window win over a complete one.
+- **Result with V2:** no **confirmed** spike can be claimed for Starlink (no completely monitored baseline: status "insufficient data"); 7 **possible** spikes are listed (product Oct 10, 14, 15, 16; Hacker News Oct 14–16) with the note that earlier periods were only partly monitored. octolens: "possible" spikes for its Starlink keyword on Oct 16. A historical search with continuation (now available) is what can turn these into confirmed or rejected.
+
+### Remaining limitations (this work)
+- Arrival estimates start empty: every platform is "learning" for its first 3 checks / 48 h of searched time, with bounded intervals.
+- Coverage is still recorded per platform; partial wins over complete, so a cut-off search makes the whole platform's period a lower bound (conservative).
+- An unread gap is not recorded as coverage until a continuation reads it; until then other keywords' complete windows can mark that time complete (transient).
+- Whole-day date filters (X, Facebook) can't split inside a day; the unreachable part of a day is recorded as lost.
+- Realtime needs the `workspace_events` table in the `supabase_realtime` publication (done by migration 007 on Supabase); events are signals only, the page refetches through RLS. First connect triggers one catch-up refresh; disconnected clients poll every 60 s while visible.
+- Keyword-level spike completeness uses the product's completeness (keywords aren't tied to coverage windows).
+- The simulation's volumes, relevance shares and ranked-search recall (70 %) are assumptions.
+
 ## Follow-up — security checks, internal Pro grants, effective keyword intervals, budget simulation (2026-10-16)
 
 Subscription work committed as `b760d5f`. Migration `20261016000006_internal_plan_grants` (additive) applied after a dry run.

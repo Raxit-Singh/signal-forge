@@ -2,6 +2,36 @@
 
 Checked against official documentation or live API responses on 2026-10-14/15 unless marked otherwise. Limits change — re-check before each integration milestone.
 
+## Pagination and collection audit (Discovery Engine V2, 2026-10-16)
+
+Single source of truth: `src/lib/sources/collection-profile.ts`. **Provider limits** are the API's own; **application limits** are per-job safety bounds only — a window that overflows a job is continued by follow-up jobs wherever the provider can resume, and what it can't reach is recorded as partial coverage (never complete).
+
+| Stream | Per page | Provider page limit | Per-job bound (app) | Billing | Resume | Date filter / sort | History depth |
+|---|---|---|---|---|---|---|---|
+| Hacker News | 100 | 10 pages (1,000 hits/query) | 5 | free | date range | exact seconds, newest first | full archive |
+| GitHub issues | 100 | 1,000 results/query | 5 | free | date range | `created:A..B`, newest first | full |
+| Stack Overflow | 100 | — | 5 | free | date range | from/todate, newest first | full |
+| YouTube | 50 | — | 2 | free (100 searches/day shared) | none (quota) | publishedAfter/Before | newest 100 per group |
+| Bluesky | 100 | — | 5 | free | date range (`until`; cursor refused unauthenticated) | since/until, latest | what the index holds |
+| DEV | 100 | 1 (tag feed) | 1 | free | none | newest | newest 100 per tag |
+| App Store | 50 | 10 | 2 | free | none | most recent | newest ~500 |
+| Reddit posts | 20 (measured) | 12 pages | 3 | per request | page offset | `posted_ago` presets, newest | 12 months, 240 posts/query |
+| Reddit comments | ~22–25 (measured) | 10 pages | 10 | per page **requested** | none | **no date filter**, newest | newest ~250 |
+| X | 20 | 20 pages | 10 | per page requested | date range (**whole UTC days**) | start/end date, newest | not documented |
+| LinkedIn | 20 (measured) | 25 pages | 3 | per request | page offset | 24h/7d/30d presets | 30 days |
+| TikTok | ~25–28 (measured) | 10 pages | 10 | per page requested | none | presets ≤180 days, newest | 180 days |
+| Instagram | ~8–10 | 20 pages | 2 | per page requested | none | **relevance-ranked, no dates** | a sample (always partial) |
+| Facebook | 20 | 15 pages | 10 | per page requested | date range (whole UTC days) | start/end date, newest | not documented |
+| Substack posts | 20 | 101 pages | 3 | per request | page offset | relevance-ranked, presets ≤12 months | 12 months |
+| Substack notes | 5 | 250 pages | 10 | per page requested | none | newest, no date filter | newest only |
+| Google web | 10 | 10 pages | 1 | per page requested | none | ranked, `time` preset | ~1 year, no publication dates |
+| Google News | up to 100 | 1 call (`limit`) | 1 | per request | none | ranked, presets | ~1 year |
+| Trustpilot | 20 | 10 pages | 5 | per page requested | none | newest, presets ≤12 months | 12 months |
+
+- **Page right-sizing** (endpoints billed per page *requested*): each check requests the pages its arrival-rate estimate needs (expected results + 2σ; one page while a search is new) instead of a fixed 2. If a page set comes back full without reaching the window start and the source can't resume, **one** larger call is made (it re-bills its pages, so at most once per run). Per-request endpoints page by themselves and stop at a partial page. Exact pages requested are stored per run (`monitoring_executions.pages_requested`; legacy sources now report them too).
+- **Partial pages:** a newest-first partial page proves the window is complete; for relevance-ranked sources (Instagram, Substack posts, web, news) nothing proves completeness — they are always partial.
+- **Resumable collection:** an overflowing window leaves a *gap* in the search's checkpoint (`monitoring_queries.cursor.gap`): `[window start, oldest result read]` for date-range sources (time-window splitting), or the next page offset for page sources. Continuation jobs (`mq-cont:` keys, 30 s later) read it until it's done; a gap that stops making progress twice is closed and reported. Whole-day filters can't split a day: the unreachable rest of an overflowing day is recorded as lost. Checkpoints still never pass results that weren't read or recorded (and hold while the mention allowance is holding items).
+
 ## Implemented public sources (Milestone 2)
 
 "Measured" = observed in live calls from this project on 2026-10-14. Every adapter takes tokens from a shared Postgres token bucket before each call (`rate_limit_buckets`), so all workers together stay under these limits, and every call is recorded in `api_usage_events`.
@@ -39,7 +69,7 @@ Checked against official documentation or live API responses on 2026-10-14/15 un
 ### Bluesky — AppView `app.bsky.feed.searchPosts`
 - Endpoint `https://api.bsky.app/xrpc/app.bsky.feed.searchPosts`, no auth needed (**measured**: 200). `public.api.bsky.app` returned **403** for search from this environment, so it isn't used. This unauthenticated access is not a documented guarantee — monitor `source_health`. **Observed 2026-10-16 05:00 UTC:** one scheduled check got **403** from `api.bsky.app` too; the same request (same parameters and User-Agent) returned 200 minutes later from curl and Node. The job is not retried (403 is treated as an auth error), but the query's checkpoint holds and it is rescheduled sooner (30 min × 2ⁿ), so the window is re-searched. **Root cause (found 2026-10-16 07:15 UTC):** the unauthenticated AppView answers the first page but refuses every request carrying a `cursor` (403 "Request forbidden by administrative rules"), so any keyword with more than one page of results failed the whole run. The adapter now pages by moving `until` back to the oldest post seen (measured: 3 pages, 293 unique "starlink" posts, all 200), and a refused later page keeps the earlier results as a partial run. If unauthenticated search is restricted further, Bluesky will need an authenticated session.
 - `q` supports phrases and `since` / `until` / `sort=latest` / `cursor`; **no OR**, so one query per keyword (every configured keyword since 2026-10-16; previously ≤5). Replies are found by search (flagged `reply`).
-- **High-volume keywords (investigated 2026-10-16):** a check reads at most 3 pages × 100 = **300 posts per keyword** (newest first). "starlink" returned 292–298 posts per check and every check ended partial (saturated): more than 300 matching posts were published since the previous check. The checkpoint holds, but because search is newest-first, the next check again reads the newest 300, so **posts older than the 300th in a busy window are never fetched** (a permanent gap, recorded as partial coverage). Capacity per keyword ≈ 300 × checks per day: Free (daily) ~300/day, Pro/Scale (down to hourly) up to ~7,200/day — saturation speeds a platform up to its plan floor. Future options (not in this task): resume paging from the oldest post fetched (`until`) in the next check, more pages for saturated keywords, or the Jetstream firehose.
+- **High-volume keywords (investigated 2026-10-16):** a check used to read at most 3 pages × 100 = 300 posts per keyword (newest first), and the next check re-read the newest 300, so older posts in a busy window were never fetched. **Fixed in V2:** a job reads up to 5 pages, and an overflowing window is continued from the oldest post read (`until`) by follow-up jobs until it reaches the window start — no fixed 300-post cap. Measured on the dev data: "starlink" arrives at ~140–200 posts/hour on Bluesky, so it is checked hourly with continuations. The Jetstream firehose would remove polling altogether but needs a long-running consumer (not available on this serverless deployment).
 - Search covers what Bluesky has indexed; it is not a complete archive. Jetstream (the full firehose) would need a long-running WebSocket consumer, which this serverless deployment doesn't have; not implemented.
 - **Live check:** 82 Excalidraw mentions stored (55 posts, 27 replies); all 82 re-fetched via `app.bsky.feed.getPosts` exist and mention Excalidraw; 5/5 sampled links returned 200.
 

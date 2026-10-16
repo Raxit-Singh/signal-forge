@@ -175,20 +175,33 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
             <CardHeader>
               <CardTitle>Spike history</CardTitle>
               <CardDescription>
-                Periods with clearly more mentions than usual, judged against your own rolling baseline. Small numbers (like 1 → 3) never count as a spike.
+                Periods with clearly more mentions than usual for this product, platform or keyword — judged statistically against its own
+                baseline of completely monitored periods (no fixed mention threshold). <strong className="font-medium">Confirmed</strong> needs
+                strong evidence and complete coverage; <strong className="font-medium">possible</strong> means unusual, but the period was only
+                partly monitored or the baseline is still short. Counts use publication time, so a historical search fills in past periods
+                instead of creating a spike today.
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="grid gap-2">
+              {d.spikeEvaluation?.status === "insufficient_data" && (
+                <p className="text-[13px] text-muted-foreground" data-testid="spike-insufficient">
+                  Not enough data yet to judge spikes: {d.spikeEvaluation.baselinePeriods} of {d.spikeEvaluation.neededPeriods} completely monitored
+                  {d.bucket === "hour" ? " hours" : " days"} needed for a baseline.
+                </p>
+              )}
               {d.spikes.length === 0 ? (
                 <p className="text-[13px] text-muted-foreground">No spikes detected in this period.</p>
               ) : (
                 <ul className="divide-y" aria-label="Detected spikes">
                   {d.spikes.map((s) => (
                     <li key={s.id} className="flex flex-wrap items-center gap-2 py-2 text-[13px]">
-                      <Badge tone={s.severity === "major" ? "negative" : "warning"}>{s.severity === "major" ? "Major" : "Notable"}</Badge>
+                      <Badge tone={s.confidence === "possible" ? "info" : s.severity === "major" ? "negative" : "warning"}>
+                        {s.confidence === "possible" ? "Possible" : s.severity === "major" ? "Confirmed · Major" : "Confirmed · Notable"}
+                      </Badge>
                       <span title={formatUtc(s.period_start)}>{s.granularity === "hour" ? "Hour of" : "Day of"} {formatUtc(s.period_start)}</span>
-                      <span className="text-muted-foreground">{s.platform ? nameOf(s.platform) : "All platforms"}</span>
+                      <span className="text-muted-foreground">{s.keyword ? `Keyword “${s.keyword}”` : s.platform ? nameOf(s.platform) : "All platforms"}</span>
                       <span className="ml-auto tabular">{s.observed} mentions vs ~{Number(s.expected).toFixed(Number(s.expected) < 10 ? 1 : 0)} usual</span>
+                      {s.note && <span className="w-full text-xs text-muted-foreground">{s.note}</span>}
                     </li>
                   ))}
                 </ul>

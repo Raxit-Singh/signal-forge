@@ -39,6 +39,11 @@ function pagesFor(req: SearchRequest, max: number): number {
   return Math.max(1, Math.min(max, Math.floor(req.maxPages)));
 }
 
+/** Page offset to start from (continuations of page-resumable searches), within the provider's range. */
+function firstPage(req: SearchRequest, providerMax: number): number {
+  return Math.max(1, Math.min(providerMax, Math.floor(req.startPage ?? 1)));
+}
+
 interface Collected {
   items: CandidateMention[];
   /** Items the API returned (before normalization). */
@@ -132,8 +137,9 @@ export function createApiDirectAdapters(apiKey?: string): Record<PaidSourceId, S
       const posted_ago = presetFor(req.window.until.getTime() - req.window.since.getTime(),
         [[HOUR, "1h"], [DAY, "24h"], [7 * DAY, "7d"], [30 * DAY, "30d"], [365 * DAY, "12m"]] as Array<[number, "1h" | "24h" | "7d" | "30d" | "12m"]>);
       const max = pagesFor(req, CAPS.redditPosts.maxPagesPerRun);
+      const first = firstPage(req, 12);
       const c: Collected = { items: [], returned: 0, pagesRequested: 0 };
-      for (let page = 1; page <= max; page++) {
+      for (let page = first; page < first + max && page <= 12; page++) {
         const r = await apiDirectGet(ctx, k, ENDPOINTS.redditPosts, { query: q, page, sort_by: "most_recent", posted_ago },
           S.redditPostsResponse, "search", req.signal);
         c.pagesRequested++;
@@ -192,8 +198,9 @@ export function createApiDirectAdapters(apiKey?: string): Record<PaidSourceId, S
       const posted_ago = presetFor(req.window.until.getTime() - req.window.since.getTime(),
         [[DAY, "24h"], [7 * DAY, "7d"], [30 * DAY, "30d"]] as Array<[number, "24h" | "7d" | "30d"]>);
       const max = pagesFor(req, CAPS.linkedinPosts.maxPagesPerRun);
+      const first = firstPage(req, 25);
       const c: Collected = { items: [], returned: 0, pagesRequested: 0 };
-      for (let page = 1; page <= max; page++) {
+      for (let page = first; page < first + max && page <= 25; page++) {
         const r = await apiDirectGet(ctx, k, ENDPOINTS.linkedinPosts, { query: queryOf(req), page, sort_by: "most_recent", posted_ago },
           S.linkedinPostsResponse, "search", req.signal);
         c.pagesRequested++;
@@ -309,9 +316,10 @@ export function createApiDirectAdapters(apiKey?: string): Record<PaidSourceId, S
       const posted_ago = presetFor(req.window.until.getTime() - req.window.since.getTime(),
         [[DAY, "24h"], [7 * DAY, "7d"], [30 * DAY, "30d"], [365 * DAY, "12m"]] as Array<[number, "24h" | "7d" | "30d" | "12m"]>);
       const max = pagesFor(req, CAPS.substackPosts.maxPagesPerRun);
+      const first = firstPage(req, 101);
       const c: Collected = { items: [], returned: 0, pagesRequested: 0 };
       let more = false;
-      for (let page = 1; page <= max; page++) {
+      for (let page = first; page < first + max && page <= 101; page++) {
         const r = await apiDirectGet(ctx, k, ENDPOINTS.substackPosts, { query: queryOf(req), page, posted_ago }, S.substackPostsResponse, "search", req.signal);
         c.pagesRequested++;
         c.returned += r.body.posts.length;

@@ -14,6 +14,8 @@
 
 import { formatInterval, INTERVAL_STEPS, MAX_INTERVAL } from "./adaptive.ts";
 import { STREAM_ENDPOINTS } from "./apidirect/endpoints.ts";
+import { expectedResults, pagesToRequest } from "./arrival.ts";
+import { collectionProfile } from "./collection-profile.ts";
 import { rotationTurns, type Rotation } from "./keyword-plan.ts";
 import { KEYWORD_PRIORITY, type OptimizerKeyword } from "./query-optimizer.ts";
 
@@ -163,4 +165,40 @@ export function paceForBudget(platforms: PacingInput[], remainingUsd: number, mi
     total = projected();
   }
   return { intervals, paced, projectedUsd: Math.round(total * 10000) / 10000, fits: total <= remainingUsd };
+}
+
+// ---------------------------------------------------------------------------
+// V2: right-sized paid cost per check
+// ---------------------------------------------------------------------------
+
+export interface PaidGroupV2 extends PaidGroup {
+  /** Planning rate of results per hour for this search (arrival.ts upperRate), 0 if unknown. */
+  rateUpperPerHour: number;
+  learning: boolean;
+}
+
+/** Window a check searches beyond its interval (search indexes lag; see monitor OVERLAP_MS). */
+export const CHECK_OVERLAP_MINUTES = 120;
+
+/**
+ * Estimated paid cost of one platform check at a given interval, with pages
+ * right-sized from each search's arrival rate (internal; never shown to
+ * customers). Per-request endpoints are assumed to stop after the pages the
+ * results fill (at least one request).
+ */
+export function estimateCheckCostV2(platform: string, groups: PaidGroupV2[], intervalMinutes: number, prices: Record<string, number>): number {
+  let usd = 0;
+  for (const g of groups) {
+    const ep = STREAM_ENDPOINTS[`${platform}/${g.stream}`];
+    if (!ep) continue;
+    const price = prices[ep.pricingKey] ?? 0;
+    const turns = g.rotation ? rotationTurns(g.rotation) : 1;
+    const p = collectionProfile(platform, g.stream);
+    const windowMinutes = intervalMinutes * turns + CHECK_OVERLAP_MINUTES;
+    const pages = ep.billing === "pages"
+      ? pagesToRequest({ ratePerHour: g.rateUpperPerHour, windowMinutes, perPage: p.perPage, maxPages: p.maxPagesPerJob, billing: "pages", learning: g.learning })
+      : Math.max(1, Math.min(p.maxPagesPerJob, Math.ceil(expectedResults(g.rateUpperPerHour, windowMinutes) / Math.max(1, p.perPage))));
+    usd += (price * pages) / turns;
+  }
+  return usd;
 }

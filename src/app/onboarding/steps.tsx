@@ -1,7 +1,7 @@
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export const STEPS = ["Product", "Keywords", "Sources", "AI", "First scan"] as const;
+export const STEPS = ["Product", "Keywords", "Sources", "AI", "History"] as const;
 
 /** step is 1-based (1 = Product). */
 export function StepHeader({ step, title, description }: { step: number; title: string; description: React.ReactNode }) {

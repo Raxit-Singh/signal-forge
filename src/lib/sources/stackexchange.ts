@@ -109,6 +109,7 @@ export function createStackExchangeAdapter(key?: string): SourceAdapter {
       let complete = true;
       let reason: string | undefined;
       let quota: SeResponse | undefined;
+      let pagesRequested = 0;
       for (const term of req.terms) {
         for (let page = 1; page <= req.maxPages; page++) {
           const params = new URLSearchParams({
@@ -122,6 +123,7 @@ export function createStackExchangeAdapter(key?: string): SourceAdapter {
             page: String(page),
           });
           const body = await call(ctx, params, req.signal);
+          pagesRequested++;
           quota = body;
           for (const it of body.items ?? []) {
             const m = normalizeSeItem(it);
@@ -139,6 +141,7 @@ export function createStackExchangeAdapter(key?: string): SourceAdapter {
         complete,
         incompleteReason: reason,
         rateLimit: quota ? { remaining: quota.quota_remaining, limit: quota.quota_max } : undefined,
+        pagesRequested,
       };
     },
 

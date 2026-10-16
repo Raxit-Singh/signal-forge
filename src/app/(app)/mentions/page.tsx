@@ -15,7 +15,7 @@ import { Badge, Card } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
 import { StartScanButton } from "@/components/scan/scan-controls";
 import { cn } from "@/lib/utils";
-import { ExpandableText, MentionFilters, RelevanceButtons } from "./mention-client";
+import { ExpandableText, MentionFilters, NewMentionsNotice, RelevanceButtons } from "./mention-client";
 
 export const metadata: Metadata = { title: "Mentions" };
 // "Scan now" keeps working after the action responds.
@@ -107,6 +107,7 @@ export default async function MentionsPage({ searchParams }: { searchParams: Pro
   const page = parsePage(sp.page);
   const canEdit = hasRole(workspace.role, "member");
   const canScan = hasRole(workspace.role, "admin");
+  const loadedAt = new Date().toISOString();
 
   // Offset pagination over a deterministic order: (published_at desc, id desc), served by
   // mentions_product_published_id_idx. Exact count gives page numbers and "Showing x–y of n".
@@ -162,14 +163,19 @@ export default async function MentionsPage({ searchParams }: { searchParams: Pro
       {neverCollected ? (
         <EmptyState icon={MessageSquareText} title="No mentions collected yet">
           <p>
-            Run a first scan to search {coverage.sources.filter((s) => s.state !== "not_configured" && s.state !== "not_enabled").map((s) => s.name).join(", ")} for
-            the last 30 days. After that, monitoring runs automatically.
+            Start a historical search of {coverage.sources.filter((s) => s.state !== "not_configured" && s.state !== "not_enabled").map((s) => s.name).join(", ")} —
+            you choose how far back. After that, monitoring runs automatically.
           </p>
-          {canScan && <div className="mt-4 flex justify-center"><StartScanButton productId={product.id} kind="initial" /></div>}
+          {canScan && (
+            <div className="mt-4 flex justify-center">
+              <Button asChild><Link href="/monitoring#history">Search history</Link></Button>
+            </div>
+          )}
         </EmptyState>
       ) : (
         <>
           <MentionFilters sources={sources} types={Object.entries(MENTION_TYPES).map(([id, name]) => ({ id, name }))} />
+          <NewMentionsNotice productId={product.id} page={page} loadedAt={loadedAt} />
           <p className="mb-2 text-xs text-muted-foreground tabular" aria-live="polite">
             {total === 0
               ? "No mentions in this view"

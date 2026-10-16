@@ -67,6 +67,12 @@ test("ranking from stored activity, explanations, and a Launch Boost that return
       window_start: new Date(Date.now() - (daysAgo + 1) * 86_400_000).toISOString(), window_end: new Date(Date.now() - daysAgo * 86_400_000).toISOString(),
     });
   }
+  // The arrival-rate engine learns from checks: 3 observed checks over 3 days (about 2 results/day, all relevant).
+  const [hnQuery] = await adminSelect<Array<{ id: string }>>(`monitoring_queries?product_id=eq.${ids.productId}&provider=eq.hackernews&select=id`);
+  await adminInsert("arrival_estimates", {
+    query_id: hnQuery!.id, workspace_id: ids.workspaceId, product_id: ids.productId, platform: "hackernews", stream: "default",
+    raw_alpha: 6.5, raw_beta: 73, rel_alpha: 6.5, rel_beta: 73, observations: 3, exposure_hours: 72, last_observed_at: new Date().toISOString(),
+  });
   // Starting a boost now re-ranks the product from stored data (no API calls).
   await page.getByLabel("Name").fill("E2E launch");
   await page.getByRole("checkbox", { name: /Hacker News/ }).check();
@@ -80,7 +86,7 @@ test("ranking from stored activity, explanations, and a Launch Boost that return
   await page.reload();
   const hn = ranking(page).getByRole("row").filter({ hasText: "Hacker News" });
   await expect(hn).toContainText("#1");
-  await expect(hn).toContainText("/100");
+  await expect(hn).toContainText("%"); // share of this product's relevant mentions
   await expect(hn).toContainText("12");
   await expect(hn).toContainText("6 h");
   const gh = ranking(page).getByRole("row").filter({ hasText: "GitHub" });
@@ -95,8 +101,9 @@ test("ranking from stored activity, explanations, and a Launch Boost that return
   await expect(details).toContainText("12 relevant mentions in the last 7 days");
   await expect(details).toContainText("Hacker News is checked every 6 h because a Launch Boost is active.");
   await expect(details).toContainText("Your Free plan checks each platform at most every 24 h");
-  await expect(details.getByRole("list", { name: "Hacker News score breakdown" })).toContainText("Important feedback");
-  await expect(details.getByRole("list", { name: "Hacker News score breakdown" })).toContainText("not measured");
+  await expect(details).toContainText("of this product's relevant mentions over the last 4 weeks");
+  await expect(details.getByRole("list", { name: "Hacker News measured signals" })).toContainText("Important feedback");
+  await expect(details.getByRole("list", { name: "Hacker News measured signals" })).toContainText("not measured");
   await expect(details).toContainText("Searched: FixtureFlow");
 
   // Cancel: back to the automatic interval (the Free plan's 24 h), and the change is logged with reasons.

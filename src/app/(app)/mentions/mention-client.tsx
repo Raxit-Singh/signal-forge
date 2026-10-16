@@ -1,12 +1,13 @@
 "use client";
 
-import { useActionState, useLayoutEffect, useOptimistic, useRef, useState, useTransition } from "react";
+import { useActionState, useEffect, useLayoutEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Check, ThumbsDown, ThumbsUp, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/primitives";
 import { idle } from "@/lib/action-state";
-import { setMentionRelevanceAction } from "@/app/actions/mentions";
+import { countNewMentionsAction, setMentionRelevanceAction } from "@/app/actions/mentions";
+import { useRealtime } from "@/components/realtime/realtime-provider";
 import { cn } from "@/lib/utils";
 
 const selectCls =
@@ -198,6 +199,47 @@ export function RelevanceButtons({ mentionId, status }: { mentionId: string; sta
         </Button>
       </form>
       {state.status === "error" && <span role="alert" className="text-xs text-negative">{state.message}</span>}
+    </div>
+  );
+}
+
+/**
+ * On page 1 new mentions simply appear (the page refreshes in place, scroll kept).
+ * On older pages the content stays put; a notice offers the newest page instead,
+ * keeping filters, search and date range.
+ */
+export function NewMentionsNotice({ productId, page, loadedAt }: { productId: string; page: number; loadedAt: string }) {
+  const rt = useRealtime();
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const [count, setCount] = useState(0);
+  const [, start] = useTransition();
+
+  useEffect(() => {
+    if (!rt || page <= 1) return;
+    rt.hold("mentions-page", true);
+    const off = rt.subscribe((e) => {
+      if (e.kind !== "mentions" && e.kind !== "resync") return;
+      void countNewMentionsAction(productId, loadedAt).then(setCount);
+    });
+    return () => {
+      off();
+      rt.hold("mentions-page", false);
+    };
+  }, [rt, page, productId, loadedAt]);
+
+  if (page <= 1 || count === 0) return null;
+  const latest = () => {
+    const sp = new URLSearchParams(params.toString());
+    sp.delete("page");
+    const qs = sp.toString();
+    start(() => router.push(qs ? `${pathname}?${qs}` : pathname));
+  };
+  return (
+    <div role="status" className="mb-2 flex flex-wrap items-center gap-2 rounded-md border border-info/30 bg-info/8 px-3 py-2 text-[13px]" data-testid="new-mentions-notice">
+      <span>{count.toLocaleString("en-US")} new mention{count === 1 ? "" : "s"} found</span>
+      <Button type="button" size="sm" variant="secondary" onClick={latest}>View latest</Button>
     </div>
   );
 }

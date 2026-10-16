@@ -8,6 +8,7 @@ import { configuredSourceIds, getAdapters, sourceSetup } from "./sources";
 import { syncAllProducts } from "./query-sync";
 import { detectSpikesForActiveProducts } from "../analytics/spikes";
 import { refreshActivityForActiveProducts } from "./activity";
+import { runBackfillTask } from "./backfill";
 
 const LEASE_SECONDS = 180;
 const CLAIM_BATCH = 4;
@@ -32,6 +33,7 @@ async function processJob(admin: SupabaseClient, job: JobRow, worker: string, su
   try {
     let result: unknown;
     if (job.kind === "monitor.query") result = await runMonitorQuery(admin, job, getAdapters());
+    else if (job.kind === "backfill.task") result = await runBackfillTask(admin, job, getAdapters());
     else throw new PermanentJobError(`Unknown job kind: ${job.kind}`);
     const { data: ok } = await admin.rpc("svc_complete_job", {
       p_job_id: job.id, p_worker: worker, p_result: result, p_metrics: { ms: Date.now() - started },
@@ -120,12 +122,17 @@ export async function tick(budgetMs: number): Promise<TickSummary> {
       const { data, error } = await admin.rpc("svc_schedule_due_queries", { p_providers: configuredSourceIds(), p_limit: 500 });
       if (error) console.error(`[tick] schedule failed: ${error.message}`);
       scheduled = Number(data ?? 0);
+      // Historical searches: due backfill steps (paused ones resume when allowance/budget allows).
+      const { data: bf, error: bfErr } = await admin.rpc("svc_schedule_backfills", { p_providers: configuredSourceIds(), p_limit: 200 });
+      if (bfErr) console.error(`[tick] backfill schedule failed: ${bfErr.message}`);
+      scheduled += Number(bf ?? 0);
 
       // Once a day (the lock is deliberately not released): retention purge + health for unconfigured sources.
       const { data: daily } = await admin.rpc("svc_try_acquire_lock", { p_name: "maintenance:daily", p_holder: holder, p_ttl_seconds: 23 * 3600 });
       if (daily) {
         const { data: n } = await admin.rpc("svc_purge_expired_mentions", { p_limit: 5000 });
         purged = Number(n ?? 0);
+        await admin.rpc("svc_purge_workspace_events");
         for (const s of sourceSetup()) {
           if (!s.configured) await recordHealth(admin, s.id, { status: "not_configured", error: s.reason });
         }

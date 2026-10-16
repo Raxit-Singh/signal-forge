@@ -4,6 +4,7 @@ import { getActiveProduct, getProducts, getWorkspaces, getWorkspaceUsage, requir
 import { UsageBanner } from "@/components/usage-banner";
 import { Sidebar } from "@/components/app-shell/sidebar";
 import { Topbar, type ShellNotification } from "@/components/app-shell/topbar";
+import { LiveIndicator, RealtimeProvider } from "@/components/realtime/realtime-provider";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, workspace } = await requireWorkspace();
@@ -39,6 +40,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const current = { id: workspace.id, name: workspace.name, role: workspace.role };
 
   return (
+    <RealtimeProvider key={workspace.id} workspaceId={workspace.id} productId={activeProduct?.id ?? null}>
     <div className="flex min-h-dvh">
       <Sidebar current={current} workspaces={shellWorkspaces} />
       <div className="flex min-w-0 flex-1 flex-col">
@@ -54,10 +56,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           />
         </Suspense>
         <main id="main" className="mx-auto w-full max-w-7xl flex-1 px-3 py-5 sm:px-6">
+          <div className="mb-1 flex justify-end"><LiveIndicator /></div>
           <UsageBanner usage={usage} />
           {children}
         </main>
       </div>
     </div>
+    </RealtimeProvider>
   );
 }

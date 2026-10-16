@@ -1,19 +1,25 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  assessActivity, decidePlatformInterval, isOverdue, rankPlatforms,
+  assessActivity, isOverdue,
   type ActivityAssessment, type IntervalDecision,
 } from "@/lib/sources/adaptive";
+import {
+  assessRisk, decidePlatformIntervalV2, importanceShares, paceForBudgetSafely, rankByImportance, snapDown,
+  type CollectionRisk, type GroupModel, type PlatformModelDecision,
+} from "@/lib/sources/adaptive-v2";
+import { emptyEstimate, hourProfile, upperRate, type GroupEstimate } from "@/lib/sources/arrival";
+import { collectionProfile, INHERENTLY_PARTIAL, planningCapacity } from "@/lib/sources/collection-profile";
 import { devMonitoringFloor } from "@/lib/domain/dev-entitlement";
-import { applyKeywordTarget, estimateCheckCostUsd, paceForBudget } from "@/lib/sources/entitlements";
+import { applyKeywordTarget, estimateCheckCostV2 } from "@/lib/sources/entitlements";
 import { DEFAULT_KEYWORD_TARGET_MINUTES, keywordIntervalMinutes, rotationNextRun, rotationTurns, type Rotation } from "@/lib/sources/keyword-plan";
+import { INTERVAL_STEPS } from "@/lib/sources/adaptive";
 import { formatInterval } from "@/lib/sources/adaptive";
 import { isPublicSource } from "@/lib/sources/registry";
 import type { PublicSourceId } from "@/lib/sources/types";
 import { getAdapters, paidCollectionEnabled } from "./sources";
 
-/** Sources whose search can't promise completeness even without page caps (relevance-ranked or tag-only). */
-export const INHERENTLY_PARTIAL = new Set<PublicSourceId>(["instagram", "web", "substack", "dev"]);
+export { INHERENTLY_PARTIAL };
 
 /** Never check less often than this, however quiet a platform looks (missed-mention safeguard). */
 export const PLATFORM_MAX_INTERVAL: Record<PublicSourceId, number> = {
@@ -55,6 +61,26 @@ export interface PlatformDecision {
   slowestKeywordMinutes: number;
   keywordConflict: string | null;
   budgetPaced: boolean;
+  model: PlatformModelDecision;
+  importanceShare: number;
+  risk: CollectionRisk;
+  riskDetail: string | null;
+  /** Brand-safe interval per query group (minutes), for out-of-turn checks of rotating searches at risk. */
+  groupSafeMinutes: Map<string, number | null>;
+}
+
+interface ArrivalRow {
+  query_id: string; raw_alpha: number; raw_beta: number; rel_alpha: number; rel_beta: number;
+  observations: number; saturations: number; exposure_hours: number; last_observed_at: string | null;
+}
+
+export function estimateFromRow(r: ArrivalRow | undefined): GroupEstimate {
+  if (!r) return emptyEstimate();
+  return {
+    raw: { alpha: Number(r.raw_alpha), beta: Number(r.raw_beta) }, rel: { alpha: Number(r.rel_alpha), beta: Number(r.rel_beta) },
+    observations: r.observations, saturations: r.saturations, exposureHours: Number(r.exposure_hours),
+    lastObservedAt: r.last_observed_at ? new Date(r.last_observed_at) : null,
+  };
 }
 
 interface ScheduleCtx {
@@ -81,7 +107,8 @@ export async function refreshActivity(
   opts: { exceptQueryId?: string; now?: Date } = {},
 ): Promise<Map<PublicSourceId, PlatformDecision>> {
   const now = opts.now ?? new Date();
-  const [{ data: stats, error }, { data: ctx }, { data: boosts }, { data: prevRows }, { data: queryRows }] = await Promise.all([
+  const since28 = new Date(now.getTime() - 28 * 86_400_000).toISOString();
+  const [{ data: stats, error }, { data: ctx }, { data: boosts }, { data: prevRows }, { data: queryRows }, { data: arrivalRows }, { data: hours }] = await Promise.all([
     admin.rpc("svc_platform_activity_stats", { p_product_id: productId }),
     admin.rpc("svc_schedule_context", { p_product_id: productId, p_platform: "reddit" }),
     admin.from("launch_boosts").select("platforms, ends_at").eq("product_id", productId).is("canceled_at", null)
@@ -90,6 +117,13 @@ export async function refreshActivity(
     admin.from("monitoring_queries")
       .select("id, provider, stream, params, interval_minutes, next_run_at, last_success_at, consecutive_failures")
       .eq("product_id", productId).eq("enabled", true).is("competitor_id", null),
+    admin.from("arrival_estimates")
+      .select("query_id, raw_alpha, raw_beta, rel_alpha, rel_beta, observations, saturations, exposure_hours, last_observed_at")
+      .eq("product_id", productId),
+    // Hour-of-day profile (product-wide; per-platform samples are too small).
+    admin.from("mentions").select("published_at").eq("product_id", productId).eq("dedup_kind", "original")
+      .in("relevance_status", ["relevant", "user_relevant"]).eq("published_at_estimated", false)
+      .gte("published_at", since28).order("published_at", { ascending: false }).limit(5000),
   ]);
   if (error) throw new Error(`Couldn't load activity stats (${error.code ?? "db"})`);
   const c = ctx as ScheduleCtx | null;
@@ -103,6 +137,10 @@ export async function refreshActivity(
   const planMin = devFloor !== null ? Math.min(c.plan_min_minutes, devFloor) : c.plan_min_minutes;
   const planName = devFloor !== null && devFloor < c.plan_min_minutes ? `${c.plan_name} + development entitlement` : c.plan_name;
   const prev = new Map(((prevRows ?? []) as PreviousRow[]).map((r) => [r.platform, r]));
+  const arrival = new Map(((arrivalRows ?? []) as ArrivalRow[]).map((r) => [r.query_id, r]));
+  const byHour = new Array<number>(24).fill(0);
+  for (const m of (hours ?? []) as Array<{ published_at: string }>) byHour[new Date(m.published_at).getUTCHours()]!++;
+  const profile = hourProfile(byHour);
   const boostEnds = new Map<string, Date>();
   for (const b of (boosts ?? []) as Array<{ platforms: string[]; ends_at: string }>) {
     for (const p of b.platforms) {
@@ -114,6 +152,7 @@ export async function refreshActivity(
   const rows = ((stats ?? []) as StatsRow[]).filter((r) => isPublicSource(r.platform));
   const scored = rows.map((r) => {
     const platform = r.platform as PublicSourceId;
+    // Measured signals, kept for the explanation panel (no longer mapped to intervals).
     const assessment = assessActivity({
       n24: r.n24, prev24: r.prev24, n7: r.n7, n28: r.n28, authors7: r.authors7, authored7: r.authored7,
       engHistory: r.eng_history, engHigh7: r.eng_high7, spikeRecent: r.spike_recent,
@@ -123,23 +162,37 @@ export async function refreshActivity(
     }, { now, inherentlyPartial: INHERENTLY_PARTIAL.has(platform) });
     return { platform, assessment, n7: r.n7, row: r };
   });
-  const ranks = rankPlatforms(scored);
+
+  // Activity importance: this product's own platform mix (28 days), smoothed.
+  const shares = importanceShares(Object.fromEntries(scored.map((s) => [s.platform, s.row.n28])));
 
   const target = Number(c.keyword_target_minutes ?? DEFAULT_KEYWORD_TARGET_MINUTES);
   const decided = scored.map((s) => {
     const p = prev.get(s.platform);
     const end = boostEnds.get(s.platform);
     const paid = Boolean(adapters[s.platform].paid);
-    const decision = decidePlatformInterval({
-      now, assessment: s.assessment, paid,
-      planName, planMinMinutes: planMin,
-      sourceMinMinutes: SOURCE_MIN_INTERVAL[s.platform],
-      maxIntervalMinutes: PLATFORM_MAX_INTERVAL[s.platform],
+    const mine = queries.filter((q) => q.provider === s.platform);
+    const groups: GroupModel[] = mine.map((q) => {
+      const cap = planningCapacity(collectionProfile(s.platform, q.stream));
+      return { id: q.id, estimate: estimateFromRow(arrival.get(q.id)), capacity: cap.capacity, resumable: cap.resumable, turns: q.params?.rotation ? rotationTurns(q.params.rotation) : 1 };
+    });
+    const model = decidePlatformIntervalV2({
+      now, paid, planName, groups, importanceShare: shares[s.platform] ?? null, platformsMonitored: scored.length, profile,
+      confidence: s.assessment.confidence, spikeRecent: s.assessment.spikeRecent, auditMissed: s.assessment.auditMissed,
+      planMinMinutes: planMin, sourceMinMinutes: SOURCE_MIN_INTERVAL[s.platform], maxIntervalMinutes: PLATFORM_MAX_INTERVAL[s.platform],
       boost: end ? { minMinutes: c.boost_min_minutes, endsAt: end } : null,
       previous: p ? { recommended: p.recommended_interval, pendingSince: date(p.lengthen_pending_since) } : null,
     });
+    // The page shows "learning" while the arrival model is (it replaces the score's discovery phase).
+    if (model.learning) s.assessment.phase = "discovery";
+    else if (s.assessment.phase === "discovery") {
+      s.assessment.phase = "ranked";
+      s.assessment.discovery = null;
+    }
+    const decision: IntervalDecision = {
+      recommended: model.recommended, interval: model.interval, planLimited: model.planLimited, pendingSince: model.pendingSince, reasons: model.reasons,
+    };
     // Plan's keyword refresh target: shorten (never below plan/source floors) so the slowest keyword meets it.
-    const mine = queries.filter((q) => q.provider === s.platform);
     const rotations = mine.map((q) => q.params?.rotation).filter((r): r is Rotation => Boolean(r));
     const floor = Math.max(planMin, SOURCE_MIN_INTERVAL[s.platform] ?? 0);
     const t = mine.length && !end
@@ -153,10 +206,11 @@ export async function refreshActivity(
       decision.reasons.push(`Checked every ${formatInterval(t.interval)} so every keyword is searched within the ${planName} plan's ${formatInterval(target)} refresh target`);
     }
     const turns = Math.max(1, ...rotations.map((r) => rotationTurns(r)));
-    return { s, p, paid, decision, mine, turns, conflict: t?.conflict ?? null, paced: false };
+    return { s, p, paid, decision, model, mine, groups, turns, floor, conflict: t?.conflict ?? null, paced: false };
   });
 
-  // Paid-source pacing: the projected spend must fit this product's share of the plan's monthly paid allowance.
+  // Paid-source pacing: the projected spend must fit this product's share of the plan's monthly paid
+  // allowance — but never by slowing a search past its brand-safe interval (that would lose mentions).
   const paidDecided = decided.filter((d) => d.paid && d.mine.length && adapters[d.s.platform].configured().ok);
   if (paidDecided.length && Number(c.paid_allowance_usd ?? 0) > 0) {
     const { data: bctx } = await admin.rpc("svc_paid_budget_context", { p_product_id: productId });
@@ -164,9 +218,14 @@ export async function refreshActivity(
     if (b) {
       const remaining = Math.max(0, Number(b.allowance_usd) - Number(b.spent_usd)) / Math.max(1, Number(b.paid_products));
       const minutesLeft = Math.max(60, (new Date(b.month_end).getTime() - now.getTime()) / 60_000);
-      const pacing = paceForBudget(paidDecided.map((d) => ({
-        platform: d.s.platform, interval: d.decision.interval,
-        costPerCheckUsd: estimateCheckCostUsd(d.s.platform, d.mine.map((q) => ({ stream: q.stream, rotation: q.params?.rotation ?? null })), b.prices ?? {}),
+      const groupsOf = (d: (typeof paidDecided)[number]) => d.mine.map((q, k) => ({
+        stream: q.stream, rotation: q.params?.rotation ?? null,
+        rateUpperPerHour: upperRate(d.groups[k]!.estimate.raw), learning: d.model.learning,
+      }));
+      const pacing = paceForBudgetSafely(paidDecided.map((d) => ({
+        platform: d.s.platform, interval: d.decision.interval, safeMinutes: d.model.safeMinutes,
+        costPerCheckUsd: estimateCheckCostV2(d.s.platform, groupsOf(d), d.decision.interval, b.prices ?? {}),
+        costAt: (iv: number) => estimateCheckCostV2(d.s.platform, groupsOf(d), iv, b.prices ?? {}),
       })), remaining, minutesLeft);
       for (const d of paidDecided) {
         const paced = pacing.intervals.get(d.s.platform)!;
@@ -179,44 +238,55 @@ export async function refreshActivity(
             ? `Keyword refresh target (${formatInterval(target)}) not met on ${adapters[d.s.platform].name}: each keyword is searched every ${formatInterval(slowest)} to stay within the plan's paid-source allowance.`
             : d.conflict;
         }
+        if (pacing.blockedBySafety.has(d.s.platform)) {
+          d.decision.reasons.push("Not slowed further to save budget: busier checks would let results overflow and be missed");
+        }
         if (!pacing.fits) {
-          d.decision.reasons.push("The paid-source allowance may run out before the month ends; further paid checks would then wait for it to renew");
+          d.decision.reasons.push("The paid-source allowance may run out before the period ends; paid checks beyond it are refused and shown as coverage gaps until it renews");
         }
       }
     }
   }
   if (c.allowance_paused_until) {
     for (const d of decided.filter((x) => x.paid)) {
-      d.decision.reasons.push(`Paused: this month's mention allowance is used up (paid platforms resume ${new Date(c.allowance_paused_until).toISOString().slice(0, 10)})`);
+      d.decision.reasons.push(`Paused: this period's mention allowance is used up (paid platforms resume ${new Date(c.allowance_paused_until).toISOString().slice(0, 10)})`);
     }
   }
 
+  const ranks = rankByImportance(shares, (pl) => decided.some((d) => d.s.platform === pl && !d.model.learning));
   const upserts: Array<Record<string, unknown>> = [];
   const changes: Array<Record<string, unknown>> = [];
-  for (const { s, p, decision, turns, conflict, paced, mine } of decided) {
+  for (const { s, p, decision, model, turns, conflict, paced, mine, floor } of decided) {
     const rank = ranks.get(s.platform) ?? null;
     const slowest = decision.interval * turns;
+    const { risk, detail } = assessRisk(decision.interval, model.safeMinutes, floor);
+    const share = shares[s.platform] ?? 0;
     out.set(s.platform, {
       platform: s.platform, rank, assessment: s.assessment, decision, n7: s.n7,
       keywordTargetMinutes: target, slowestKeywordMinutes: slowest, keywordConflict: conflict, budgetPaced: paced,
+      model, importanceShare: share, risk, riskDetail: detail,
+      groupSafeMinutes: new Map(model.groups.map((g) => [g.id, g.safeMinutes])),
     });
     upserts.push({
       product_id: productId, workspace_id: c.workspace_id, platform: s.platform,
-      phase: s.assessment.phase, score: s.assessment.score, rank,
+      phase: s.assessment.phase, score: Math.round(share * 100), rank,
       components: s.assessment.components, discovery: s.assessment.discovery, mentions_24h: s.row.n24, mentions_7d: s.row.n7,
       baseline_weekly: s.assessment.baselineWeekly, growth_pct: s.assessment.growthPct, trend: s.assessment.trend,
       coverage_confidence: s.assessment.confidence, complete_share: Math.max(0, Math.min(1, Number(s.row.complete_share7))),
-      recommended_interval: decision.recommended, interval_minutes: decision.interval, plan_limited: decision.planLimited,
+      recommended_interval: Math.max(INTERVAL_STEPS[0], Math.min(1440, decision.recommended)), interval_minutes: decision.interval, plan_limited: decision.planLimited,
       lengthen_pending_since: decision.pendingSince?.toISOString() ?? null,
       last_success_at: s.row.last_success_at, next_run_at: s.row.next_run_at,
       reasons: [...s.assessment.notes, ...decision.reasons], computed_at: now.toISOString(),
       keyword_target_minutes: target, slowest_keyword_minutes: mine.length ? slowest : null,
       keyword_conflict: conflict, budget_paced: paced,
+      importance_share: Math.max(0, Math.min(1, share)), arrival_per_day: model.arrivalPerDay, rate_upper_per_hour: model.rateUpperPerHour,
+      safe_interval_minutes: model.safeMinutes !== null ? Math.max(1, model.safeMinutes) : null,
+      collection_risk: risk, risk_detail: detail, uncertainty: model.uncertainty, model: "arrival_v2",
     });
     if (p && p.interval_minutes !== decision.interval) {
       changes.push({
         workspace_id: c.workspace_id, product_id: productId, platform: s.platform,
-        from_minutes: p.interval_minutes, to_minutes: decision.interval, score: s.assessment.score, reasons: decision.reasons,
+        from_minutes: p.interval_minutes, to_minutes: decision.interval, score: Math.round(share * 100), reasons: decision.reasons,
       });
     }
   }
@@ -227,6 +297,18 @@ export async function refreshActivity(
   if (changes.length) await admin.from("monitoring_interval_changes").insert(changes);
   await applySchedules(admin, queries, out, opts.exceptQueryId, now);
   return out;
+}
+
+/**
+ * A search's own interval: the platform interval × its rotation turns, but a
+ * rotating search whose results would overflow before its turn comes round
+ * gets earlier, out-of-turn checks (never faster than the platform floor).
+ */
+export function groupIntervalMinutes(d: Pick<PlatformDecision, "decision" | "groupSafeMinutes">, queryId: string, rotation: Rotation | null, floorMinutes: number): { minutes: number; outOfTurn: boolean } {
+  const base = keywordIntervalMinutes(d.decision.interval, rotation);
+  const safe = d.groupSafeMinutes.get(queryId) ?? null;
+  if (!rotation || safe === null || safe >= base) return { minutes: base, outOfTurn: false };
+  return { minutes: Math.max(d.decision.interval, floorMinutes, snapDown(safe)), outOfTurn: true };
 }
 
 /** Applies platform intervals to their query groups (shorter intervals take effect at once). */
@@ -240,13 +322,19 @@ async function applySchedules(
     if (!d) continue;
     const a = adapters[q.provider];
     const runnable = a.configured().ok && !(a.paid && !paidCollectionEnabled());
-    const rotation = q.params?.rotation ?? null;
-    // A search that takes turns with others refreshes every (platform interval × turns).
-    const interval = keywordIntervalMinutes(d.decision.interval, rotation);
+    let rotation = q.params?.rotation ?? null;
+    // A search that takes turns with others refreshes every (platform interval × turns),
+    // unless it would overflow before its turn: then it is checked out of turn.
+    const g = groupIntervalMinutes(d, q.id, rotation, d.decision.interval);
+    const interval = g.minutes;
     const last = date(q.last_success_at);
     let next = new Date(q.next_run_at);
     const reasons = [...d.assessment.notes, ...d.decision.reasons];
-    if (rotation) reasons.push(`Takes turns with ${rotation.rotating - 1} other search${rotation.rotating === 2 ? "" : "es"} (${rotation.slots} per check)`);
+    if (rotation && !g.outOfTurn) reasons.push(`Takes turns with ${rotation.rotating - 1} other search${rotation.rotating === 2 ? "" : "es"} (${rotation.slots} per check)`);
+    if (g.outOfTurn) {
+      reasons.push(`Busy search: checked every ${formatInterval(interval)}, ahead of its turn, so its results don't overflow`);
+      rotation = null;
+    }
     if (runnable && q.consecutive_failures === 0 && rotation) {
       // New or re-timed rotating search: move to its own time slot so turns stay fair.
       if (q.interval_minutes !== interval || !last) next = rotationNextRun(now, d.decision.interval, rotation);

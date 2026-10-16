@@ -127,10 +127,12 @@ export function createGithubAdapter(token?: string): SourceAdapter {
       let complete = true;
       let reason: string | undefined;
       let rateLimit: SearchResult["rateLimit"];
+      let pagesRequested = 0;
 
       for (let page = 1; page <= req.maxPages; page++) {
         const params = new URLSearchParams({ q, sort: "created", order: "desc", per_page: String(PER_PAGE), page: String(page) });
         const res = await ctx.request({ url: `${API}/search/issues?${params}`, endpoint: "search/issues", headers, signal: req.signal });
+        pagesRequested++;
         await check(res);
         const reset = numHeader(res, "x-ratelimit-reset");
         rateLimit = {
@@ -156,7 +158,7 @@ export function createGithubAdapter(token?: string): SourceAdapter {
           break;
         }
       }
-      return { items: [...items.values()], complete, incompleteReason: reason, rateLimit };
+      return { items: [...items.values()], complete, incompleteReason: reason, rateLimit, pagesRequested };
     },
 
     async validateCredentials(ctx) {
