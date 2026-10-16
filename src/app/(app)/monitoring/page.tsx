@@ -83,6 +83,8 @@ export default async function MonitoringPage() {
   const boosts = o.boosts.filter((b) => !b.canceled_at && new Date(b.ends_at).getTime() > now);
   const pastBoosts = o.boosts.filter((b) => b.canceled_at || new Date(b.ends_at).getTime() <= now).slice(0, 5);
   const eff = o.summary.efficiency;
+  const conflicts = active.filter((p) => p.keywordConflict).map((p) => ({ id: p.id, text: p.keywordConflict! }));
+  const pausedKeywords = o.keywordCoverage.filter((k) => k.paused).length;
 
   return (
     <>
@@ -101,10 +103,17 @@ export default async function MonitoringPage() {
             <CardDescription>
               Nothing to configure. Each platform gets an activity score from the mentions SignalForge has collected, and busier platforms
               are checked more often. Intervals speed up quickly when activity rises and slow down only gradually, never while
-              coverage is incomplete. Your {o.plan.name} plan checks each platform at most every {formatInterval(o.plan.minIntervalMinutes)}.
+              coverage is incomplete. Your {o.plan.name} plan checks each platform at most every {formatInterval(o.plan.minIntervalMinutes)}
+              {" "}and targets searching every keyword within {formatInterval(o.plan.keywordTargetMinutes)} (a scheduling target, not a guaranteed discovery time).
               {o.paid.includedInPlan ? " Paid sources are included in your plan." : ""}
               {paidNote ? ` ${paidNote}` : ""}
             </CardDescription>
+            {o.allowancePausedUntil && (
+              <p className="mt-1 text-[13px] text-warning" role="status">
+                This month&apos;s mention allowance is used up. Paid platforms are paused and free platforms are checked at most daily until it
+                renews on {formatUtc(o.allowancePausedUntil)}. New mentions found meanwhile are held, not discarded. <Link href="/settings/billing" className="underline">Plan &amp; usage</Link>
+              </p>
+            )}
             {o.plan.devFloorMinutes !== null && (
               <p className="mt-1 text-xs text-warning">
                 Development entitlement active on this server: this workspace may be checked as often as every {formatInterval(o.plan.devFloorMinutes)}.
@@ -163,9 +172,25 @@ export default async function MonitoringPage() {
             <CardDescription>
               Every keyword on every monitored platform that can search it. Where a platform can&apos;t run all its searches each check,
               keywords take turns and keep their own checkpoints, so each turn re-searches everything since the last one. Refresh times are per keyword.
+              {" "}Your {o.plan.name} plan targets every keyword within {formatInterval(o.plan.keywordTargetMinutes)} and includes {o.plan.maxKeywords} active
+              keyword{o.plan.maxKeywords === 1 ? "" : "s"} per workspace.
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="grid gap-3">
+            {conflicts.length > 0 && (
+              <div className="rounded-md border border-warning/40 bg-warning/5 p-3 text-xs" role="note">
+                <p className="mb-1 font-medium">Where the keyword refresh target can&apos;t be met</p>
+                <ul className="grid gap-1" aria-label="Keyword schedule conflicts">
+                  {conflicts.map((c) => <li key={c.id}>{c.text}</li>)}
+                </ul>
+              </div>
+            )}
+            {pausedKeywords > 0 && (
+              <p className="text-xs text-warning">
+                {pausedKeywords} keyword{pausedKeywords === 1 ? " is" : "s are"} paused: over your {o.plan.name} plan&apos;s keyword allowance
+                ({o.plan.maxKeywords} active per workspace). They are kept; turn others off or <Link href="/settings/billing" className="underline">change plan</Link> to monitor them.
+              </p>
+            )}
             {o.keywordCoverage.length === 0 ? (
               <p className="text-[13px] text-muted-foreground">No keywords yet. Add them in <Link href="/settings/products" className="underline">product settings</Link>.</p>
             ) : (
@@ -263,6 +288,15 @@ function KeywordCoverageList({ rows }: { rows: KeywordCoverageRow[] }) {
         const fastest = intervals.length ? Math.min(...intervals) : null;
         const slowest = intervals.length ? Math.max(...intervals) : null;
         const rotating = searched.some((p) => p.status === "rotating");
+        if (k.paused) {
+          return (
+            <li key={k.term} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-[13px]">
+              <span className="font-medium">{k.term}</span>
+              <Badge>{KIND_LABEL[k.kind] ?? k.kind}</Badge>
+              <Badge tone="warning">Paused — over your plan&apos;s keyword allowance</Badge>
+            </li>
+          );
+        }
         return (
           <li key={k.term}>
             <details className="group">

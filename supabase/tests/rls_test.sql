@@ -80,11 +80,16 @@ select t.throws(
   format($$select public.replace_product_aliases(%L, '[{"term":"Linear","kind":"exact_name","is_ambiguous":true}]')$$, (select v from ids where k = 'p_a')),
   'ambiguous alias without context terms rejected', 'ambiguous_needs_context');
 
+select t.throws(
+  format($$select public.replace_product_aliases(%L, '[{"term":"FocusFlow","kind":"exact_name"},{"term":"focusflow.example","kind":"domain"}]')$$, (select v from ids where k = 'p_a')),
+  'free plan allows 1 active keyword', 'includes 1 active keyword');
 select t.ok(public.replace_product_aliases((select v from ids where k = 'p_a'),
   '[{"term":"FocusFlow","kind":"exact_name"},
-    {"term":"focusflow.example","kind":"domain"},
-    {"term":"Flow","kind":"abbreviation","is_ambiguous":true,"context_terms":["pomodoro","timer"]}]') = 3,
-  'replace_product_aliases inserts valid aliases');
+    {"term":"focusflow.example","kind":"domain","enabled":false},
+    {"term":"Flow","kind":"abbreviation","is_ambiguous":true,"context_terms":["pomodoro","timer"],"enabled":false}]') = 3,
+  'replace_product_aliases inserts valid aliases (inactive keywords do not count toward the allowance)');
+select t.throws($$update public.product_aliases set enabled = true where term = 'Flow'$$,
+  'enabling a keyword beyond the allowance is refused', 'includes 1 active keyword');
 select t.ok(public.replace_product_aliases((select v from ids where k = 'p_a'),
   '[{"term":"FocusFlow","kind":"exact_name"}]') = 1, 'replace_product_aliases replaces, not appends');
 select t.ok((select count(*) from public.product_aliases) = 1, 'alias count after replace');
@@ -140,7 +145,8 @@ reset role;
 -- ===================================================================== anon
 select set_config('request.jwt.claims', '{"role":"anon"}', false);
 set role anon;
-select t.ok((select count(*) from public.plans) = 4, 'anon can read public plans');
+select t.ok((select string_agg(id || ':' || price_cents_monthly, ',' order by sort_order) from public.plans) = 'free:0,pro:10000,scale:30000',
+  'anon can read public plans: Free $0, Pro $100, Scale $300 (retired Starter/Business hidden)');
 select t.throws($$select * from public.products$$, 'anon cannot read products', 'permission denied');
 select t.throws($$select * from public.workspaces$$, 'anon cannot read workspaces', 'permission denied');
 select t.throws($$select public.create_workspace('anon ws')$$, 'anon cannot create workspaces', 'permission denied');
@@ -471,17 +477,126 @@ select t.ok((select engagement_score from public.mentions where product_id = (se
 select t.ok((select amount from public.usage_counters where workspace_id = (select v from ids where k = 'ws_a') and metric = 'mentions_ingested') = 6,
   're-seen items do not count toward usage');
 
--- Monthly limit
+-- Mention allowance: interim billable policy (original + rule status "relevant", or marked relevant).
+reset role;
+create temp table bw as select v as ws, (select v from ids where k = 'p_a') as p from ids where k = 'ws_a';
+grant select on bw to authenticated, service_role;
+select t.ok((select mentions_consumed from public.mention_usage_periods where workspace_id = (select ws from bw)) = 3,
+  'billable: 4 relevant originals, minus 1 marked not relevant (refund); duplicates, reposts and re-seen items never count');
+select t.ok((select count(*) from public.mentions where product_id = (select p from bw) and billed_period_start is not null) = 3
+  and (select billed_period_start from public.mentions where product_id = (select p from bw) and external_id = 's2') is null,
+  'billed mentions carry their period; reposts are not billed');
+select t.ok((select period_start from public.mention_usage_periods where workspace_id = (select ws from bw))
+  = (select current_period_start from public.subscriptions where workspace_id = (select ws from bw)),
+  'usage period follows the subscription period, not the calendar month');
+
 insert into public.plans (id, name, max_products, monthly_mention_limit, history_days, monitoring_interval_minutes, is_public)
-values ('t_tiny', 'Tiny', 10, 7, 30, 60, false);
-update public.subscriptions set plan_id = 't_tiny' where workspace_id = (select v from ids where k = 'ws_a');
+values ('t_tiny', 'Tiny', 10, 4, 30, 60, false);
+update public.subscriptions set plan_id = 't_tiny' where workspace_id = (select ws from bw);
+set role service_role;
 create temp table r3 as select public.svc_ingest_mentions((select v from ids where k = 'p_a'), 'github', jsonb_build_array(
-  jsonb_build_object('external_id', 'g1', 'source_url', 'https://github.com/o/r/issues/1', 'published_at', '2026-10-05T00:00:00Z'),
-  jsonb_build_object('external_id', 'g2', 'source_url', 'https://github.com/o/r/issues/2', 'published_at', '2026-10-05T00:00:00Z'),
-  jsonb_build_object('external_id', 'g3', 'source_url', 'https://github.com/o/r/issues/3', 'published_at', '2026-10-05T00:00:00Z'))) as r;
-select t.ok((select (r ->> 'inserted')::int from r3) = 1 and (select (r ->> 'over_limit')::int from r3) = 2, 'monthly mention limit stops new rows and reports the overflow');
-update public.subscriptions set plan_id = 'pro' where workspace_id = (select v from ids where k = 'ws_a');
+  jsonb_build_object('external_id', 'g1', 'source_url', 'https://github.com/o/r/issues/1', 'published_at', '2026-10-05T00:00:00Z', 'relevance_status', 'relevant'),
+  jsonb_build_object('external_id', 'g2', 'source_url', 'https://github.com/o/r/issues/2', 'published_at', '2026-10-05T00:00:00Z', 'relevance_status', 'relevant'),
+  jsonb_build_object('external_id', 'g3', 'source_url', 'https://github.com/o/r/issues/3', 'published_at', '2026-10-05T00:00:00Z', 'relevance_status', 'relevant'),
+  jsonb_build_object('external_id', 'g4', 'source_url', 'https://github.com/o/r/issues/4', 'published_at', '2026-10-05T00:00:00Z', 'relevance_status', 'pending'),
+  jsonb_build_object('external_id', 'g5', 'source_url', 'https://github.com/o/r/issues/5', 'published_at', '2026-10-05T00:00:00Z', 'relevance_status', 'irrelevant'))) as r;
+reset role;
+select t.ok((select (r ->> 'inserted')::int from r3) = 3 and (select (r ->> 'billable')::int from r3) = 1
+  and (select (r ->> 'held')::int from r3) = 2 and (select (r ->> 'over_limit')::int from r3) = 2,
+  'at 100 %: further billable mentions are held, not stored or counted; needs-review and excluded items are stored unbilled');
+select t.ok((select mentions_consumed from public.mention_usage_periods where workspace_id = (select ws from bw)) = 4
+  and (select exhausted_at from public.mention_usage_periods where workspace_id = (select ws from bw)) is not null
+  and (select mentions_held from public.mention_usage_periods where workspace_id = (select ws from bw)) = 2,
+  'consumption stops at the allowance and the exhaustion time is recorded');
+select t.ok((select count(*) from public.mention_overflow where workspace_id = (select ws from bw)) = 2
+  and not exists (select 1 from public.mentions where product_id = (select p from bw) and external_id in ('g2', 'g3')),
+  'held mentions are kept in the bounded overflow queue, not discarded');
+set role service_role;
+create temp table r4 as select public.svc_ingest_mentions((select v from ids where k = 'p_a'), 'github', jsonb_build_array(
+  jsonb_build_object('external_id', 'g2', 'source_url', 'https://github.com/o/r/issues/2', 'published_at', '2026-10-05T00:00:00Z', 'relevance_status', 'relevant'))) as r;
+reset role;
+select t.ok((select (r ->> 'already_held')::int from r4) = 1 and (select mentions_held from public.mention_usage_periods where workspace_id = (select ws from bw)) = 2,
+  're-finding a held mention does not count it twice');
+
+-- Paid collection pauses while the allowance is used up; free sources slow to daily.
+insert into public.monitoring_queries (workspace_id, product_id, provider, query, params, enabled, managed_by, next_run_at) values
+  ((select ws from bw), (select p from bw), 'reddit', 'FocusFlow allowance test', '{"terms":["FocusFlow"]}', true, 'legacy', now() - interval '1 minute');
+select t.ok(private.schedule_due_queries(array['reddit']) = 0, 'no paid job is enqueued while the allowance is used up');
+select t.ok((select next_run_at from public.monitoring_queries where query = 'FocusFlow allowance test')
+    = (select period_end from public.mention_usage_periods where workspace_id = (select ws from bw)),
+  'paid queries are not scheduled while the mention allowance is used up; they resume at renewal');
+select t.ok((public.svc_schedule_context((select p from bw), 'reddit') ->> 'allowance_paused_until') is not null,
+  'schedule context reports the allowance pause');
+
+select t.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+select t.throws($$select * from public.mention_overflow$$, 'held mentions are not readable by users (no allowance bypass)', 'permission denied');
+select t.ok((public.workspace_usage((select ws from bw)) ->> 'mentions_remaining')::int = 0
+  and (public.workspace_usage((select ws from bw)) ->> 'mention_allowance')::int = 4
+  and (public.workspace_usage((select ws from bw)) ->> 'mentions_held')::int = 2,
+  'members see allowance, consumption, remaining and held counts');
+select t.throws($$update public.mention_usage_periods set mentions_consumed = 0$$, 'users cannot change their usage', 'permission denied');
+select t.throws($$update public.mentions set billed_period_start = null$$, 'users cannot unbill mentions directly', 'permission denied');
+-- Marking a billed mention not relevant refunds it in the current period.
+update public.mentions set relevance_status = 'user_irrelevant' where external_id = 'g1';
+reset role;
+select t.ok((select mentions_consumed from public.mention_usage_periods where workspace_id = (select ws from bw)) = 3
+  and (select exhausted_at from public.mention_usage_periods where workspace_id = (select ws from bw)) is null,
+  'relevance change: marking not relevant refunds the mention and lifts the exhaustion');
+select t.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+select t.ok(public.release_held_mentions((select ws from bw)) = 1, 'admin delivers held mentions up to the remaining allowance');
+reset role;
+select t.ok(exists (select 1 from public.mentions where product_id = (select p from bw) and external_id = 'g2' and billed_period_start is not null)
+  and (select count(*) from public.mention_overflow where workspace_id = (select ws from bw)) = 1
+  and (select mentions_consumed from public.mention_usage_periods where workspace_id = (select ws from bw)) = 4,
+  'released mention is stored and billed to the current period; the rest stays held');
+-- Needs-review promoted to relevant counts only while allowance remains.
+select t.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+update public.mentions set relevance_status = 'user_relevant' where external_id = 'g4';
+reset role;
+select t.ok((select billed_period_start from public.mentions where external_id = 'g4') is null
+  and (select mentions_consumed from public.mention_usage_periods where workspace_id = (select ws from bw)) = 4,
+  'a mention marked relevant after the allowance is used up is not billed (allowance never exceeded)');
+-- Previous periods are never altered.
+update public.mentions set billed_period_start = '2020-01-01' where external_id = 'a3' and product_id = (select p from bw);
+select t.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+update public.mentions set relevance_status = 'user_irrelevant' where external_id = 'a3';
+reset role;
+select t.ok((select billed_period_start from public.mentions where external_id = 'a3' and product_id = (select p from bw)) = '2020-01-01'
+  and (select mentions_consumed from public.mention_usage_periods where workspace_id = (select ws from bw)) = 4,
+  'a mention billed in an earlier period is not refunded or moved');
+
+-- Upgrade raises the allowance at once and resumes paid scheduling; downgrade lowers it.
+update public.subscriptions set plan_id = 'pro' where workspace_id = (select ws from bw);
+select private.lock_usage_period((select ws from bw));
+select t.ok((public.svc_workspace_usage((select ws from bw)) ->> 'mention_allowance')::int = 15000
+  and (select exhausted_at from public.mention_usage_periods where workspace_id = (select ws from bw)) is null
+  and private.allowance_exhausted_until((select ws from bw)) is null,
+  'upgrade: Pro allowance (15,000) applies immediately in the same period');
+update public.subscriptions set plan_id = 't_tiny' where workspace_id = (select ws from bw);
+select t.ok((private.lock_usage_period((select ws from bw))).exhausted_at is not null, 'downgrade below consumption: allowance exhausted, nothing deleted');
+update public.subscriptions set plan_id = 'pro' where workspace_id = (select ws from bw);
+select private.lock_usage_period((select ws from bw));
+update public.monitoring_queries set enabled = false where query = 'FocusFlow allowance test';
 delete from public.plans where id = 't_tiny';
+
+-- Billing period boundaries (anchored on the subscription's start day).
+insert into public.workspaces (id, name, slug) values ('00000000-0000-0000-0000-0000000000f1', 'Period test', 'period-test');
+insert into ids values ('ws_period', '00000000-0000-0000-0000-0000000000f1');
+insert into public.subscriptions (workspace_id, plan_id, current_period_start, current_period_end)
+values ('00000000-0000-0000-0000-0000000000f1', 'pro', '2026-01-31T10:00:00Z', '2026-02-28T10:00:00Z');
+select t.ok((select (period_start, period_end) from private.billing_period((select v from ids where k = 'ws_period'), '2026-02-10T00:00:00Z'))
+  = ('2026-01-31T10:00:00Z'::timestamptz, '2026-02-28T10:00:00Z'::timestamptz), 'inside the stored period: the stored period');
+select t.ok((select (period_start, period_end) from private.billing_period((select v from ids where k = 'ws_period'), '2026-03-15T00:00:00Z'))
+  = ('2026-02-28T10:00:00Z'::timestamptz, '2026-03-31T10:00:00Z'::timestamptz), 'after it: monthly steps keep the 31st anchor (Feb 28 → Mar 31)');
+select t.ok((select (period_start, period_end) from private.billing_period((select v from ids where k = 'ws_period'), '2026-03-31T10:00:00Z'))
+  = ('2026-03-31T10:00:00Z'::timestamptz, '2026-04-30T10:00:00Z'::timestamptz), 'period boundary: the renewal instant starts the next period');
+select t.ok((select (period_start, period_end) from private.billing_period((select v from ids where k = 'ws_period'), '2026-03-31T09:59:59Z'))
+  = ('2026-02-28T10:00:00Z'::timestamptz, '2026-03-31T10:00:00Z'::timestamptz), 'one second before renewal is still the previous period');
+set role service_role;
 select t.throws($$select public.svc_ingest_mentions(gen_random_uuid(), 'github', '[]')$$, 'ingest into unknown product fails', 'not found');
 reset role;
 
@@ -676,7 +791,7 @@ select t.ok((public.svc_reserve_api_spend('reddit', 'reddit.posts', 1, 'search',
   'workspace_id', (select v from ids where k = 'ws_a'), 'product_id', (select v from ids where k = 'p_a'), 'boost_id', (select v from ids where k = 'boost_paid')))) ->> 'reason') = 'workspace_budget_exhausted',
   'boost paid-check cap stops further paid calls');
 select t.ok((public.svc_schedule_context((select v from ids where k = 'p_a'), 'hackernews') -> 'boost' ->> 'id')::uuid = (select v from ids where k = 'boost_a')
-  and (public.svc_schedule_context((select v from ids where k = 'p_a'), 'hackernews') ->> 'plan_min_minutes')::int = 360
+  and (public.svc_schedule_context((select v from ids where k = 'p_a'), 'hackernews') ->> 'plan_min_minutes')::int = 60
   and public.svc_schedule_context((select v from ids where k = 'p_a'), 'hackernews') ->> 'mode' = 'priority',
   'schedule context exposes plan floor, mode and the active boost for that platform');
 select t.ok(public.svc_schedule_context((select v from ids where k = 'p_a'), 'github') -> 'boost' = 'null'::jsonb,

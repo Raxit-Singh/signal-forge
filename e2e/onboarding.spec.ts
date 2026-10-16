@@ -34,6 +34,9 @@ test("registration → verification → workspace → product → keywords → s
 
   // Suggested keywords are editable; an ambiguous one can't be enabled without context.
   await expect(page.getByRole("checkbox", { name: "Listen for FixtureFlow", exact: true })).toBeChecked();
+  // Free plan: one active keyword; further suggestions start switched off with the reason.
+  await expect(page.getByRole("checkbox", { name: "Listen for fixtureflow.example" })).not.toBeChecked();
+  await expect(page.getByText(/plan allows 1/)).toBeVisible();
   await page.getByPlaceholder("Add a keyword, handle or misspelling").fill("timer");
   await page.getByRole("button", { name: "Add" }).click();
   const timer = page.getByRole("checkbox", { name: "Listen for timer" });

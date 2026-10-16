@@ -11,7 +11,8 @@ import { isLegacySource, PUBLIC_SOURCES } from "@/lib/sources/registry";
 import type { PublicSourceId } from "@/lib/sources/types";
 import { getCoverageSummary, type CoverageState } from "./status";
 import { getAdapters, paidCollectionEnabled } from "./sources";
-import { resolveEnablement } from "./query-sync";
+import { keywordAllowanceFor, resolveEnablement } from "./query-sync";
+import { applyKeywordAllowance } from "@/lib/sources/entitlements";
 
 export interface PlatformMonitoring {
   id: PublicSourceId;
@@ -50,6 +51,10 @@ export interface PlatformMonitoring {
   saturatedRecently: boolean;
   failures: number;
   keywords: { searched: string[]; searches: number; searchesPerCheck: number; rotating: number; combined: boolean; skipped: SkippedKeyword[]; productOnly: boolean };
+  /** Slowest keyword's effective interval on this platform, and why the plan's target isn't met (if it isn't). */
+  slowestKeywordMinutes: number | null;
+  keywordConflict: string | null;
+  budgetPaced: boolean;
 }
 
 export interface KeywordPlatformCoverage {
@@ -65,11 +70,18 @@ export interface KeywordPlatformCoverage {
 export interface KeywordCoverageRow {
   term: string;
   kind: string;
+  /** Over the plan's keyword allowance (e.g. after a downgrade): kept, not searched. */
+  paused: boolean;
   platforms: KeywordPlatformCoverage[];
 }
 
 export interface MonitoringOverview {
-  plan: { name: string; minIntervalMinutes: number; devFloorMinutes: number | null };
+  plan: {
+    name: string; minIntervalMinutes: number; devFloorMinutes: number | null;
+    keywordTargetMinutes: number; maxKeywords: number; keywordAllowance: number;
+  };
+  /** Paid platforms paused because the month's mention allowance is used up (until this time). */
+  allowancePausedUntil: string | null;
   keywordCoverage: KeywordCoverageRow[];
   platforms: PlatformMonitoring[];
   summary: {
@@ -115,6 +127,9 @@ interface ActivityRow {
   plan_limited: boolean;
   reasons: string[];
   computed_at: string;
+  slowest_keyword_minutes: number | null;
+  keyword_conflict: string | null;
+  budget_paced: boolean;
 }
 
 const CONF_RANK = { low: 0, medium: 1, high: 2 } as const;
@@ -157,7 +172,7 @@ export async function getMonitoringOverview(productId: string, workspaceId: stri
     sb.from("product_aliases").select("term, kind, is_ambiguous, context_terms").eq("product_id", productId).eq("enabled", true),
     getCoverageSummary(productId),
     sb.from("platform_activity")
-      .select("platform, phase, score, rank, components, discovery, mentions_7d, baseline_weekly, growth_pct, trend, coverage_confidence, complete_share, recommended_interval, interval_minutes, plan_limited, reasons, computed_at")
+      .select("platform, phase, score, rank, components, discovery, mentions_7d, baseline_weekly, growth_pct, trend, coverage_confidence, complete_share, recommended_interval, interval_minutes, plan_limited, reasons, computed_at, slowest_keyword_minutes, keyword_conflict, budget_paced")
       .eq("product_id", productId),
     sb.from("monitoring_interval_changes").select("id").eq("product_id", productId).gte("created_at", since7d).limit(1000),
     admin.rpc("svc_schedule_context", { p_product_id: productId, p_platform: "reddit" }),
@@ -169,7 +184,8 @@ export async function getMonitoringOverview(productId: string, workspaceId: stri
   const adapters = getAdapters();
   const sc = (ctx ?? {}) as {
     plan_name?: string; plan_min_minutes?: number; paid_allowance_usd?: number; boost_min_minutes?: number;
-    max_boost_paid_checks?: number; max_searches_per_platform?: number;
+    max_boost_paid_checks?: number; max_searches_per_platform?: number; max_keywords?: number; keyword_target_minutes?: number;
+    allowance_paused_until?: string | null;
   };
   const allowance = Number(sc.paid_allowance_usd ?? 0);
   const budget = { planMaxSearches: Number(sc.max_searches_per_platform ?? 2), stackExchangeKey: Boolean(serverEnv().STACKEXCHANGE_KEY) };
@@ -180,7 +196,10 @@ export async function getMonitoringOverview(productId: string, workspaceId: stri
   const enablement = new Map(resolveEnablement(adapters, product as never, settingsMap, allowance, paidCollectionEnabled()).map((e) => [e.id, e]));
   const coverageBy = new Map(coverage.sources.map((s) => [s.id, s]));
   const activityBy = new Map(((activity ?? []) as ActivityRow[]).map((r) => [r.platform, r]));
-  const keywords = (aliases ?? []).map((a) => ({ term: a.term, kind: a.kind, isAmbiguous: a.is_ambiguous, contextTerms: a.context_terms ?? [] }));
+  const allKeywords = (aliases ?? []).map((a) => ({ term: a.term, kind: a.kind, isAmbiguous: a.is_ambiguous, contextTerms: a.context_terms ?? [] }));
+  const maxKeywords = Number(sc.max_keywords ?? 10);
+  const keywordAllowance = await keywordAllowanceFor(sb, productId, workspaceId, maxKeywords);
+  const { active: keywords, paused: pausedKeywords } = applyKeywordAllowance(allKeywords, keywordAllowance);
   const activeBoost = new Set(
     (boosts ?? []).filter((b) => !b.canceled_at && new Date(b.starts_at).getTime() <= nowMs && new Date(b.ends_at).getTime() > nowMs)
       .flatMap((b) => b.platforms as string[]),
@@ -250,6 +269,9 @@ export async function getMonitoringOverview(productId: string, workspaceId: stri
         skipped: kp?.skipped ?? [],
         productOnly: Boolean(kp?.productOnly),
       },
+      slowestKeywordMinutes: act?.slowest_keyword_minutes ?? null,
+      keywordConflict: act?.keyword_conflict ?? null,
+      budgetPaced: Boolean(act?.budget_paced),
     };
   });
 
@@ -281,9 +303,10 @@ export async function getMonitoringOverview(productId: string, workspaceId: stri
 
   // Keyword × platform coverage on the platforms that actually run.
   const planFloor = Math.min(Number(sc.plan_min_minutes ?? 1440), devFloor ?? Number.POSITIVE_INFINITY);
-  const keywordCoverage: KeywordCoverageRow[] = keywords.map((k) => ({
+  const keywordCoverage: KeywordCoverageRow[] = [...keywords.map((k) => ({
     term: k.term,
     kind: k.kind,
+    paused: false,
     platforms: active.flatMap((p): KeywordPlatformCoverage[] => {
       const term = k.term.replace(/["()]/g, " ").replace(/\s+/g, " ").trim();
       const c = plans.get(p.id)?.keywords.find((x) => x.term === term);
@@ -295,10 +318,14 @@ export async function getMonitoringOverview(productId: string, workspaceId: stri
         intervalMinutes: searched ? keywordIntervalMinutes(p.intervalMinutes ?? planFloor, c.rotation) : null,
       }];
     }),
-  }));
+  })), ...pausedKeywords.map((k) => ({ term: k.term, kind: k.kind, paused: true, platforms: [] }))];
 
   return {
-    plan: { name: planName, minIntervalMinutes: Number(sc.plan_min_minutes ?? 1440), devFloorMinutes: devFloor },
+    plan: {
+      name: planName, minIntervalMinutes: Number(sc.plan_min_minutes ?? 1440), devFloorMinutes: devFloor,
+      keywordTargetMinutes: Number(sc.keyword_target_minutes ?? 10080), maxKeywords, keywordAllowance,
+    },
+    allowancePausedUntil: sc.allowance_paused_until ?? null,
     keywordCoverage,
     platforms,
     summary: {

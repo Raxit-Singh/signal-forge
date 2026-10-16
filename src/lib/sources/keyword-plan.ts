@@ -10,8 +10,11 @@
 //     quota-limited sources) and needs more searches than that, the top-priority
 //     search runs every check and the others take turns in fixed time slots
 //     (fair rotation). Each search keeps its own checkpoint, so a turn re-searches
-//     everything since its last check. No keyword waits longer than the coverage
-//     guarantee (7 days), even if that exceeds the budget.
+//     everything since its last check. The budget per check is never exceeded:
+//     a keyword's effective interval is the platform interval × its turns. The
+//     plan's keyword refresh target (Free 7 days, Pro 24 h, Scale 6 h) shortens
+//     platform intervals where plan floors and budgets allow; where they can't,
+//     the conflict is recorded and the real interval shown (entitlements.ts).
 // Only keywords a platform genuinely can't search are left out, with the reason.
 
 import { devTag } from "./official.ts";
@@ -19,8 +22,8 @@ import { planQueries, type OptimizerKeyword, type QueryGroup, type SkippedKeywor
 import { isLegacySource, streamsOf } from "./registry.ts";
 import type { PublicSourceId, SourceAdapter } from "./types.ts";
 
-/** Every searchable keyword is searched at least this often (minutes): 7 days. */
-export const KEYWORD_COVERAGE_GUARANTEE_MINUTES = 7 * 1440;
+/** Free plan's keyword refresh target (minutes): 7 days. Plans set their own (plans.keyword_refresh_target_minutes). */
+export const DEFAULT_KEYWORD_TARGET_MINUTES = 7 * 1440;
 /** Stack Exchange without an API key shares ~300 requests/day per server: few searches per check. */
 export const STACKEXCHANGE_ANON_BUDGET = 3;
 
@@ -95,16 +98,14 @@ export function searchBudget(platform: PublicSourceId, adapter: SourceAdapter, o
   return null;
 }
 
-/** Turns a rotating search waits between checks at a platform interval (bounded by the guarantee). */
-export function rotationTurns(r: Rotation, intervalMinutes: number): number {
-  const ideal = Math.ceil(r.rotating / Math.max(1, r.slots));
-  const cap = Math.max(1, Math.floor(KEYWORD_COVERAGE_GUARANTEE_MINUTES / Math.max(1, intervalMinutes)));
-  return Math.max(1, Math.min(ideal, cap));
+/** Checks a rotating search waits between turns: the budget per check is never exceeded. */
+export function rotationTurns(r: Rotation): number {
+  return Math.max(1, Math.ceil(r.rotating / Math.max(1, r.slots)));
 }
 
 /** Effective refresh interval of a search: the platform interval × its rotation turns. */
 export function keywordIntervalMinutes(platformIntervalMinutes: number, rotation: Rotation | null): number {
-  return rotation ? platformIntervalMinutes * rotationTurns(rotation, platformIntervalMinutes) : platformIntervalMinutes;
+  return rotation ? platformIntervalMinutes * rotationTurns(rotation) : platformIntervalMinutes;
 }
 
 /**
@@ -114,7 +115,7 @@ export function keywordIntervalMinutes(platformIntervalMinutes: number, rotation
  */
 export function rotationNextRun(now: Date, platformIntervalMinutes: number, rotation: Rotation): Date {
   const slotMs = platformIntervalMinutes * 60_000;
-  const turns = rotationTurns(rotation, platformIntervalMinutes);
+  const turns = rotationTurns(rotation);
   const phase = rotation.position % turns;
   let slot = Math.floor(now.getTime() / slotMs) + 1;
   while (slot % turns !== phase) slot++;

@@ -4,6 +4,8 @@ import { suggestAliases, type AliasSuggestion } from "@/lib/domain/aliases";
 import { normalizeWebsiteUrl } from "@/lib/domain/urls";
 import { Card, CardContent } from "@/components/ui/primitives";
 import { KeywordEditor, type EditableAlias } from "@/components/keyword-editor";
+import { fitSuggestionsToAllowance } from "@/lib/domain/keyword-allowance";
+import { getKeywordSlots } from "@/lib/server/session";
 import { StepHeader } from "../../steps";
 import { loadOnboardingProduct } from "../load";
 
@@ -50,6 +52,8 @@ export default async function KeywordsStep({ params }: { params: Promise<{ produ
       reason: s.reason,
     }));
   }
+  const allowance = await getKeywordSlots(product.workspace_id, product.id);
+  if (!saved || saved.length === 0) initial = fitSuggestionsToAllowance(initial, allowance);
 
   return (
     <>
@@ -65,7 +69,7 @@ export default async function KeywordsStep({ params }: { params: Promise<{ produ
       />
       <Card>
         <CardContent>
-          <KeywordEditor productId={product.id} initial={initial} mode="onboarding" />
+          <KeywordEditor productId={product.id} initial={initial} mode="onboarding" allowance={allowance} />
         </CardContent>
       </Card>
     </>

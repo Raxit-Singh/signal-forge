@@ -75,14 +75,14 @@ Paid collection needs **all three**: `API_DIRECT_API_KEY`, `PAID_SOURCES_ENABLED
    insert into public.api_budgets (scope, provider, monthly_limit_usd) values ('provider', 'apidirect', 10);
    insert into public.api_budgets (scope, platform, monthly_limit_usd) values ('platform', 'x', 3);
    insert into public.api_budgets (scope, workspace_id, monthly_limit_usd) values ('workspace', '<uuid>', 2);
-   -- per-plan allowance (proposed defaults: free 0, starter 1, pro 5, business 20):
-   update public.plan_paid_allowances set monthly_usd = 5, max_boost_paid_checks = 400 where plan_id = 'pro';
-   -- separate searches per check on paid platforms without OR (TikTok, Instagram, Facebook, Substack); default 2:
-   update public.plan_paid_allowances set max_searches_per_platform = 4 where plan_id = 'business';
+   -- per-plan internal paid budget (set by migration 20261016000005: free 0, pro 25, scale 75):
+   update public.plan_paid_allowances set monthly_usd = 25, max_boost_paid_checks = 400 where plan_id = 'pro';
+   -- separate searches per check on paid platforms without OR (TikTok, Instagram, Facebook, Substack); free/pro 2, scale 4:
+   update public.plan_paid_allowances set max_searches_per_platform = 4 where plan_id = 'scale';
    ```
-   How often each platform is checked is automatic (Smart Monitoring) and never faster than the plan's `monitoring_interval_minutes`; there is no per-product mode to configure. Before enabling, `npm run audit:keywords` shows the searches and estimated monthly cost per product (read-only).
+   How often each platform is checked is automatic (Smart Monitoring): never faster than the plan's `monitoring_interval_minutes` (Free 24 h, Pro/Scale 1 h), shortened toward the plan's keyword refresh target and lengthened when needed to keep within the paid budget; there is no per-product mode to configure. Before enabling, `npm run audit:keywords` shows the searches and estimated monthly cost per product (read-only).
 3. Set `PAID_SOURCES_ENABLED=true` and redeploy. Each product admin must still turn each paid platform on (Smart Monitoring → More platforms) and confirm the spending authorization.
-4. **Live validation** (authorized, capped, never in CI): `npm run test:apidirect-live -- --confirm --max-usd 0.05`. It reads prices from `provider_pricing`, stops before exceeding the cap, writes nothing to the database, and prints each call's status, billed units and results.
+4. **Live validation** (authorized, capped, never in CI): first `node scripts/apidirect-live-test.ts --plan --max-usd 0.05` (prints the plan and worst-case cost, sends nothing), then `npm run test:apidirect-live -- --confirm --max-usd 0.05 --provider-limit-confirmed [--session <name>]`. It refuses without the key, with `PAID_SOURCES_ENABLED=true`, or without the provider-limit confirmation (API Direct can't report its limits via API). Every request is reserved in `api_cost_ledger` (purpose `live_test`) before it is sent, and the cap is **cumulative per session** across runs. It writes nothing to `mentions`; raw responses and a report go to `.apidirect-live/` (gitignored). Done once on 2026-10-16 ($0.048) — see API_LIMITATIONS.md.
 5. **Reconciliation** (monthly): compare the API Direct invoice with the ledger and record it:
    ```sql
    insert into public.billing_reconciliations (provider, period_start, invoiced_usd, estimated_usd, charged_usd)
@@ -112,7 +112,9 @@ DEV_MONITORING_WORKSPACES=<your workspace uuid>
 ```
 It lowers only the plan's minimum interval for the listed workspaces, only under `next dev` (never in production builds or Vercel deployments). API budgets, paid allowances, rate limiters and source minimums (YouTube 24 h) still apply; Smart Monitoring shows a notice while it is active.
 E2E creates several accounts in quick succession; Supabase Auth's verify rate limit (429 `over_request_rate_limit`) can fail a second full run started right after the first. Wait a few minutes and rerun.
-First E2E run: `npx playwright install chromium`. E2E tests never call external data sources; they insert synthetic fixtures into their own throwaway workspace. No automated test makes a paid request: API Direct connectors are tested with mocked responses only.
+First E2E run: `npx playwright install chromium`. E2E tests never call external data sources; they insert synthetic fixtures into their own throwaway workspace. No automated test makes a paid request: API Direct connectors are tested with mocked responses only (one manual, capped live validation is recorded in API_LIMITATIONS.md).
+
+**Plans and usage in development:** plan rows are data (`plans`, `plan_paid_allowances`). To try Pro/Scale limits on a dev workspace, an operator can update its `subscriptions.plan_id` with the service role (there is no checkout yet; never do this for customers). `/settings/billing` shows the current period's mention usage, keyword allowance and plan options; warnings appear app-wide at 80 / 90 / 100 %.
 
 ## 5. Hosting
 

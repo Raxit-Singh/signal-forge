@@ -2,7 +2,7 @@
 
 Social listening, buzz analytics and product intelligence for software teams: where people talk about your product, how often, what they like and dislike, which bugs and feature requests come up, and what to look at next — with every number traceable to stored data.
 
-**Status (2026-10-16): Milestones 1, 2, 2.5 and 3 implemented, plus automatic Smart Monitoring (platforms ranked by activity; no monitoring modes to choose) and numbered mention pagination.** Free sources (Hacker News, GitHub, Stack Overflow, Bluesky, DEV, App Store reviews) are verified against their live APIs. YouTube and all ten API Direct (paid) connectors are built and tested with mocked responses only — they need credentials (and, for paid sources, an authorized test budget) before they can be called verified. Buzz Analytics and Smart Monitoring are verified in the browser. See [PROGRESS.md](PROGRESS.md) for the exact verification log.
+**Status (2026-10-16): Milestones 1, 2, 2.5 and 3 implemented, plus automatic Smart Monitoring, keyword coverage across all connectors, and the Free / Pro / Scale plans ($0 / $100 / $300 per month; 1 / 10 / 40 keywords; 100 / 15,000 / 50,000 mentions per billing period) with mention allowances.** Free sources (Hacker News, GitHub, Stack Overflow, Bluesky, DEV, App Store reviews) are verified against their live APIs. API Direct: 9 search endpoints (Reddit posts and comments, X, LinkedIn, TikTok, Instagram, Facebook, Substack, Google web) passed one capped live test ($0.048); Google News, Trustpilot, the comment/reply expansion endpoints and YouTube are still mocked-only or unverified. Paid monitoring is off until a global budget is configured. Payments are not integrated yet. See [PROGRESS.md](PROGRESS.md) for the exact verification log.
 
 ## Stack
 
@@ -25,14 +25,14 @@ Full setup (Supabase auth settings, email templates, Google OAuth, keys): [ENVIR
 
 | Command | What it runs | Needs |
 |---|---|---|
-| `npm run test:unit` | 145 tests: domain logic, validation, encryption, source adapters incl. API Direct (mocked responses), query optimizer + keyword plans + fair rotation, activity ranking, automatic intervals + hysteresis, comment expansion, analytics math, pagination (`node --test`) | Node ≥ 22.18 |
-| `npm run test:db` | All migrations + 223 RLS / isolation / plan-limit / job-queue / ingestion / budget / analytics / activity-ranking tests on a throwaway local Postgres | Nothing extra — uses the `embedded-postgres` dev dependency (set `PGBIN` to use a system Postgres) |
+| `npm run test:unit` | 153 tests: domain logic (plans, usage warnings, keyword allowance), validation, encryption, source adapters incl. API Direct (mocked responses), query optimizer + keyword plans + fair rotation, plan targets + paid pacing, activity ranking, automatic intervals + hysteresis, comment expansion, analytics math, pagination (`node --test`) | Node ≥ 22.18 |
+| `npm run test:db` | All migrations + 251 RLS / isolation / plan-limit / keyword-allowance / mention-billing (incl. a two-connection concurrency test) / job-queue / ingestion / budget / analytics / activity-ranking tests on a throwaway local Postgres | Nothing extra — uses the `embedded-postgres` dev dependency (set `PGBIN` to use a system Postgres) |
 | `npm run typecheck` | `tsc --noEmit` over the whole app | `npm install` |
 | `npm run lint` | ESLint (next/core-web-vitals + typescript) | `npm install` |
 | `npm run build` | Production build | `npm install`, env vars |
-| `npm run test:e2e` | Playwright (13 tests): onboarding; mentions numbered pagination, filters, Read more, relevance, mobile; Buzz Analytics; automatic Smart Monitoring ranking, keyword coverage, explanations, Launch Boost, mobile (deterministic fixtures) | `.env.local`, `npx playwright install chromium` |
+| `npm run test:e2e` | Playwright (16 tests): onboarding; plans, usage warnings and keyword allowance; mentions numbered pagination, filters, Read more, relevance, mobile; Buzz Analytics; automatic Smart Monitoring ranking, keyword coverage, explanations, Launch Boost, mobile (deterministic fixtures) | `.env.local`, `npx playwright install chromium` |
 | `npm run audit:keywords -- [--product <id>] [--keywords "a:exact_name,b:domain"]` | Read-only: configured keywords, query groups per platform, what isn't searched and why, estimated monthly requests and API Direct cost | `.env.local` |
-| `npm run test:apidirect-live -- --confirm --max-usd 0.05` | **Paid.** Budget-capped live check of API Direct connectors. Never runs in CI or without `--confirm` | `API_DIRECT_API_KEY`, your authorization |
+| `npm run test:apidirect-live -- --confirm --max-usd 0.05 --provider-limit-confirmed` | **Paid.** Live check of API Direct connectors with a cumulative per-session cap enforced through `api_cost_ledger` (`--plan` prints the plan and worst case without sending). Never runs in CI | `API_DIRECT_API_KEY`, your authorization |
 | `npm run dev:cron` | Calls the scheduler every 120 s during local development | `JOBS_TICK_SECRET` |
 
 ## Docs

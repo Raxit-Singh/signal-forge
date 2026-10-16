@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { hasRole, requireWorkspace } from "@/lib/server/session";
+import { getKeywordSlots, hasRole, requireWorkspace } from "@/lib/server/session";
 import { uuidSchema } from "@/lib/validation/schemas";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { KeywordEditor, type EditableAlias } from "@/components/keyword-editor";
@@ -26,6 +26,7 @@ export default async function ProductKeywordsPage({ params }: { params: Promise<
       .order("created_at"),
   ]);
   if (!product) notFound();
+  const allowance = await getKeywordSlots(workspace.id, productId);
 
   const initial: EditableAlias[] = (aliases ?? []).map((a) => ({
     term: a.term as string,
@@ -50,7 +51,7 @@ export default async function ProductKeywordsPage({ params }: { params: Promise<
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <KeywordEditor productId={product.id as string} initial={initial} mode="settings" />
+          <KeywordEditor productId={product.id as string} initial={initial} mode="settings" allowance={allowance} />
         </CardContent>
       </Card>
     </>

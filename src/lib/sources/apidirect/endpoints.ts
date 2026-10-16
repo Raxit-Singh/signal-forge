@@ -158,6 +158,14 @@ export const ENDPOINTS = {
 } as const satisfies Record<string, EndpointSpec>;
 
 export type EndpointName = keyof typeof ENDPOINTS;
+
+/** Search endpoint of each paid platform stream ("platform/stream"), for cost estimates. */
+export const STREAM_ENDPOINTS: Record<string, EndpointSpec> = {
+  "reddit/posts": ENDPOINTS.redditPosts, "reddit/comments": ENDPOINTS.redditComments, "x/posts": ENDPOINTS.xPosts,
+  "linkedin/posts": ENDPOINTS.linkedinPosts, "tiktok/videos": ENDPOINTS.tiktokVideos, "instagram/posts": ENDPOINTS.instagramPosts,
+  "facebook/posts": ENDPOINTS.facebookPosts, "substack/posts": ENDPOINTS.substackPosts, "substack/notes": ENDPOINTS.substackNotes,
+  "web/results": ENDPOINTS.webSearch, "news/articles": ENDPOINTS.newsArticles, "trustpilot/reviews": ENDPOINTS.trustpilotReviews,
+};
 export type Params = Record<string, string | number | undefined>;
 
 /** Validates parameters against the spec; throws on anything the docs don't allow. */

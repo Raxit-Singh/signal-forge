@@ -3,7 +3,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { planFromRow, effectivePlanId, type Plan, type PlanRow, type SubscriptionStatus } from "@/lib/domain/plans";
+import { planFromRow, effectivePlanId, usageFromRpc, type Plan, type PlanRow, type SubscriptionStatus, type WorkspaceUsage } from "@/lib/domain/plans";
 
 export type WorkspaceRole = "owner" | "admin" | "member" | "viewer";
 const RANK: Record<WorkspaceRole, number> = { owner: 40, admin: 30, member: 20, viewer: 10 };
@@ -147,3 +147,22 @@ export const getWorkspacePlan = cache(async (workspaceId: string): Promise<{ pla
   if (!row) throw new Error("Plan configuration missing (no 'free' plan row).");
   return { plan: planFromRow(row as PlanRow), status: (sub?.status as SubscriptionStatus | undefined) ?? null };
 });
+
+/** Current billing period usage (mention allowance, keywords). Null if it can't be read. */
+export const getWorkspaceUsage = cache(async (workspaceId: string): Promise<WorkspaceUsage | null> => {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("workspace_usage", { p_workspace_id: workspaceId });
+  if (error || !data) return null;
+  return usageFromRpc(data as Record<string, unknown>);
+});
+
+/** Keyword allowance for editing one product: the plan's workspace allowance minus other active products' keywords. */
+export async function getKeywordSlots(workspaceId: string, productId: string): Promise<{ planName: string; max: number; available: number }> {
+  const supabase = await createClient();
+  const [{ plan }, { data: others }] = await Promise.all([
+    getWorkspacePlan(workspaceId),
+    supabase.from("product_aliases").select("product_id, products!inner(archived_at)")
+      .eq("workspace_id", workspaceId).eq("enabled", true).neq("product_id", productId).is("products.archived_at", null).limit(10_000),
+  ]);
+  return { planName: plan.name, max: plan.maxKeywords, available: Math.max(0, plan.maxKeywords - (others ?? []).length) };
+}

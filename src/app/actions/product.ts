@@ -140,7 +140,7 @@ export async function saveAliasesAction(_: ActionState, formData: FormData): Pro
   });
   if (error) {
     logServerError("saveAliases", error);
-    return failure(error.code === "23505" ? "Each keyword can only appear once." : "Couldn't save keywords.");
+    return failure(error.code === "23505" ? "Each keyword can only appear once." : planLimitMessage(error) ?? "Couldn't save keywords.");
   }
   await resyncQueries(productId);
 

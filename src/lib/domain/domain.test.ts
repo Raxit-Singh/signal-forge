@@ -5,7 +5,8 @@ import {
   normalizeWebsiteUrl, parseGithubRepo, parseAppStoreUrl, parsePlayStoreUrl, safeRedirectPath,
 } from "./urls.ts";
 import { suggestAliases, isAmbiguousTerm, isAmbiguousCustomTerm, splitWords, contextKeywords } from "./aliases.ts";
-import { checkProductLimit, effectivePlanId, formatPrice, planFromRow, planLimitMessage } from "./plans.ts";
+import { checkKeywordLimit, checkProductLimit, effectivePlanId, formatPrice, mentionUsageLevel, planFromRow, planLimitMessage, usageFromRpc } from "./plans.ts";
+import { fitSuggestionsToAllowance } from "./keyword-allowance.ts";
 import { checkKeyShape, keyHint } from "./ai-providers.ts";
 import { INTEGRATIONS } from "./integrations.ts";
 import { PUBLIC_SOURCES } from "../sources/registry.ts";
@@ -187,4 +188,36 @@ test("integration catalog is honest", () => {
   }
   const providers = INTEGRATIONS.map((i) => i.provider);
   assert.equal(new Set(providers).size, providers.length);
+});
+
+test("mention allowance warnings: 80 % warning, 90 % stronger, 100 % used up", () => {
+  assert.deepEqual(mentionUsageLevel(79, 100), { percent: 79, level: "ok" });
+  assert.deepEqual(mentionUsageLevel(80, 100), { percent: 80, level: "warning" });
+  assert.deepEqual(mentionUsageLevel(13_500, 15_000), { percent: 90, level: "critical" });
+  assert.deepEqual(mentionUsageLevel(100, 100), { percent: 100, level: "exhausted" });
+  assert.deepEqual(mentionUsageLevel(120, 100), { percent: 100, level: "exhausted" }, "after a downgrade below consumption");
+});
+
+test("keyword allowance: per-workspace plan limit; onboarding suggestions beyond it start switched off", () => {
+  assert.deepEqual(checkKeywordLimit({ name: "Pro", maxKeywords: 10 }, 4, 6), { allowed: true });
+  const no = checkKeywordLimit({ name: "Free", maxKeywords: 1 }, 0, 2);
+  assert.equal(no.allowed, false);
+  assert.match((no as { message: string }).message, /Free plan includes 1 active keyword per workspace/);
+  const fitted = fitSuggestionsToAllowance(
+    [{ term: "Octolens", enabled: true }, { term: "octolens.com", enabled: true }, { term: "Octo", enabled: false }] as Array<{ term: string; enabled: boolean; reason?: string }>,
+    { planName: "Free", max: 1, available: 1 },
+  );
+  assert.deepEqual(fitted.map((a) => a.enabled), [true, false, false]);
+  assert.match(fitted[1]!.reason!, /Free plan includes 1 active keyword/);
+});
+
+test("plan rows carry keyword allowance, refresh target and retirement", () => {
+  const scale = planFromRow({
+    id: "scale", name: "Scale", description: null, price_cents_monthly: 30000, currency: "usd", max_products: 10, max_competitors_per_product: 5,
+    monthly_mention_limit: 50000, history_days: 730, monitoring_interval_minutes: 60, monthly_ai_token_budget: "30000000", monthly_investigations: 40,
+    features: {}, max_keywords: 40, keyword_refresh_target_minutes: 360, retired_at: null,
+  });
+  assert.deepEqual([scale.maxKeywords, scale.keywordRefreshTargetMinutes, scale.retired, formatPrice(scale.priceCentsMonthly)], [40, 360, false, "$300"]);
+  const usage = usageFromRpc({ plan_id: "pro", plan_name: "Pro", mention_allowance: 15000, mentions_consumed: 12, mentions_remaining: 14988, max_keywords: 10 });
+  assert.deepEqual([usage.mentionAllowance, usage.mentionsRemaining, usage.exhaustedAt], [15000, 14988, null]);
 });

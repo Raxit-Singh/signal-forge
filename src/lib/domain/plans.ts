@@ -16,6 +16,11 @@ export interface Plan {
   monthlyAiTokenBudget: number;
   monthlyInvestigations: number;
   features: Record<string, boolean>;
+  /** Active keywords per workspace (Free 1, Pro 10, Scale 40). */
+  maxKeywords: number;
+  /** Target for searching every keyword (not a guaranteed discovery time). */
+  keywordRefreshTargetMinutes: number;
+  retired: boolean;
 }
 
 export interface PlanRow {
@@ -32,6 +37,9 @@ export interface PlanRow {
   monthly_ai_token_budget: number | string;
   monthly_investigations: number;
   features: unknown;
+  max_keywords?: number;
+  keyword_refresh_target_minutes?: number;
+  retired_at?: string | null;
 }
 
 export function planFromRow(row: PlanRow): Plan {
@@ -55,6 +63,62 @@ export function planFromRow(row: PlanRow): Plan {
     monthlyAiTokenBudget: Number(row.monthly_ai_token_budget),
     monthlyInvestigations: row.monthly_investigations,
     features,
+    maxKeywords: row.max_keywords ?? 10,
+    keywordRefreshTargetMinutes: row.keyword_refresh_target_minutes ?? 10080,
+    retired: Boolean(row.retired_at),
+  };
+}
+
+/** Mention allowance state for the current billing period (from `workspace_usage`). */
+export interface WorkspaceUsage {
+  planId: string;
+  planName: string;
+  periodStart: string;
+  periodEnd: string;
+  mentionAllowance: number;
+  mentionsConsumed: number;
+  mentionsRemaining: number;
+  mentionsHeld: number;
+  mentionsNotHeld: number;
+  exhaustedAt: string | null;
+  meteringStartedAt: string | null;
+  maxKeywords: number;
+  activeKeywords: number;
+  keywordRefreshTargetMinutes: number;
+  monitoringIntervalMinutes: number;
+}
+
+export function usageFromRpc(r: Record<string, unknown>): WorkspaceUsage {
+  const n = (k: string) => Number(r[k] ?? 0);
+  return {
+    planId: String(r.plan_id), planName: String(r.plan_name),
+    periodStart: String(r.period_start), periodEnd: String(r.period_end),
+    mentionAllowance: n("mention_allowance"), mentionsConsumed: n("mentions_consumed"), mentionsRemaining: n("mentions_remaining"),
+    mentionsHeld: n("mentions_held"), mentionsNotHeld: n("mentions_not_held"),
+    exhaustedAt: (r.exhausted_at as string | null) ?? null, meteringStartedAt: (r.metering_started_at as string | null) ?? null,
+    maxKeywords: n("max_keywords"), activeKeywords: n("active_keywords"),
+    keywordRefreshTargetMinutes: n("keyword_refresh_target_minutes"), monitoringIntervalMinutes: n("monitoring_interval_minutes"),
+  };
+}
+
+export type UsageLevel = "ok" | "warning" | "critical" | "exhausted";
+
+/** Warning thresholds: 80 % warning, 90 % stronger warning, 100 % allowance used up. */
+export function mentionUsageLevel(consumed: number, allowance: number): { percent: number; level: UsageLevel } {
+  if (allowance <= 0) return { percent: 100, level: "exhausted" };
+  const ratio = consumed / allowance;
+  const percent = Math.min(100, Math.floor(ratio * 100));
+  return { percent, level: ratio >= 1 ? "exhausted" : ratio >= 0.9 ? "critical" : ratio >= 0.8 ? "warning" : "ok" };
+}
+
+export function checkKeywordLimit(plan: Pick<Plan, "maxKeywords" | "name">, activeElsewhere: number, activeHere: number):
+  { allowed: true } | { allowed: false; message: string } {
+  if (activeElsewhere + activeHere <= plan.maxKeywords) return { allowed: true };
+  const left = Math.max(0, plan.maxKeywords - activeElsewhere);
+  return {
+    allowed: false,
+    message: `The ${plan.name} plan includes ${plan.maxKeywords} active keyword${plan.maxKeywords === 1 ? "" : "s"} per workspace`
+      + (activeElsewhere > 0 ? ` (${left} left for this product)` : "") + ". Turn some off or change plan.",
   };
 }
 

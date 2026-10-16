@@ -48,10 +48,11 @@ export interface QueryPlan {
   skipped: SkippedKeyword[];
 }
 
-export const MAX_KEYWORDS = 10;
+/** Hard ceiling (the keyword RPC's maximum); plans allow fewer (Free 1, Pro 10, Scale 40), applied before planning. */
+export const MAX_KEYWORDS = 50;
 
 const BRAND_KINDS = new Set<AliasKind>(["exact_name", "domain", "handle", "misspelling", "abbreviation"]);
-const PRIORITY: Record<AliasKind, number> = { exact_name: 0, domain: 1, handle: 2, custom: 3, abbreviation: 4, misspelling: 5 };
+export const KEYWORD_PRIORITY: Record<AliasKind, number> = { exact_name: 0, domain: 1, handle: 2, custom: 3, abbreviation: 4, misspelling: 5 };
 
 function clean(term: string): string {
   return term.replace(/["()]/g, " ").replace(/\s+/g, " ").trim();
@@ -93,7 +94,7 @@ export function planQueries(keywords: OptimizerKeyword[], caps: QueryCapabilitie
       return true;
     })
     .slice(0, MAX_KEYWORDS)
-    .sort((a, b) => PRIORITY[a.kind] - PRIORITY[b.kind] || a.term.localeCompare(b.term));
+    .sort((a, b) => KEYWORD_PRIORITY[a.kind] - KEYWORD_PRIORITY[b.kind] || a.term.localeCompare(b.term));
 
   const brand = list.filter((k) => BRAND_KINDS.has(k.kind) && !k.isAmbiguous);
   const brandTerms = brand.map((k) => k.term);

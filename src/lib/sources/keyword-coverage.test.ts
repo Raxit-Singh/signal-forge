@@ -1,12 +1,16 @@
 // Keyword coverage across every connector: no first-5 limit, OR consolidation,
-// fair rotation with a 7-day guarantee, per-keyword effective intervals, and the
+// fair rotation within the search budget, plan-aware keyword refresh targets,
+// keyword allowances, paid-budget pacing, per-keyword effective intervals, and the
 // development-only interval entitlement. Pure; no database, no network.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { devMonitoringFloor } from "../domain/dev-entitlement.ts";
 import {
-  KEYWORD_COVERAGE_GUARANTEE_MINUTES, keywordIntervalMinutes, planPlatformKeywords, rotationNextRun, rotationTurns, searchBudget,
+  applyKeywordAllowance, applyKeywordTarget, estimateCheckCostUsd, paceForBudget, productKeywordAllowance, targetIntervalCap,
+} from "./entitlements.ts";
+import {
+  keywordIntervalMinutes, planPlatformKeywords, rotationNextRun, rotationTurns, searchBudget,
   STACKEXCHANGE_ANON_BUDGET, type Rotation,
 } from "./keyword-plan.ts";
 import { buildQueryGroups, resolveEnablement } from "./query-groups.ts";
@@ -89,7 +93,7 @@ test("rotation slots: each search gets the same share, no slot exceeds the budge
   const rotating = 6;
   const slots = 1;
   const intervalMin = 360;
-  const turns = rotationTurns({ position: 0, rotating, slots }, intervalMin);
+  const turns = rotationTurns({ position: 0, rotating, slots });
   assert.equal(turns, 6);
   const runs = new Map<number, number[]>();
   for (let position = 0; position < rotating; position++) {
@@ -110,16 +114,78 @@ test("rotation slots: each search gets the same share, no slot exceeds the budge
   assert.equal(keywordIntervalMinutes(intervalMin, null), intervalMin);
 });
 
-test("7-day minimum coverage guarantee overrides the budget when rotation would take longer", () => {
+test("rotation never exceeds the search budget: a keyword's interval is platform interval × turns", () => {
   const r: Rotation = { position: 0, rotating: 9, slots: 1 };
-  assert.equal(keywordIntervalMinutes(1440, r), KEYWORD_COVERAGE_GUARANTEE_MINUTES, "daily plan: 9 turns → capped at 7 days");
-  assert.equal(rotationTurns(r, 1440), 7);
-  assert.equal(keywordIntervalMinutes(180, r), 27 * 60, "3 h plan: 9 turns → 27 h, within the guarantee");
-  for (const interval of [60, 120, 180, 240, 360, 720, 1440]) {
-    for (let rot = 2; rot <= 10; rot++) {
-      assert.ok(keywordIntervalMinutes(interval, { position: 0, rotating: rot, slots: 1 }) <= KEYWORD_COVERAGE_GUARANTEE_MINUTES);
-    }
-  }
+  assert.equal(rotationTurns(r), 9);
+  assert.equal(keywordIntervalMinutes(1440, r), 9 * 1440, "daily checks, 9 turns → every 9 days (no hidden extra searches)");
+  assert.equal(rotationTurns({ position: 0, rotating: 9, slots: 3 }), 3);
+});
+
+test("plan keyword refresh targets: Free 7 days, Pro 24 h, Scale 6 h — met by shortening intervals within plan floors", () => {
+  // Free: 1 keyword, no rotation, daily checks meet 7 days.
+  const free = applyKeywordTarget({ platformName: "Bluesky", interval: 1440, rotations: [], targetMinutes: 10080, floorMinutes: 1440, planName: "Free" });
+  assert.deepEqual([free.interval, free.conflict], [1440, null]);
+  // Pro: quiet free platform at 12 h meets 24 h as is.
+  const proQuiet = applyKeywordTarget({ platformName: "Hacker News", interval: 720, rotations: [], targetMinutes: 1440, floorMinutes: 60, planName: "Pro" });
+  assert.deepEqual([proQuiet.interval, proQuiet.shortened, proQuiet.conflict], [720, false, null]);
+  // Pro, TikTok: 9 keywords rotate 1 per check → platform checked every 2 h so each keyword is searched every 18 h.
+  const rot: Rotation = { position: 0, rotating: 9, slots: 1 };
+  const proTikTok = applyKeywordTarget({ platformName: "TikTok", interval: 1440, rotations: [rot], targetMinutes: 1440, floorMinutes: 60, planName: "Pro" });
+  assert.deepEqual([proTikTok.interval, proTikTok.slowestKeywordMinutes, proTikTok.conflict], [120, 1080, null]);
+  // Scale: 6 h target shortens a 12 h platform to 6 h.
+  const scale = applyKeywordTarget({ platformName: "Bluesky", interval: 720, rotations: [], targetMinutes: 360, floorMinutes: 60, planName: "Scale" });
+  assert.equal(scale.interval, 360);
+  assert.equal(targetIntervalCap(360, 13, 60), null, "13 turns can't fit 6 h even hourly");
+});
+
+test("unreachable targets are reported with the real interval, never silently exceeded", () => {
+  const yt = applyKeywordTarget({ platformName: "YouTube", interval: 1440, rotations: [], targetMinutes: 360, floorMinutes: 1440, planName: "Scale", sourceMinMinutes: 1440 });
+  assert.equal(yt.interval, 1440);
+  assert.match(yt.conflict!, /6 h\) not met on YouTube: each keyword is searched every 24 h because YouTube allows a check at most every 24 h/);
+  const many = applyKeywordTarget({
+    platformName: "TikTok", interval: 1440, rotations: [{ position: 0, rotating: 39, slots: 3 }], targetMinutes: 360, floorMinutes: 60, planName: "Scale",
+  });
+  assert.equal(many.interval, 60, "as close as the plan floor allows");
+  assert.equal(many.slowestKeywordMinutes, 13 * 60);
+  assert.match(many.conflict!, /searched every 13 h because keywords take turns/);
+});
+
+test("keyword allowance: shared across a workspace's products in creation order; extra keywords are paused, not dropped", () => {
+  const products = [
+    { id: "b", createdAt: "2026-10-02", activeKeywords: 4 },
+    { id: "a", createdAt: "2026-10-01", activeKeywords: 7 },
+  ];
+  assert.equal(productKeywordAllowance("a", products, 10), 10);
+  assert.equal(productKeywordAllowance("b", products, 10), 3);
+  assert.equal(productKeywordAllowance("b", products, 1), 0);
+  // Downgrade to Free (1 keyword): the product name stays monitored, the rest pause.
+  const { active, paused } = applyKeywordAllowance([kw("social listening", "custom"), kw("octolens.com", "domain"), kw("Octolens")], 1);
+  assert.deepEqual(active.map((k) => k.term), ["Octolens"]);
+  assert.deepEqual(paused.map((k) => k.term), ["octolens.com", "social listening"]);
+  assert.equal(applyKeywordAllowance(TEN, 40).active.length, 10, "Scale: everything");
+  // Scale's 40 keywords are all planned (the old 10-keyword cut is gone).
+  const forty = Array.from({ length: 40 }, (_, i) => kw(`Keyword${i}`, "custom"));
+  assert.equal(planPlatformKeywords("hackernews", adapters.hackernews, forty, budget).searched.length, 40);
+});
+
+test("paid pacing: lengthens the costliest paid platform first until projected spend fits the remaining allowance", () => {
+  const prices = { "tiktok.videos": 0.006, "reddit.posts": 0.003, "reddit.comments": 0.003 };
+  const tiktokCost = estimateCheckCostUsd("tiktok", [{ stream: "videos", rotation: null }, { stream: "videos", rotation: { position: 0, rotating: 9, slots: 1 } }], prices);
+  assert.equal(Math.round(tiktokCost * 1e6), Math.round((0.012 + 0.012 / 9) * 1e6), "page-billed: 2 pages; rotating groups weigh 1/turns");
+  const redditCost = estimateCheckCostUsd("reddit", [{ stream: "posts", rotation: null }, { stream: "comments", rotation: null }], prices);
+  assert.equal(Math.round(redditCost * 1e6), Math.round((0.003 + 0.006) * 1e6), "request-billed posts: 1 unit");
+  const month = 30 * 1440;
+  const fits = paceForBudget([{ platform: "reddit", interval: 1440, costPerCheckUsd: redditCost }], 25, month);
+  assert.equal(fits.paced.size, 0);
+  const tight = paceForBudget([
+    { platform: "tiktok", interval: 60, costPerCheckUsd: tiktokCost },
+    { platform: "reddit", interval: 60, costPerCheckUsd: redditCost },
+  ], 5, month);
+  assert.ok(tight.fits && tight.projectedUsd <= 5);
+  assert.ok(tight.intervals.get("tiktok")! > 60 && tight.paced.has("tiktok"));
+  const impossible = paceForBudget([{ platform: "tiktok", interval: 60, costPerCheckUsd: 1 }], 1, month);
+  assert.equal(impossible.intervals.get("tiktok"), 1440);
+  assert.equal(impossible.fits, false, "reported, not hidden");
 });
 
 test("ambiguous keywords are searched with context where possible, not dropped", () => {

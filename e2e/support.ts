@@ -158,3 +158,8 @@ export async function adminInsert(table: string, row: Record<string, unknown>) {
 export async function adminSelect<T>(path: string): Promise<T> {
   return call<T>(`/rest/v1/${path}`, { headers: adminHeaders() });
 }
+
+/** Service-role update (fixtures only, e.g. moving a test workspace to another plan). */
+export async function adminUpdate(path: string, patch: Record<string, unknown>) {
+  await call(`/rest/v1/${path}`, { method: "PATCH", headers: adminHeaders(), body: JSON.stringify(patch) });
+}

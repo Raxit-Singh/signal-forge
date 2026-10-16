@@ -8,6 +8,7 @@ import { FormMessage, SubmitButton } from "@/components/ui/form";
 import { idle } from "@/lib/action-state";
 import { saveAliasesAction } from "@/app/actions/product";
 import { isAmbiguousCustomTerm, type AliasKind } from "@/lib/domain/aliases";
+import { overAllowanceReason as overReason, type KeywordAllowance } from "@/lib/domain/keyword-allowance";
 import { cn } from "@/lib/utils";
 
 export interface EditableAlias {
@@ -35,8 +36,8 @@ function parseTerms(s: string) {
 }
 
 export function KeywordEditor({
-  productId, initial, mode,
-}: { productId: string; initial: EditableAlias[]; mode: "onboarding" | "settings" }) {
+  productId, initial, mode, allowance,
+}: { productId: string; initial: EditableAlias[]; mode: "onboarding" | "settings"; allowance?: KeywordAllowance }) {
   const [aliases, setAliases] = useState<EditableAlias[]>(initial);
   const [draft, setDraft] = useState("");
   const [state, action] = useActionState(saveAliasesAction, idle);
@@ -49,13 +50,14 @@ export function KeywordEditor({
     const term = draft.trim();
     if (term.length < 2 || aliases.some((a) => a.term.toLowerCase() === term.toLowerCase())) return;
     const amb = isAmbiguousCustomTerm(term);
+    const full = Boolean(allowance) && aliases.filter((a) => a.enabled).length >= allowance!.available;
     setAliases((l) => [
       ...l,
       {
-        term, kind: "custom", isAmbiguous: amb, contextTerms: [], negativeTerms: [], enabled: !amb, source: "user",
+        term, kind: "custom", isAmbiguous: amb, contextTerms: [], negativeTerms: [], enabled: !amb && !full, source: "user",
         reason: amb
           ? "Common word — counted only when a context term also appears. Untick “Needs context” if it's distinctive."
-          : undefined,
+          : full ? overReason(allowance!) : undefined,
       },
     ]);
     setDraft("");
@@ -65,6 +67,8 @@ export function KeywordEditor({
     aliases.map(({ reason: _reason, ...a }) => a),
   );
   const enabledCount = aliases.filter((a) => a.enabled).length;
+  const atLimit = Boolean(allowance) && enabledCount >= allowance!.available;
+  const overLimit = Boolean(allowance) && enabledCount > allowance!.available;
 
   return (
     <form action={action} className="grid gap-4">
@@ -87,7 +91,8 @@ export function KeywordEditor({
                     type="checkbox"
                     className="size-4 accent-[var(--primary)]"
                     checked={a.enabled}
-                    disabled={needsContext}
+                    disabled={needsContext || (!a.enabled && atLimit)}
+                    title={!a.enabled && atLimit && allowance ? overReason(allowance) : undefined}
                     onChange={(e) => update(i, { enabled: e.target.checked })}
                     aria-label={`Listen for ${a.term}`}
                   />
@@ -177,11 +182,17 @@ export function KeywordEditor({
         </Button>
       </div>
 
+      {overLimit && allowance && (
+        <p className="text-xs text-negative" role="alert">
+          {enabledCount} keywords are on, but your {allowance.planName} plan allows {allowance.available} for this product. Turn some off to save.
+        </p>
+      )}
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground tabular">
           {enabledCount} of {aliases.length} keywords active
+          {allowance && ` · plan allows ${allowance.available}${allowance.available !== allowance.max ? ` here (${allowance.max} per workspace)` : ""}`}
         </p>
-        <SubmitButton disabled={enabledCount === 0} pendingLabel="Saving…">
+        <SubmitButton disabled={enabledCount === 0 || overLimit} pendingLabel="Saving…">
           {mode === "onboarding" ? "Save and continue" : "Save keywords"}
         </SubmitButton>
       </div>

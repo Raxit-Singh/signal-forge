@@ -5,7 +5,9 @@ import {
   type ActivityAssessment, type IntervalDecision,
 } from "@/lib/sources/adaptive";
 import { devMonitoringFloor } from "@/lib/domain/dev-entitlement";
-import { keywordIntervalMinutes, rotationNextRun, type Rotation } from "@/lib/sources/keyword-plan";
+import { applyKeywordTarget, estimateCheckCostUsd, paceForBudget } from "@/lib/sources/entitlements";
+import { DEFAULT_KEYWORD_TARGET_MINUTES, keywordIntervalMinutes, rotationNextRun, rotationTurns, type Rotation } from "@/lib/sources/keyword-plan";
+import { formatInterval } from "@/lib/sources/adaptive";
 import { isPublicSource } from "@/lib/sources/registry";
 import type { PublicSourceId } from "@/lib/sources/types";
 import { getAdapters, paidCollectionEnabled } from "./sources";
@@ -49,6 +51,20 @@ export interface PlatformDecision {
   assessment: ActivityAssessment;
   decision: IntervalDecision;
   n7: number;
+  keywordTargetMinutes: number;
+  slowestKeywordMinutes: number;
+  keywordConflict: string | null;
+  budgetPaced: boolean;
+}
+
+interface ScheduleCtx {
+  workspace_id: string; archived: boolean; plan_name: string; plan_min_minutes: number; boost_min_minutes: number;
+  keyword_target_minutes?: number; paid_allowance_usd?: number; allowance_paused_until?: string | null;
+}
+
+interface EnabledQuery {
+  id: string; provider: string; stream: string; params: { rotation?: Rotation } | null; interval_minutes: number | null;
+  next_run_at: string; last_success_at: string | null; consecutive_failures: number;
 }
 
 const date = (s: string | null) => (s ? new Date(s) : null);
@@ -65,15 +81,19 @@ export async function refreshActivity(
   opts: { exceptQueryId?: string; now?: Date } = {},
 ): Promise<Map<PublicSourceId, PlatformDecision>> {
   const now = opts.now ?? new Date();
-  const [{ data: stats, error }, { data: ctx }, { data: boosts }, { data: prevRows }] = await Promise.all([
+  const [{ data: stats, error }, { data: ctx }, { data: boosts }, { data: prevRows }, { data: queryRows }] = await Promise.all([
     admin.rpc("svc_platform_activity_stats", { p_product_id: productId }),
     admin.rpc("svc_schedule_context", { p_product_id: productId, p_platform: "reddit" }),
     admin.from("launch_boosts").select("platforms, ends_at").eq("product_id", productId).is("canceled_at", null)
       .lte("starts_at", now.toISOString()).gt("ends_at", now.toISOString()),
     admin.from("platform_activity").select("platform, recommended_interval, interval_minutes, lengthen_pending_since").eq("product_id", productId),
+    admin.from("monitoring_queries")
+      .select("id, provider, stream, params, interval_minutes, next_run_at, last_success_at, consecutive_failures")
+      .eq("product_id", productId).eq("enabled", true).is("competitor_id", null),
   ]);
   if (error) throw new Error(`Couldn't load activity stats (${error.code ?? "db"})`);
-  const c = ctx as { workspace_id: string; archived: boolean; plan_name: string; plan_min_minutes: number; boost_min_minutes: number } | null;
+  const c = ctx as ScheduleCtx | null;
+  const queries = (queryRows ?? []) as EnabledQuery[];
   const out = new Map<PublicSourceId, PlatformDecision>();
   if (!c || c.archived) return out;
 
@@ -105,21 +125,81 @@ export async function refreshActivity(
   });
   const ranks = rankPlatforms(scored);
 
-  const upserts: Array<Record<string, unknown>> = [];
-  const changes: Array<Record<string, unknown>> = [];
-  for (const s of scored) {
+  const target = Number(c.keyword_target_minutes ?? DEFAULT_KEYWORD_TARGET_MINUTES);
+  const decided = scored.map((s) => {
     const p = prev.get(s.platform);
     const end = boostEnds.get(s.platform);
+    const paid = Boolean(adapters[s.platform].paid);
     const decision = decidePlatformInterval({
-      now, assessment: s.assessment, paid: Boolean(adapters[s.platform].paid),
+      now, assessment: s.assessment, paid,
       planName, planMinMinutes: planMin,
       sourceMinMinutes: SOURCE_MIN_INTERVAL[s.platform],
       maxIntervalMinutes: PLATFORM_MAX_INTERVAL[s.platform],
       boost: end ? { minMinutes: c.boost_min_minutes, endsAt: end } : null,
       previous: p ? { recommended: p.recommended_interval, pendingSince: date(p.lengthen_pending_since) } : null,
     });
+    // Plan's keyword refresh target: shorten (never below plan/source floors) so the slowest keyword meets it.
+    const mine = queries.filter((q) => q.provider === s.platform);
+    const rotations = mine.map((q) => q.params?.rotation).filter((r): r is Rotation => Boolean(r));
+    const floor = Math.max(planMin, SOURCE_MIN_INTERVAL[s.platform] ?? 0);
+    const t = mine.length && !end
+      ? applyKeywordTarget({
+        platformName: adapters[s.platform].name, interval: decision.interval, rotations, targetMinutes: target,
+        floorMinutes: floor, planName, sourceMinMinutes: SOURCE_MIN_INTERVAL[s.platform],
+      })
+      : null;
+    if (t?.shortened) {
+      decision.interval = t.interval;
+      decision.reasons.push(`Checked every ${formatInterval(t.interval)} so every keyword is searched within the ${planName} plan's ${formatInterval(target)} refresh target`);
+    }
+    const turns = Math.max(1, ...rotations.map((r) => rotationTurns(r)));
+    return { s, p, paid, decision, mine, turns, conflict: t?.conflict ?? null, paced: false };
+  });
+
+  // Paid-source pacing: the projected spend must fit this product's share of the plan's monthly paid allowance.
+  const paidDecided = decided.filter((d) => d.paid && d.mine.length && adapters[d.s.platform].configured().ok);
+  if (paidDecided.length && Number(c.paid_allowance_usd ?? 0) > 0) {
+    const { data: bctx } = await admin.rpc("svc_paid_budget_context", { p_product_id: productId });
+    const b = bctx as { allowance_usd: number; spent_usd: number; paid_products: number; month_end: string; prices: Record<string, number> } | null;
+    if (b) {
+      const remaining = Math.max(0, Number(b.allowance_usd) - Number(b.spent_usd)) / Math.max(1, Number(b.paid_products));
+      const minutesLeft = Math.max(60, (new Date(b.month_end).getTime() - now.getTime()) / 60_000);
+      const pacing = paceForBudget(paidDecided.map((d) => ({
+        platform: d.s.platform, interval: d.decision.interval,
+        costPerCheckUsd: estimateCheckCostUsd(d.s.platform, d.mine.map((q) => ({ stream: q.stream, rotation: q.params?.rotation ?? null })), b.prices ?? {}),
+      })), remaining, minutesLeft);
+      for (const d of paidDecided) {
+        const paced = pacing.intervals.get(d.s.platform)!;
+        if (pacing.paced.has(d.s.platform) && paced > d.decision.interval) {
+          d.decision.interval = paced;
+          d.paced = true;
+          d.decision.reasons.push(`Checked every ${formatInterval(paced)} so the ${planName} plan's paid-source allowance lasts the whole month`);
+          const slowest = paced * d.turns;
+          d.conflict = slowest > target
+            ? `Keyword refresh target (${formatInterval(target)}) not met on ${adapters[d.s.platform].name}: each keyword is searched every ${formatInterval(slowest)} to stay within the plan's paid-source allowance.`
+            : d.conflict;
+        }
+        if (!pacing.fits) {
+          d.decision.reasons.push("The paid-source allowance may run out before the month ends; further paid checks would then wait for it to renew");
+        }
+      }
+    }
+  }
+  if (c.allowance_paused_until) {
+    for (const d of decided.filter((x) => x.paid)) {
+      d.decision.reasons.push(`Paused: this month's mention allowance is used up (paid platforms resume ${new Date(c.allowance_paused_until).toISOString().slice(0, 10)})`);
+    }
+  }
+
+  const upserts: Array<Record<string, unknown>> = [];
+  const changes: Array<Record<string, unknown>> = [];
+  for (const { s, p, decision, turns, conflict, paced, mine } of decided) {
     const rank = ranks.get(s.platform) ?? null;
-    out.set(s.platform, { platform: s.platform, rank, assessment: s.assessment, decision, n7: s.n7 });
+    const slowest = decision.interval * turns;
+    out.set(s.platform, {
+      platform: s.platform, rank, assessment: s.assessment, decision, n7: s.n7,
+      keywordTargetMinutes: target, slowestKeywordMinutes: slowest, keywordConflict: conflict, budgetPaced: paced,
+    });
     upserts.push({
       product_id: productId, workspace_id: c.workspace_id, platform: s.platform,
       phase: s.assessment.phase, score: s.assessment.score, rank,
@@ -130,6 +210,8 @@ export async function refreshActivity(
       lengthen_pending_since: decision.pendingSince?.toISOString() ?? null,
       last_success_at: s.row.last_success_at, next_run_at: s.row.next_run_at,
       reasons: [...s.assessment.notes, ...decision.reasons], computed_at: now.toISOString(),
+      keyword_target_minutes: target, slowest_keyword_minutes: mine.length ? slowest : null,
+      keyword_conflict: conflict, budget_paced: paced,
     });
     if (p && p.interval_minutes !== decision.interval) {
       changes.push({
@@ -143,23 +225,16 @@ export async function refreshActivity(
     if (upErr) throw new Error(`Couldn't store activity ranking (${upErr.code ?? "db"})`);
   }
   if (changes.length) await admin.from("monitoring_interval_changes").insert(changes);
-  await applySchedules(admin, productId, out, opts.exceptQueryId, now);
+  await applySchedules(admin, queries, out, opts.exceptQueryId, now);
   return out;
 }
 
 /** Applies platform intervals to their query groups (shorter intervals take effect at once). */
 async function applySchedules(
-  admin: SupabaseClient, productId: string, decisions: Map<PublicSourceId, PlatformDecision>, exceptQueryId: string | undefined, now: Date,
+  admin: SupabaseClient, queries: EnabledQuery[], decisions: Map<PublicSourceId, PlatformDecision>, exceptQueryId: string | undefined, now: Date,
 ) {
-  const { data } = await admin
-    .from("monitoring_queries")
-    .select("id, provider, params, interval_minutes, next_run_at, last_success_at, consecutive_failures")
-    .eq("product_id", productId).eq("enabled", true).is("competitor_id", null);
   const adapters = getAdapters();
-  for (const q of (data ?? []) as Array<{
-    id: string; provider: string; params: { rotation?: Rotation } | null; interval_minutes: number | null;
-    next_run_at: string; last_success_at: string | null; consecutive_failures: number;
-  }>) {
+  for (const q of queries) {
     if (!isPublicSource(q.provider) || q.id === exceptQueryId) continue;
     const d = decisions.get(q.provider);
     if (!d) continue;

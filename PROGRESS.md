@@ -16,6 +16,46 @@ Legend: ✅ verified by an automated check that ran · 🟡 written, not yet exe
 
 Test users created for the walk-through were removed afterwards via the app's own deletion path.
 
+## Refinement — subscription restructure, mention allowances, API Direct live validation (2026-10-16)
+
+Monitoring refinements committed first (`f01b957`). Migration `20261016000005_plans_and_mention_billing` (additive) applied to the linked project after a dry run.
+
+### Checks
+| Check | Result |
+|---|---|
+| `npm run test:unit` | ✅ 153/153 (adds: plan keyword refresh targets met by shortening within floors, unreachable targets reported with real intervals, rotation never over budget, keyword allowance shared by products in creation order with paused extras, 40 keywords all planned, paid pacing costliest-first with "doesn't fit" reported, 80/90/100 % levels, keyword limit messages, onboarding suggestions fitted to the allowance, plan rows, LinkedIn activity-id time from the live-observed shape) |
+| `npm run test:db` | ✅ 251/251 (adds: Free $0 / Pro $100 / Scale $300 public, retired plans hidden; 1-keyword Free limit on save and on enable; billable = relevant originals, reposts/duplicates/re-seen/needs-review/excluded never counted; usage period = subscription period; 100 %: held not stored, exhaustion time, re-found held item not double-counted; paid queries not scheduled while exhausted; held items unreadable by users; usage readable, not writable; relevance refund within the period; admin release into the remaining allowance; no billing after exhaustion on promotion; earlier periods untouched; upgrade/downgrade; period boundaries incl. Jan 31 → Feb 28 → Mar 31 and the renewal instant; **two real connections ingesting concurrently never exceed the allowance**) |
+| `npm run test:e2e` | ✅ 16/16 (adds billing: plan cards and prices, no old plans, checkout "coming soon"; usage at 80 % / 90 % / 100 % with held mentions; upgrade raises the allowance; Free keyword allowance in the editor; onboarding suggestions beyond the allowance start off) |
+| typecheck, lint, `npm run build` | ✅ |
+| Visual | `/settings/billing` desktop and 375 px (no horizontal scroll), warning banner, Smart Monitoring target text (throwaway account, deleted) |
+
+### Subscription changes
+- Plans (rows in `plans`, read by the UI): **Free $0** (1 keyword, 100 mentions, daily, 7-day keyword target, no paid platforms), **Pro $100** (10 keywords, 15,000 mentions, hourly floor, 24 h target, $25 internal paid budget), **Scale $300** (40 keywords, 50,000 mentions, hourly floor, 6 h target, $75 budget, 4 searches/check without OR, scheduler priority). Starter ($9) and Business ($49) retired (hidden; rows kept). No annual billing, no checkout ("coming soon"), no Stripe objects created.
+- Keyword allowance per workspace, enforced by a trigger and in the editor; over-allowance keywords after a downgrade are paused (kept, shown, not searched).
+- Billing periods follow `subscriptions.current_period_start/end` (new subscriptions start at signup; existing dev subscriptions keep their stored Oct 1 – Nov 1 period).
+
+### Mention allowance (interim policy until M4 AI relevance)
+- Counted: a new, unique stored mention that is an original (not a repost or exact duplicate) with rule status "relevant", or one the team marks relevant. Not counted: duplicates, reposts, re-seen items, "needs review", excluded items, empty searches, failed requests. Marking a counted mention "Not relevant" refunds it in the current period only. Metering started when the migration ran (no retroactive counting).
+- 80 % warning, 90 % stronger warning, 100 %: further billable mentions are **held** in a bounded overflow queue (≤1,000 per workspace per period, 30 days after the period), paid platforms pause until renewal, free ones slow to daily; nothing is deleted, nothing charged, no automatic upgrade. Admins can deliver held mentions into remaining allowance (e.g. after an upgrade).
+
+### API Direct live validation (authorized cap $0.05)
+- Prerequisites: key in `.env.local` only (the pasted keys were moved out of the tracked `.env.example` before committing), provider spending limit confirmed by the founder, `PAID_SOURCES_ENABLED=false`, no global paid budget row, every request reserved in `api_cost_ledger`.
+- ✅ 9 requests, all 200, 174 results, **$0.048 by documented billing rules** (9 settled ledger rows); remaining $0.002. Provider-confirmed charge not checked (no billing API). Not run: Google News, Trustpilot, the separate one-keyword OR comparison.
+- ✅ Reddit global comment search works on comment text (45/45; parent titles without the keyword in ≥3 threads); ⚠️ no comment id/parent id/permalink in responses — links can't point at the comment.
+- ✅ X search returns keyword-matching replies (12) and quotes (3) with status URLs; dates exactly UTC.
+- ⚠️→✅ **LinkedIn dates were UTC+2** (20/20): fixed — time now from the activity id.
+- ✅ OR accepted on Reddit/X/LinkedIn/web; ⚠️ one page is dominated by the high-volume term; complete recall not established.
+- TikTok page size assumption corrected (28/page observed); Instagram relevance-ranked back to 2024 (always partial, as documented); web results have no dates (as documented).
+
+### Dev data
+- Both dev workspaces are on Free and exceed its 1-keyword allowance (octolens: "starlink", "wisprflow"; Starlink: 3 keywords). Keywords were **not changed**; re-planned so only the allowed keyword ("starlink" / "Starlink") is searched and the others show as paused. Unrelated test keywords (starlink, wisprflow) also distort the product's Buzz/virality analytics. YouTube now has a key configured but hasn't been live-verified by a scheduled check yet.
+
+### Remaining limitations
+- Bluesky: ≤300 posts per keyword per check; busier windows leave a permanent gap (documented; no Jetstream).
+- Reddit comment permalinks unavailable from API Direct; Google News and Trustpilot not live-tested; provider-side charges not reconciled.
+- With 10+ keywords on Pro, the $25 budget (not the 1 h floor) sets non-OR paid platform freshness; target conflicts are shown (COST_MODEL.md).
+- Paid monitoring stays off until a global budget is set and `PAID_SOURCES_ENABLED=true`.
+
 ## Refinement — keyword coverage across all connectors (2026-10-16)
 
 Every configured keyword (up to 10) is now monitored on every platform that can search it. Migrations `20261016000003` (SQL first-5 sync retired; `apply_query_groups` disables every unplanned row) and `20261016000004` (scheduler retry key) — additive, applied to the linked project after dry runs.
@@ -23,7 +63,7 @@ Every configured keyword (up to 10) is now monitored on every platform that can 
 ### Checks
 | Check | Result |
 |---|---|
-| `npm run test:unit` | ✅ 145/145 (adds 9: no keyword dropped on any platform, all 10 keywords on HN/SO/GitHub/YouTube, GitHub OR groups split at 5, Reddit posts + comments, search budgets, fair rotation slots never over budget with equal shares, 7-day guarantee, ambiguous keywords with context, product query groups for all sources, development entitlement conditions; Bluesky time-window paging and refused-page handling) |
+| `npm run test:unit` | ✅ 145/145 (adds 9: no keyword dropped on any platform, all 10 keywords on HN/SO/GitHub/YouTube, GitHub OR groups split at 5, Reddit posts + comments, search budgets, fair rotation slots never over budget with equal shares, 7-day guarantee (since replaced by plan targets), ambiguous keywords with context, product query groups for all sources, development entitlement conditions; Bluesky time-window paging and refused-page handling) |
 | `npm run test:db` | ✅ 223/223 (M2 query-sync tests rewritten for the new behaviour: SQL no longer writes queries; planned groups take over old rows **with their checkpoints**; unplanned rows disabled, not deleted; a failed check's retry gets a new job inside the same bucket, repeat ticks stay idempotent) |
 | `npm run test:e2e` | ✅ 13/13 (Smart Monitoring now also checks keyword coverage: "Searched on 3 of 3 platforms", per-platform refresh) |
 | typecheck, lint, `npm run build` | ✅ |

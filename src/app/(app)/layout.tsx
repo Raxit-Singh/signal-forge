@@ -1,13 +1,14 @@
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
-import { getActiveProduct, getProducts, getWorkspaces, requireWorkspace } from "@/lib/server/session";
+import { getActiveProduct, getProducts, getWorkspaces, getWorkspaceUsage, requireWorkspace } from "@/lib/server/session";
+import { UsageBanner } from "@/components/usage-banner";
 import { Sidebar } from "@/components/app-shell/sidebar";
 import { Topbar, type ShellNotification } from "@/components/app-shell/topbar";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, workspace } = await requireWorkspace();
   const supabase = await createClient();
-  const [workspaces, products, activeProduct, notifRes, unreadRes] = await Promise.all([
+  const [workspaces, products, activeProduct, notifRes, unreadRes, usage] = await Promise.all([
     getWorkspaces(),
     getProducts(workspace.id),
     getActiveProduct(workspace.id),
@@ -22,6 +23,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       .select("id", { count: "exact", head: true })
       .eq("workspace_id", workspace.id)
       .is("read_at", null),
+    getWorkspaceUsage(workspace.id),
   ]);
 
   const notifications: ShellNotification[] = (notifRes.data ?? []).map((n) => ({
@@ -52,6 +54,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           />
         </Suspense>
         <main id="main" className="mx-auto w-full max-w-7xl flex-1 px-3 py-5 sm:px-6">
+          <UsageBanner usage={usage} />
           {children}
         </main>
       </div>

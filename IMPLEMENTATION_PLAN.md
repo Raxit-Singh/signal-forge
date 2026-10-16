@@ -10,6 +10,8 @@ Starting point (2026-10-14): empty project. Each milestone ends with tests, type
 | Job queue | Postgres table + `SKIP LOCKED` leases, triggered by Supabase Cron → `/api/jobs/tick` | Idempotent, retryable, crash-safe, observable in SQL; no Redis/QStash bill. Host-agnostic, so Vercel Hobby's once-a-day cron limit doesn't matter. |
 | Hosting | Vercel Hobby for development; **Vercel Pro (US$20/mo) or a commercial-use-permitted alternative before charging customers** | Vercel Hobby is restricted to non-commercial, personal use. |
 | Plan limits | DB rows + DB triggers | Prices/limits change without deploys; enforcement can't be bypassed by the UI. |
+| Plans (2026-10-16) | Free $0 / Pro $100 / Scale $300, monthly only; keywords 1/10/40 per workspace; mentions 100/15,000/50,000 per billing period | Mention-based allowance; Starter/Business retired (hidden, kept). |
+| Mention billing (interim) | Count new unique originals with rule status "relevant" or marked relevant; hold (don't discard) beyond 100 % | AI relevance arrives in M4; no retroactive changes to past periods. |
 | Secrets | App-layer AES-256-GCM, service-role-only table | Works on Supabase free tier (no Vault dependency), rotatable, workspace-bound. |
 | Analytics | Pre-aggregated UTC daily stats + coverage windows | Fast charts; honest about gaps. |
 | AI | Provider abstraction, cheap-model-first staged pipeline, per-workspace budgets | Cost control; BYOK supported. |
@@ -82,7 +84,10 @@ Steps:
 **Acceptance:** no mode selection; rankings and intervals from real data; plan limits and budgets unchanged; numbered pagination with persistent filters — all covered by unit, DB and browser tests.
 
 ### Refinement: keyword coverage across all connectors — *implemented and verified 2026-10-16* (see PROGRESS.md)
-Every configured keyword monitored wherever it can be searched: OR consolidation, fair rotation with per-search checkpoints and a 7-day guarantee where a search budget applies, Milestone 2 sources moved to the planner (first-5 limit removed), keyword-level coverage on Smart Monitoring, development-only interval entitlement, scheduler retry fix, Bluesky pagination fix. Migrations `20261016000003/4`.
+Every configured keyword monitored wherever it can be searched: OR consolidation, fair rotation with per-search checkpoints (the 7-day guarantee was later replaced by plan targets), Milestone 2 sources moved to the planner (first-5 limit removed), keyword-level coverage on Smart Monitoring, development-only interval entitlement, scheduler retry fix, Bluesky pagination fix. Migrations `20261016000003/4`.
+
+### Refinement: subscription restructure, mention allowances, API Direct live validation — *implemented and verified 2026-10-16* (see PROGRESS.md)
+Free/Pro/Scale plans from the `plans` table; workspace keyword allowance (DB trigger + editor); billing periods anchored on the subscription; billable-mention metering with row-locked usage periods, refunds within the period, a bounded overflow queue and paid-collection pause at 100 %; 80/90/100 % warnings; plan keyword refresh targets (7 d / 24 h / 6 h) with recorded conflicts; paid-budget pacing (Pro $25, Scale $75 internal targets); scheduler priority by plan. Capped API Direct live test ($0.048 of $0.05): 9 endpoints verified, LinkedIn date bug fixed. Migration `20261016000005`.
 
 ### M3 Buzz analytics — *implemented and verified 2026-10-15* (see PROGRESS.md)
 Implemented on live SQL over deduplicated mentions (originals only) rather than the UTC `daily_mention_stats` table, so days follow the viewer's time zone; mentions with estimated dates (web results) are excluded from time series and counted separately.
@@ -98,5 +103,5 @@ GitHub App (read-only), selective file retrieval, product knowledge base, duplic
 **Acceptance:** useful, evidence-based reports with zero unauthorized repository writes.
 
 ### M6 Monetization & launch
-Stripe Checkout + Billing Portal, verified webhooks (idempotent via `billing_events`), plan changes, dunning, usage resets; email notifications + weekly report email; App Store Connect, Google Play and Discord connectors; admin cost dashboard; retention purge job; member invitations; security review; production deploy.
+Stripe Checkout + Billing Portal (create products/prices for Pro $100 and Scale $300 then set `plans.stripe_price_id`), verified webhooks (idempotent via `billing_events`) that write `subscriptions.current_period_start/end` (usage periods follow them automatically) and call `release_held_mentions` after an upgrade if the customer opts in, plan changes, dunning; email notifications + weekly report email; App Store Connect, Google Play and Discord connectors; admin cost dashboard; retention purge job; member invitations; security review; production deploy.
 **Acceptance:** a customer can subscribe, stay within limits, and receive reliable recurring monitoring.

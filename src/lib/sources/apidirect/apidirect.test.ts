@@ -8,7 +8,7 @@ import type { BillingIntent, BillingOutcome, SourceContext, SourceRequest } from
 import { apiDirectError } from "./client.ts";
 import { ENDPOINTS, billedUnits, unitsRequested, validateParams } from "./endpoints.ts";
 import { createApiDirectAdapters, presetFor, saturation } from "./adapters.ts";
-import { headlineKey, normalizeRedditComment, normalizeTweet, parseApiDate, redditPostId } from "./normalizers.ts";
+import { headlineKey, linkedinActivityTime, normalizeLinkedinPost, normalizeRedditComment, normalizeTweet, parseApiDate, redditPostId } from "./normalizers.ts";
 import { prepareIngest } from "../pipeline.ts";
 
 const NOW = new Date("2026-10-15T12:00:00Z");
@@ -388,4 +388,18 @@ test("combined OR query vs separate queries: same mentions from fewer billed req
   const billed = (calls: Call[]) => calls.reduce((t, c) => t + (c.outcome?.billedUnits ?? 0), 0);
   assert.equal(billed(combined.calls), 1);
   assert.equal(billed(separate.calls), 3);
+});
+
+// Shape and values observed in the authorized live test (2026-10-16): `date` was 2 h ahead of
+// the activity id's timestamp for 20/20 LinkedIn posts, so the id time is used.
+test("LinkedIn: publication time comes from the activity id, not the zone-less local date", () => {
+  const url = "https://www.linkedin.com/posts/example_post-activity-7516800632553463809-rQOv?utm_source=share";
+  assert.equal(linkedinActivityTime(url, null)?.toISOString(), "2026-10-16T10:02:06.203Z");
+  assert.equal(linkedinActivityTime(null, "urn:li:activity:7516800632553463809")?.toISOString(), "2026-10-16T10:02:06.203Z");
+  assert.equal(linkedinActivityTime("https://www.linkedin.com/feed/", "urn:li:ugcPost:1"), null);
+  const m = normalizeLinkedinPost({ urn: "urn:li:activity:7516800632553463809", url, date: "2026-10-16 12:02:06", author: "A", snippet: "starlink" } as never);
+  assert.equal(m?.publishedAt.toISOString(), "2026-10-16T10:02:06.203Z");
+  // No usable id: the stated date is kept.
+  const plain = normalizeLinkedinPost({ urn: "urn:li:ugcPost:42", url: "https://www.linkedin.com/feed/update/x", date: "2026-10-16 12:02:06", snippet: "s" } as never);
+  assert.equal(plain?.publishedAt.toISOString(), "2026-10-16T12:02:06.000Z");
 });

@@ -163,8 +163,24 @@ export function tweetParent(m: CandidateMention): ExpansionParent | null {
 
 // ------------------------------------------------------------------ LinkedIn
 
+/**
+ * LinkedIn activity ids carry their creation time (ms since epoch) in the top 41
+ * bits. Live check (2026-10-16): API Direct's LinkedIn `date` was exactly 2 h ahead
+ * of this for 20/20 posts (a UTC+2 local time, not UTC), so the id is preferred.
+ */
+export function linkedinActivityTime(url: string | null | undefined, urn: string | null | undefined): Date | null {
+  const id = /activity-(\d{16,20})/.exec(url ?? "")?.[1] ?? /urn:li:activity:(\d{16,20})/.exec(urn ?? "")?.[1];
+  if (!id) return null;
+  const ms = Number(BigInt(id) >> 22n);
+  // Sanity: LinkedIn's era (2010+) and not in the future.
+  return ms > Date.UTC(2010, 0, 1) && ms < Date.now() + 5 * 60_000 ? new Date(ms) : null;
+}
+
 export function normalizeLinkedinPost(p: LinkedinPost): CandidateMention | null {
-  const publishedAt = parseApiDate(p.date);
+  const stated = parseApiDate(p.date);
+  const fromId = linkedinActivityTime(p.url, p.urn);
+  // The stated date is a local time of unknown zone; within a day of the id time, trust the id.
+  const publishedAt = fromId && (!stated || Math.abs(stated.getTime() - fromId.getTime()) <= 14 * 3_600_000) ? fromId : stated;
   const urn = p.urn ?? (p.url ? `url:${sha(canonicalLink(p.url) ?? p.url)}` : null);
   if (!publishedAt || !urn) return null;
   const likes = num(p.likes);

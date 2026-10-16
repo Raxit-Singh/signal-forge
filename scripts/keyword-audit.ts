@@ -12,7 +12,7 @@
 // check and no saturation; actual spend is in api_cost_ledger.
 import { existsSync } from "node:fs";
 import { expansionsPerRun } from "../src/lib/sources/adaptive.ts";
-import { ENDPOINTS, type EndpointSpec } from "../src/lib/sources/apidirect/endpoints.ts";
+import { ENDPOINTS, STREAM_ENDPOINTS as STREAM_ENDPOINT, type EndpointSpec } from "../src/lib/sources/apidirect/endpoints.ts";
 import { planPlatformKeywords, rotationTurns } from "../src/lib/sources/keyword-plan.ts";
 import { createAdapters, isLegacySource, PUBLIC_SOURCES, streamsOf } from "../src/lib/sources/registry.ts";
 import type { PublicSourceId } from "../src/lib/sources/types.ts";
@@ -34,13 +34,6 @@ const get = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
   return (await r.json()) as T;
 };
 
-/** Endpoint per platform stream, and the comment-expansion endpoint where one exists. */
-const STREAM_ENDPOINT: Record<string, EndpointSpec> = {
-  "reddit/posts": ENDPOINTS.redditPosts, "reddit/comments": ENDPOINTS.redditComments, "x/posts": ENDPOINTS.xPosts,
-  "linkedin/posts": ENDPOINTS.linkedinPosts, "tiktok/videos": ENDPOINTS.tiktokVideos, "instagram/posts": ENDPOINTS.instagramPosts,
-  "facebook/posts": ENDPOINTS.facebookPosts, "substack/posts": ENDPOINTS.substackPosts, "substack/notes": ENDPOINTS.substackNotes,
-  "web/results": ENDPOINTS.webSearch, "news/articles": ENDPOINTS.newsArticles, "trustpilot/reviews": ENDPOINTS.trustpilotReviews,
-};
 const EXPANSION: Partial<Record<PublicSourceId, EndpointSpec>> = {
   x: ENDPOINTS.xTweetComments, tiktok: ENDPOINTS.tiktokVideoComments, instagram: ENDPOINTS.instagramPostComments, facebook: ENDPOINTS.facebookPostComments,
 };
@@ -95,7 +88,7 @@ for (const product of products) {
       const hasPage = id === "trustpilot" ? Boolean(product.website_url) : Boolean(product.app_store_url);
       // Searches per check: a rotating search runs once every `turns` checks.
       const groups = sp?.productOnly ? (hasPage ? 1 : 0)
-        : (sp?.groups ?? []).reduce((t, g) => t + (g.rotation ? 1 / rotationTurns(g.rotation, interval) : 1), 0);
+        : (sp?.groups ?? []).reduce((t, g) => t + (g.rotation ? 1 / rotationTurns(g.rotation) : 1), 0);
       const pages = Math.min(DEFAULT_PAGES, s.capabilities.maxPagesPerRun);
       const ep = STREAM_ENDPOINT[`${id}/${s.id}`];
       // "pages" endpoints bill every page requested; page-by-page endpoints stop early when results run out.

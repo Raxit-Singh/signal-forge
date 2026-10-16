@@ -13,3 +13,6 @@ supabase/.temp/
 test-results/
 playwright-report/
 blob-report/
+
+# API Direct live-test output (raw third-party responses)
+.apidirect-live/

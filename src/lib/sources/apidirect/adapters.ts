@@ -221,7 +221,8 @@ export function createApiDirectAdapters(apiKey?: string): Record<PaidSourceId, S
         S.tiktokVideosResponse, "search", req.signal);
       const c = { items: tag(keep(r.body.videos.map(normalizeTiktokVideo)), r.ledgerId), returned: r.body.videos.length, pagesRequested: pages };
       // TikTok keyword search matches loosely; results are filtered locally.
-      return result(c, saturation(c, req.window.since, 10, true), `TikTok search hit the ${pages}-page limit before reaching the start of the window.`);
+      // Page size: the live test (2026-10-16) returned 28 videos for one page (docs gave no size); 10 flagged half-empty pages as full.
+      return result(c, saturation(c, req.window.since, 25, true), `TikTok search hit the ${pages}-page limit before reaching the start of the window.`);
     },
     async expandComments(parents, ctx, signal) {
       const k = need();
