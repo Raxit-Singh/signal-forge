@@ -7,6 +7,7 @@ import { MonitorJobError, recordCoverage, recordHealth, runMonitorQuery, type Jo
 import { configuredSourceIds, getAdapters, sourceSetup } from "./sources";
 import { syncAllProducts } from "./query-sync";
 import { detectSpikesForActiveProducts } from "../analytics/spikes";
+import { refreshActivityForActiveProducts } from "./activity";
 
 const LEASE_SECONDS = 180;
 const CLAIM_BATCH = 4;
@@ -99,6 +100,7 @@ export interface TickSummary {
   purged: number | null;
   synced: number | null;
   spikes: number | null;
+  ranked: number | null;
   worker: WorkerSummary;
 }
 
@@ -110,6 +112,7 @@ export async function tick(budgetMs: number): Promise<TickSummary> {
   let purged: number | null = null;
   let synced: number | null = null;
   let spikes: number | null = null;
+  let ranked: number | null = null;
 
   const { data: gotScheduler } = await admin.rpc("svc_try_acquire_lock", { p_name: "scheduler", p_holder: holder, p_ttl_seconds: 50 });
   if (gotScheduler) {
@@ -130,14 +133,18 @@ export async function tick(budgetMs: number): Promise<TickSummary> {
         synced = await syncAllProducts(admin);
       }
 
-      // Hourly: spike detection for products with recent mentions.
+      // Hourly: spike detection for products with recent mentions, then platform activity
+      // ranking from stored data (spikes feed the ranking; no API calls).
       const { data: hourly } = await admin.rpc("svc_try_acquire_lock", { p_name: "analytics:spikes", p_holder: holder, p_ttl_seconds: 55 * 60 });
-      if (hourly) spikes = await detectSpikesForActiveProducts(admin);
+      if (hourly) {
+        spikes = await detectSpikesForActiveProducts(admin);
+        ranked = await refreshActivityForActiveProducts(admin);
+      }
     } finally {
       await admin.rpc("svc_release_lock", { p_name: "scheduler", p_holder: holder });
     }
   }
 
   const worker = await runWorker({ budgetMs, admin });
-  return { scheduled, purged, synced, spikes, worker };
+  return { scheduled, purged, synced, spikes, ranked, worker };
 }

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
-  adminInsert, adminSelect, createUser, createWorkspaceWithProduct, deleteUser, seedMentions, signInPath, type FixtureMention, type TestUser,
+  adminInsert, createUser, createWorkspaceWithProduct, deleteUser, seedMentions, signInPath, type FixtureMention, type TestUser,
 } from "./support";
 
 // Deterministic fixtures (clearly synthetic: e2e-* ids, example.com links). Monitoring covered the last 10 days only,
@@ -74,30 +74,4 @@ test("relevant vs not relevant view, platform filter and stored spikes", async (
   const spikes = page.getByRole("list", { name: "Detected spikes" });
   await expect(spikes).toContainText("30 mentions vs ~4.0 usual");
   await expect(spikes).toContainText("Major");
-});
-
-test("smart monitoring: mode, per-platform schedule, and a Launch Boost that returns to normal", async ({ page }) => {
-  await page.goto("/monitoring");
-  await expect(page.getByRole("heading", { name: "Smart Monitoring" })).toBeVisible();
-  const monitored = page.getByRole("list", { name: "Monitored platforms" });
-  await expect(monitored).toContainText("Hacker News");
-  // Paid sources are off on a server without API Direct credentials, and say why.
-  await expect(page.getByRole("list", { name: "Other platforms" })).toContainText("Reddit");
-  await expect(page.getByRole("list", { name: "Other platforms" })).toContainText(/Not configured on this server|switched off/);
-
-  await page.getByRole("radio", { name: /Eco/ }).check();
-  await page.getByRole("button", { name: "Save mode" }).click();
-  await expect(page.getByText("Monitoring mode saved")).toBeVisible();
-  await expect.poll(() => adminSelect<Array<{ monitoring_mode: string }>>(`products?id=eq.${ids.productId}&select=monitoring_mode`).then((r) => r[0]?.monitoring_mode)).toBe("eco");
-
-  await page.getByLabel("Name").fill("E2E launch");
-  await page.getByRole("checkbox", { name: /Hacker News/ }).check();
-  await page.getByRole("button", { name: "Schedule boost" }).click();
-  await expect(page.getByText("Launch Boost scheduled")).toBeVisible();
-  const boosts = page.getByRole("list", { name: "Active and upcoming boosts" });
-  await expect(boosts).toContainText("E2E launch");
-  await boosts.getByRole("button", { name: "Cancel" }).click();
-  await expect(boosts).toHaveCount(0);
-  await expect(page.getByText(/Recent: E2E launch \(canceled/)).toBeVisible();
-  await expect.poll(() => adminSelect<Array<{ canceled_at: string | null }>>(`launch_boosts?product_id=eq.${ids.productId}&select=canceled_at`).then((r) => Boolean(r[0]?.canceled_at))).toBe(true);
 });

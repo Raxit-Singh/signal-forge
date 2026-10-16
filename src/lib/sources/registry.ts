@@ -14,7 +14,7 @@ export interface SourceKeys {
   apiDirectKey?: string;
 }
 
-/** Milestone 2 sources: queries come from the SQL keyword sync (one stream, "default"). */
+/** Milestone 2 sources (one stream, "default"; checkpoints always advance and gaps are recorded). */
 export const LEGACY_SOURCES: readonly LegacySourceId[] = ["hackernews", "github", "stackexchange", "youtube"];
 export const OFFICIAL_SOURCES = [...LEGACY_SOURCES, "bluesky", "dev", "app_store"] as const;
 export const PAID_SOURCES: readonly PaidSourceId[] = [
@@ -47,12 +47,13 @@ export function isLegacySource(p: string): p is LegacySourceId {
   return (LEGACY_SOURCES as readonly string[]).includes(p);
 }
 
-const LEGACY_STREAM: StreamSpec = {
-  id: "default", label: "Search", mentionType: "post", queryMode: "keywords",
-  capabilities: { ...CAPS.devArticles, maxQueryLength: 256, maxTerms: 5, wordMatch: true },
+const LEGACY_CAPS: Record<LegacySourceId, StreamSpec["capabilities"]> = {
+  hackernews: CAPS.hackernews, github: CAPS.github, stackexchange: CAPS.stackexchange, youtube: CAPS.youtube,
 };
 
-/** Streams of an adapter (legacy adapters have one implicit "default" stream). */
+/** Streams of an adapter (Milestone 2 adapters have one implicit "default" stream). */
 export function streamsOf(a: SourceAdapter): StreamSpec[] {
-  return a.streams?.length ? a.streams : [LEGACY_STREAM];
+  if (a.streams?.length) return a.streams;
+  const caps = isLegacySource(a.id) ? LEGACY_CAPS[a.id] : CAPS.hackernews;
+  return [{ id: "default", label: "Search", mentionType: "post", queryMode: "keywords", capabilities: caps }];
 }

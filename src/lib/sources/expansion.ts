@@ -4,10 +4,9 @@
 //   1. candidates are relevant posts/videos from this run
 //   2. each is scored: relevance × discussion size × recency
 //   3. posts already expanded are revisited only when the discussion grew
-//   4. at most N parents per run (by monitoring mode), one page each
+//   4. at most N parents per run (more on busier platforms), one page each
 // Comments are then filtered locally by the normal relevance rules.
 
-import type { MonitoringMode } from "./query-optimizer.ts";
 import type { ExpansionParent } from "./types.ts";
 
 export interface ExpansionCandidate {
@@ -22,15 +21,14 @@ export interface ExpansionHistory {
 }
 
 export interface ExpansionOptions {
-  mode: MonitoringMode;
+  /** Most parents to expand this run (see expansionsPerRun in adaptive.ts). */
+  maxParents: number;
   now: Date;
   /** Parents with fewer comments aren't worth a request. */
   minComments?: number;
   /** Don't revisit a parent sooner than this. */
   revisitAfterHours?: number;
 }
-
-export const MAX_PARENTS_PER_RUN: Record<MonitoringMode, number> = { eco: 1, balanced: 2, priority: 4 };
 
 export interface ExpansionDecision {
   selected: ExpansionParent[];
@@ -78,7 +76,7 @@ export function selectExpansions(
 
   eligible.sort((a, b) => expansionPriority(b, opts.now) - expansionPriority(a, opts.now)
     || a.parent.externalId.localeCompare(b.parent.externalId));
-  const max = MAX_PARENTS_PER_RUN[opts.mode];
+  const max = Math.max(0, opts.maxParents);
   for (const c of eligible.slice(max)) skipped.push({ externalId: c.parent.externalId, reason: "lower_priority" });
   return { selected: eligible.slice(0, max).map((c) => c.parent), skipped };
 }

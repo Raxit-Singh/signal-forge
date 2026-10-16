@@ -67,10 +67,22 @@ Steps:
 2. `src/lib/sources/apidirect/`: client (validation, timeout via context, retry/backoff for transient codes, error mapping, billability rules), endpoint catalog, response schemas (zod), normalizers.
 3. Reddit (posts + comments as separate streams/checkpoints), X (search incl. replies/quotes, selective reply/quote expansion), LinkedIn, TikTok, Instagram, Facebook, Substack (posts + notes), Google web, Google News, Trustpilot.
 4. Query optimizer with per-connector capability declarations; shared query fingerprints; one upstream fetch fans out to every product with the same fingerprint (results are not cached afterwards).
-5. Adaptive monitoring engine (deterministic), modes eco/balanced/priority, Launch Boost, safety rules (max interval, saturation, audits, failure recovery).
+5. Adaptive monitoring engine (deterministic), modes eco/balanced/priority, Launch Boost, safety rules (max interval, saturation, audits, failure recovery). *Modes replaced on 2026-10-16 by automatic activity ranking (below).*
 6. Cost control: pricing registry in the DB, budgets at global/provider/platform/workspace/product/boost scope, reservations before each paid call, ledger + reconciliation.
 7. Comment expansion engine for platforms without global comment search.
 8. Official sources: Bluesky (AppView search), DEV (Forem tag feed + comments), App Store (customer-review feed). Discord, Threads and Google Play stay disabled (need a bot gateway process, Meta app review, or the customer's Play Console credentials).
+
+### Refinement: automatic Smart Monitoring + Mentions UI — *implemented and verified 2026-10-16* (see PROGRESS.md)
+1. Additive migrations `20261016000001/2`: `platform_activity`, `monitoring_interval_changes`, `plan_paid_allowances.max_searches_per_platform` (default 2 = old default), `private.platform_activity_stats`, mention pagination index.
+2. Pure engine (`adaptive.ts`): activity score 0–100 from stored data, ranking, discovery phase, score → interval with safeguards, hysteresis, plan/boost/source limits; deterministic explanations (`explain.ts`).
+3. Server: re-rank after every run and hourly; apply intervals to query groups (shorter at once; missed-run recovery); log interval changes. Boost start/cancel re-ranks.
+4. Keyword engine audit: single planner (`keyword-plan.ts`) for worker, UI and `npm run audit:keywords`; duplicates and unsupported keywords reported; free platforms without OR search every keyword; paid cap per plan.
+5. Smart Monitoring page: automatic overview, summary metrics with honest denominators, ranking table (desktop) / cards (mobile) with expandable explanations; mode selection removed.
+6. Mentions: numbered offset pagination (URL `page`), type filter, compact cards with Read more, labelled relevance toggles, mobile layout.
+**Acceptance:** no mode selection; rankings and intervals from real data; plan limits and budgets unchanged; numbered pagination with persistent filters — all covered by unit, DB and browser tests.
+
+### Refinement: keyword coverage across all connectors — *implemented and verified 2026-10-16* (see PROGRESS.md)
+Every configured keyword monitored wherever it can be searched: OR consolidation, fair rotation with per-search checkpoints and a 7-day guarantee where a search budget applies, Milestone 2 sources moved to the planner (first-5 limit removed), keyword-level coverage on Smart Monitoring, development-only interval entitlement, scheduler retry fix, Bluesky pagination fix. Migrations `20261016000003/4`.
 
 ### M3 Buzz analytics — *implemented and verified 2026-10-15* (see PROGRESS.md)
 Implemented on live SQL over deduplicated mentions (originals only) rather than the UTC `daily_mention_stats` table, so days follow the viewer's time zone; mentions with estimated dates (web results) are excluded from time series and counted separately.

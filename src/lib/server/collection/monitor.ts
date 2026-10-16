@@ -1,15 +1,16 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { auditDue, decideInterval, type ScheduleDecision } from "@/lib/sources/adaptive";
+import { auditDue, expansionsPerRun, formatInterval, nextRunAt, type Confidence } from "@/lib/sources/adaptive";
 import { expansionParentOf } from "@/lib/sources/apidirect/adapters";
 import { SourceError } from "@/lib/sources/errors";
 import { selectExpansions, type ExpansionCandidate, type ExpansionHistory } from "@/lib/sources/expansion";
+import { keywordIntervalMinutes, rotationNextRun, type Rotation } from "@/lib/sources/keyword-plan";
 import { appStoreIds } from "@/lib/sources/official";
 import { prepareIngest, type IngestItem } from "@/lib/sources/pipeline";
-import type { MonitoringMode } from "@/lib/sources/query-optimizer";
 import { isLegacySource, isPaidSource, isPublicSource, streamsOf } from "@/lib/sources/registry";
 import type { AliasRule } from "@/lib/sources/relevance";
 import type { CandidateMention, ExpansionParent, PublicSourceId, SearchResult, SearchWindow, SourceAdapter } from "@/lib/sources/types";
+import { refreshActivity } from "./activity";
 import { createSourceContext, type BillingMember, type PaidCall, type UsageEvent } from "./context";
 import { paidCollectionEnabled } from "./sources";
 import { websiteDomain } from "./query-sync";
@@ -27,16 +28,6 @@ const INGEST_CHUNK = 250;
 /** A shared fetch serves sibling queries that haven't been refreshed for this long. */
 const SHARED_FRESH_MS = 30 * 60_000;
 const MAX_SHARED_MEMBERS = 50;
-
-/** Relative weight of each platform for scheduling (busy, high-signal platforms first). */
-export const PLATFORM_IMPORTANCE: Record<PublicSourceId, number> = {
-  reddit: 1, x: 1, hackernews: 0.9, app_store: 0.9, github: 0.8, news: 0.8, trustpilot: 0.8,
-  stackexchange: 0.7, youtube: 0.7, bluesky: 0.7, linkedin: 0.7,
-  tiktok: 0.6, instagram: 0.6, substack: 0.6, dev: 0.6, facebook: 0.5, web: 0.5,
-};
-
-/** Sources whose search can't promise completeness even without page caps. */
-const INHERENTLY_PARTIAL = new Set<PublicSourceId>(["instagram", "web", "substack", "dev"]);
 
 export interface JobRow {
   id: string;
@@ -98,7 +89,7 @@ interface QueryRow {
   provider: string;
   stream: string;
   query: string;
-  params: { terms?: string[] };
+  params: { terms?: string[]; rotation?: Rotation };
   cursor: { until?: string; pages?: number; audit_missed?: number };
   enabled: boolean;
   fingerprint: string | null;
@@ -115,7 +106,6 @@ interface ScheduleContext {
   website_url: string | null;
   app_store_url: string | null;
   archived: boolean;
-  mode: MonitoringMode;
   plan_min_minutes: number;
   boost_min_minutes: number;
   paid_allowance_usd: number;
@@ -129,6 +119,12 @@ interface ScheduleContext {
 
 const QUERY_COLUMNS =
   "id, workspace_id, product_id, provider, stream, query, params, cursor, enabled, fingerprint, managed_by, interval_minutes, consecutive_failures, last_success_at, last_audit_at";
+
+interface Schedule {
+  intervalMinutes: number;
+  reasons: string[];
+  confidence: Confidence;
+}
 
 interface Member {
   q: QueryRow;
@@ -189,7 +185,11 @@ export async function runMonitorQuery(
   const paid = Boolean(adapter.paid);
   const requestedSince = typeof job.payload.since === "string" ? new Date(job.payload.since) : null;
   const isScan = Boolean(job.scan_id) || requestedSince !== null;
-  const audit = !isScan && !isLegacySource(provider) && auditDue(q.last_audit_at ? new Date(q.last_audit_at) : null, ctx.mode, paid, now);
+  // Activity score from the last ranking (null while the platform is new) sets audit cadence and expansion budget.
+  const { data: act } = await admin.from("platform_activity").select("score, phase")
+    .eq("product_id", q.product_id).eq("platform", provider).maybeSingle<{ score: number | null; phase: string }>();
+  const score = act?.phase === "ranked" ? act.score : null;
+  const audit = !isScan && !isLegacySource(provider) && auditDue(q.last_audit_at ? new Date(q.last_audit_at) : null, paid, score, now);
   const leadWindow = windowFor(q, now, paid, requestedSince, audit);
   const scope = { workspace_id: q.workspace_id, product_id: q.product_id };
 
@@ -264,7 +264,7 @@ export async function runMonitorQuery(
     let expansion: SearchResult | null = null;
     let expandedParents: ExpansionParent[] = [];
     if (adapter.expandComments && !audit) {
-      expandedParents = await chooseExpansions(admin, provider, search.items, members, ctx.mode, now);
+      expandedParents = await chooseExpansions(admin, provider, search.items, members, expansionsPerRun(score), now);
       if (expandedParents.length > 0) {
         try {
           expansion = await adapter.expandComments(expandedParents, sctx);
@@ -283,10 +283,7 @@ export async function runMonitorQuery(
     const results: MonitorResult[] = [];
     for (const m of members) {
       const r = await ingestForMember(admin, provider, adapter, m, allItems, search, now, perRequest);
-      // Activity must include what this run just stored.
-      if (r.inserted > 0) m.ctx = (await loadContext(admin, m.q.product_id, provider).catch(() => null)) ?? m.ctx;
-      const decision = scheduleFor(m, provider, adapter, search, 0, r.auditMissed);
-      await finishMember(admin, m, provider, job, started, r, search, decision, {
+      const decision = await finishMember(admin, m, provider, job, started, r, search, {
         audit: audit && m.q.id === q.id, sharedWith: members.length,
         expansions: m.q.id === q.id ? expandedParents.length : 0,
         paidRequests: m.q.id === q.id ? paidCalls.length : 0,
@@ -310,13 +307,15 @@ export async function runMonitorQuery(
     // Checkpoints don't move; the next run re-searches the gap (sooner after failures).
     for (const m of members) {
       const failures = m.q.consecutive_failures + 1;
-      const d = scheduleFor(m, provider, adapter, null, failures, 0);
+      const interval = m.q.interval_minutes ?? m.ctx.plan_min_minutes;
       await admin.from("monitoring_queries").update({
         consecutive_failures: failures,
         // Budget refusals aren't fixed by retrying sooner.
-        next_run_at: err.kind === "budget" ? new Date(now.getTime() + d.intervalMinutes * 60_000).toISOString() : d.nextRunAt.toISOString(),
-        coverage_confidence: d.confidence,
-        interval_reasons: d.reasons,
+        next_run_at: (err.kind === "budget" ? nextRunAt(now, interval, 0) : nextRunAt(now, interval, failures)).toISOString(),
+        coverage_confidence: failures >= 2 ? "low" : "medium",
+        interval_reasons: [err.kind === "budget"
+          ? "Paid-source budget reached: checked again at the normal interval"
+          : `Retrying sooner after ${failures} failed check${failures === 1 ? "" : "s"}`],
       }).eq("id", m.q.id);
       await logExecution(admin, { q: m.q, job, started, status: "failed", detail: err.message, paidRequests: m.q.id === q.id ? paidCalls.length : 0 });
     }
@@ -399,29 +398,6 @@ async function ingestForMember(
   };
 }
 
-function scheduleFor(
-  m: Member, provider: PublicSourceId, adapter: SourceAdapter, search: SearchResult | null, failures: number, auditMissed: number,
-): ScheduleDecision {
-  const prev = m.q.cursor?.audit_missed ?? 0;
-  return decideInterval({
-    now: new Date(),
-    mode: m.ctx.mode,
-    paid: Boolean(adapter.paid),
-    platformImportance: PLATFORM_IMPORTANCE[provider],
-    planMinMinutes: m.ctx.plan_min_minutes,
-    sourceMinMinutes: provider === "youtube" ? 1440 : undefined,
-    inherentlyPartial: INHERENTLY_PARTIAL.has(provider),
-    boost: m.ctx.boost ? { mode: m.ctx.boost.mode, minMinutes: m.ctx.boost_min_minutes, endsAt: new Date(m.ctx.boost.ends_at) } : null,
-    activity: { last24h: Number(m.ctx.last24h), prev24h: Number(m.ctx.prev24h), dailyAvg7d: Number(m.ctx.avg7d), dailyAvg28d: Number(m.ctx.avg28d) },
-    spikeActive: Boolean(m.ctx.spike),
-    negativeSpike: null,
-    lastRun: search ? { complete: search.complete, saturated: Boolean(search.saturated) } : m.q.last_success_at ? { complete: true, saturated: false } : null,
-    consecutiveFailures: failures,
-    auditMissed: auditMissed || prev,
-    previousIntervalMinutes: m.q.interval_minutes,
-  });
-}
-
 async function finishMember(
   admin: SupabaseClient,
   m: Member,
@@ -430,9 +406,8 @@ async function finishMember(
   started: Date,
   r: MemberIngest,
   search: SearchResult,
-  d: ScheduleDecision,
   extra: { audit: boolean; sharedWith: number; expansions: number; paidRequests: number; pages: number; nextPages: number },
-) {
+): Promise<Schedule> {
   const now = new Date();
   const scope = { workspace_id: m.q.workspace_id, product_id: m.q.product_id };
   await recordCoverage(admin, scope, provider, m.window, r.complete ? "complete" : "partial", r.reasons.join(" ") || null, job.id);
@@ -441,7 +416,7 @@ async function finishMember(
   // plan's mention limit dropped items): the next run re-searches from the old one.
   // Milestone 2 sources keep their original behaviour (always advance, gap recorded).
   const capped = Boolean(search.saturated) || (r.result.overLimit ?? 0) > 0;
-  const advance = m.q.managed_by === "legacy" || !capped;
+  const advance = isLegacySource(provider) || !capped;
   const until = advance ? Math.max(m.window.until.getTime(), prevUntil) : prevUntil;
   const cursor: QueryRow["cursor"] = {
     until: until > 0 ? new Date(until).toISOString() : undefined,
@@ -453,12 +428,31 @@ async function finishMember(
     last_run_at: now.toISOString(),
     last_success_at: now.toISOString(),
     consecutive_failures: 0,
+    ...(search.saturated ? { last_saturated_at: now.toISOString() } : {}),
+    ...(extra.audit ? { last_audit_at: now.toISOString() } : {}),
+  }).eq("id", m.q.id);
+
+  // Re-rank the product's platforms with what this run stored (no API calls), then schedule this group.
+  const ranking = await refreshActivity(admin, m.q.product_id, { exceptQueryId: m.q.id }).catch((e) => {
+    console.error(`[monitor] ranking refresh failed: ${e instanceof Error ? e.message : e}`);
+    return null;
+  });
+  const p = ranking?.get(provider);
+  // A search that takes turns with others (keyword rotation) runs in its own time slots.
+  const rotation = m.q.params?.rotation ?? null;
+  const platformInterval = p?.decision.interval ?? null;
+  const d: Schedule = p
+    ? {
+      intervalMinutes: keywordIntervalMinutes(p.decision.interval, rotation),
+      reasons: [...p.assessment.notes, ...p.decision.reasons, ...(rotation ? [rotationReason(rotation, p.decision.interval)] : [])],
+      confidence: p.assessment.confidence,
+    }
+    : { intervalMinutes: m.q.interval_minutes ?? m.ctx.plan_min_minutes, reasons: ["Kept the current interval (ranking unavailable)"], confidence: r.complete ? "medium" : "low" };
+  await admin.from("monitoring_queries").update({
     interval_minutes: d.intervalMinutes,
     interval_reasons: d.reasons,
     coverage_confidence: d.confidence,
-    next_run_at: d.nextRunAt.toISOString(),
-    ...(search.saturated ? { last_saturated_at: now.toISOString() } : {}),
-    ...(extra.audit ? { last_audit_at: now.toISOString() } : {}),
+    next_run_at: (rotation && platformInterval ? rotationNextRun(now, platformInterval, rotation) : nextRunAt(now, d.intervalMinutes, 0)).toISOString(),
   }).eq("id", m.q.id);
   await logExecution(admin, {
     q: m.q, job, started, status: r.complete ? "succeeded" : "partial",
@@ -466,10 +460,16 @@ async function finishMember(
     saturated: Boolean(search.saturated), paidRequests: extra.paidRequests, sharedWith: extra.sharedWith, expansions: extra.expansions,
     decision: d, detail: [extra.audit ? `Completeness audit: ${r.auditMissed} missed mention(s) found.` : null, r.reasons.join(" ") || null].filter(Boolean).join(" ") || null,
   });
+  return d;
+}
+
+export function rotationReason(r: Rotation, platformIntervalMinutes: number): string {
+  const every = formatInterval(keywordIntervalMinutes(platformIntervalMinutes, r));
+  return `Takes turns with ${r.rotating - 1} other search${r.rotating === 2 ? "" : "es"} on this platform (${r.slots} per check): searched every ${every}`;
 }
 
 async function chooseExpansions(
-  admin: SupabaseClient, provider: PublicSourceId, items: CandidateMention[], members: Member[], mode: MonitoringMode, now: Date,
+  admin: SupabaseClient, provider: PublicSourceId, items: CandidateMention[], members: Member[], maxParents: number, now: Date,
 ): Promise<ExpansionParent[]> {
   const candidates: ExpansionCandidate[] = [];
   const now2 = new Date();
@@ -497,7 +497,7 @@ async function chooseExpansions(
   const history = new Map<string, ExpansionHistory>(
     (data ?? []).map((h) => [h.parent_external_id as string, { lastExpandedAt: new Date(h.last_expanded_at as string), commentCountAtLast: h.comment_count_at_last as number }]),
   );
-  return selectExpansions(candidates, history, { mode, now }).selected;
+  return selectExpansions(candidates, history, { maxParents, now }).selected;
 }
 
 async function recordExpansions(
@@ -519,7 +519,7 @@ async function logExecution(
   e: {
     q: QueryRow; job: JobRow; started: Date; status: "succeeded" | "partial" | "failed" | "skipped" | "covered_by_shared";
     window?: SearchWindow; pages?: number; fetched?: number; relevant?: number; inserted?: number; duplicates?: number;
-    saturated?: boolean; paidRequests?: number; sharedWith?: number; expansions?: number; decision?: ScheduleDecision; detail?: string | null;
+    saturated?: boolean; paidRequests?: number; sharedWith?: number; expansions?: number; decision?: Schedule; detail?: string | null;
   },
 ) {
   await admin.from("monitoring_executions").insert({

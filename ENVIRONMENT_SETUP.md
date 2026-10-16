@@ -77,7 +77,10 @@ Paid collection needs **all three**: `API_DIRECT_API_KEY`, `PAID_SOURCES_ENABLED
    insert into public.api_budgets (scope, workspace_id, monthly_limit_usd) values ('workspace', '<uuid>', 2);
    -- per-plan allowance (proposed defaults: free 0, starter 1, pro 5, business 20):
    update public.plan_paid_allowances set monthly_usd = 5, max_boost_paid_checks = 400 where plan_id = 'pro';
+   -- separate searches per check on paid platforms without OR (TikTok, Instagram, Facebook, Substack); default 2:
+   update public.plan_paid_allowances set max_searches_per_platform = 4 where plan_id = 'business';
    ```
+   How often each platform is checked is automatic (Smart Monitoring) and never faster than the plan's `monitoring_interval_minutes`; there is no per-product mode to configure. Before enabling, `npm run audit:keywords` shows the searches and estimated monthly cost per product (read-only).
 3. Set `PAID_SOURCES_ENABLED=true` and redeploy. Each product admin must still turn each paid platform on (Smart Monitoring → More platforms) and confirm the spending authorization.
 4. **Live validation** (authorized, capped, never in CI): `npm run test:apidirect-live -- --confirm --max-usd 0.05`. It reads prices from `provider_pricing`, stops before exceeding the cap, writes nothing to the database, and prints each call's status, billed units and results.
 5. **Reconciliation** (monthly): compare the API Direct invoice with the ledger and record it:
@@ -99,7 +102,16 @@ npm run dev:cron     # second terminal: calls the scheduler every 120 s (local s
 npm run check        # typecheck + lint + unit tests
 npm run test:db      # self-contained: throwaway Postgres 17 from the embedded-postgres dev dependency
 npm run test:e2e     # Playwright; uses .env.local's Supabase project with throwaway sf-e2e-* accounts it deletes
+npm run audit:keywords  # read-only keyword/query/cost report per product (no platform API calls)
+node scripts/resync-queries.ts --product <uuid> [--apply]   # re-plan one product's query groups now (dry run by default)
 ```
+**Testing faster intervals (development only):** add to `.env.local` and restart `npm run dev`:
+```
+DEV_MONITORING_MIN_INTERVAL_MINUTES=60
+DEV_MONITORING_WORKSPACES=<your workspace uuid>
+```
+It lowers only the plan's minimum interval for the listed workspaces, only under `next dev` (never in production builds or Vercel deployments). API budgets, paid allowances, rate limiters and source minimums (YouTube 24 h) still apply; Smart Monitoring shows a notice while it is active.
+E2E creates several accounts in quick succession; Supabase Auth's verify rate limit (429 `over_request_rate_limit`) can fail a second full run started right after the first. Wait a few minutes and rerun.
 First E2E run: `npx playwright install chromium`. E2E tests never call external data sources; they insert synthetic fixtures into their own throwaway workspace. No automated test makes a paid request: API Direct connectors are tested with mocked responses only.
 
 ## 5. Hosting

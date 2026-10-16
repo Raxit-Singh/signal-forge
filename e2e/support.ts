@@ -75,6 +75,16 @@ export async function createWorkspaceWithProduct(user: TestUser, product = "Fixt
     method: "POST", headers: user.headers,
     body: JSON.stringify({ p_product_id: p!.id, p_aliases: [{ term: product, kind: "exact_name" }] }),
   });
+  // What the app's keyword save does next (server-side planner): one search per free Milestone 2 source.
+  await call("/rest/v1/rpc/svc_apply_query_groups", {
+    method: "POST", headers: adminHeaders(),
+    body: JSON.stringify({
+      p_product_id: p!.id,
+      p_groups: ["hackernews", "github", "stackexchange"].map((provider) => ({
+        provider, stream: "default", query: product, params: { terms: [product], role: "brand" },
+      })),
+    }),
+  });
   return { workspaceId, productId: p!.id };
 }
 

@@ -342,3 +342,50 @@ test("posted_ago presets pick the smallest window that covers the request", () =
   assert.equal(presetFor(26 * 3_600_000, P), "7d");
   assert.equal(presetFor(30 * 86_400_000, P), undefined);
 });
+
+// ------------------------------------------------------------------ query consolidation (mocked)
+
+test("combined OR query vs separate queries: same mentions from fewer billed requests (mock search semantics only)", async () => {
+  // A mock comment index. The route applies the OR semantics API Direct documents for Reddit; this
+  // shows the optimizer's query loses nothing under those semantics — it is NOT evidence that the
+  // live endpoint ranks or caps combined queries the same way (that needs an authorized live test).
+  const index = [
+    { snippet: "FocusFlow keeps crashing", author: "a1", date: "2026-10-15 09:00:00" },
+    { snippet: "anyone tried focusflow.app for timers?", author: "a2", date: "2026-10-15 08:00:00" },
+    { snippet: "Focus Flow vs Forest, which one?", author: "a3", date: "2026-10-15 07:00:00" },
+    { snippet: "unrelated pomodoro chat", author: "a4", date: "2026-10-15 06:00:00" },
+  ].map((c, i) => ({
+    title: `${c.author} on productivity`, url: `https://reddit.com/r/productivity/comments/t${i}/thread_${i}/`, date: c.date, author: c.author,
+    source: "Reddit (Comment)", domain: "reddit.com", subreddit: "productivity", snippet: c.snippet, type: "comment", upvotes: 1, post_upvotes: 5, post_comments: 3,
+  }));
+  const route: Route = (u) => {
+    if (u.pathname !== "/v1/reddit/comments") return undefined;
+    const terms = (u.searchParams.get("query") ?? "").split(" OR ").map((t) => t.replace(/"/g, "").toLowerCase());
+    const posts = index.filter((p) => terms.some((t) => p.snippet.toLowerCase().includes(t)));
+    return { status: 200, body: { posts, pages: 1, count: posts.length } };
+  };
+  const { planQueries } = await import("../query-optimizer.ts");
+  const { CAPS } = await import("../capabilities.ts");
+  const keywords = [
+    { term: "FocusFlow", kind: "exact_name" as const, isAmbiguous: false, contextTerms: [] },
+    { term: "focusflow.app", kind: "domain" as const, isAmbiguous: false, contextTerms: [] },
+    { term: "Focus Flow", kind: "misspelling" as const, isAmbiguous: false, contextTerms: [] },
+  ];
+  const plan = planQueries(keywords, CAPS.redditComments, null);
+  assert.equal(plan.groups.length, 1, "three keywords, one query");
+  const { reddit } = createApiDirectAdapters(KEY);
+
+  const combined = paidCtx([route]);
+  const one = await reddit.searchMentions({ terms: plan.groups[0]!.terms, query: plan.groups[0]!.expression, window: WINDOW, maxPages: 1, stream: "comments" }, combined.ctx);
+  const separate = paidCtx([route]);
+  const ids = new Set<string>();
+  for (const k of keywords) {
+    const r = await reddit.searchMentions({ terms: [k.term], query: k.term.includes(".") ? `"${k.term}"` : k.term, window: WINDOW, maxPages: 1, stream: "comments" }, separate.ctx);
+    r.items.forEach((it) => ids.add(it.externalId));
+  }
+  assert.deepEqual(new Set(one.items.map((it) => it.externalId)), ids, "same mentions found");
+  assert.equal(one.items.length, 3);
+  const billed = (calls: Call[]) => calls.reduce((t, c) => t + (c.outcome?.billedUnits ?? 0), 0);
+  assert.equal(billed(combined.calls), 1);
+  assert.equal(billed(separate.calls), 3);
+});

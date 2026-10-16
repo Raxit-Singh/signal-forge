@@ -1,8 +1,8 @@
 "use client";
 
-import { useActionState, useOptimistic, useState, useTransition } from "react";
+import { useActionState, useLayoutEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ThumbsDown, ThumbsUp, X } from "lucide-react";
+import { Check, ThumbsDown, ThumbsUp, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/primitives";
 import { idle } from "@/lib/action-state";
@@ -10,62 +10,72 @@ import { setMentionRelevanceAction } from "@/app/actions/mentions";
 import { cn } from "@/lib/utils";
 
 const selectCls =
-  "h-8 rounded-md border bg-background px-2 text-[13px] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring";
+  "h-9 rounded-md border bg-background px-2 text-[13px] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring sm:h-8";
 
-export function MentionFilters({ sources }: { sources: Array<{ id: string; name: string }> }) {
+export function MentionFilters({ sources, types }: { sources: Array<{ id: string; name: string }>; types: Array<{ id: string; name: string }> }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
   const [q, setQ] = useState(params.get("q") ?? "");
   const [pending, start] = useTransition();
 
-  // Any filter change restarts pagination; the date range is kept.
+  // Any filter change goes back to page 1; the date range is kept. push (not replace) so Back undoes it.
   const apply = (patch: Record<string, string | null>) => {
     const sp = new URLSearchParams(params.toString());
+    sp.delete("page");
     sp.delete("cursor");
     for (const [k, v] of Object.entries(patch)) {
       if (v) sp.set(k, v);
       else sp.delete(k);
     }
-    start(() => router.replace(`${pathname}?${sp.toString()}`, { scroll: false }));
+    const qs = sp.toString();
+    start(() => router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false }));
   };
 
-  const hasFilters = ["q", "source", "status", "dupes"].some((k) => params.get(k));
+  const hasFilters = ["q", "source", "type", "status", "dupes"].some((k) => params.get(k));
 
   return (
     <form
       role="search"
       aria-label="Filter mentions"
       aria-busy={pending}
-      className="mb-4 flex flex-wrap items-center gap-2"
+      className="mb-3 flex flex-wrap items-center gap-2"
       onSubmit={(e) => {
         e.preventDefault();
         apply({ q: q.trim() || null });
       }}
     >
-      <label className="sr-only" htmlFor="mention-q">Search text</label>
-      <Input
-        id="mention-q"
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Search text…"
-        maxLength={100}
-        className="h-8 w-full sm:w-56"
-      />
-      <label className="sr-only" htmlFor="mention-source">Source</label>
+      <div className="flex w-full gap-2 sm:w-auto">
+        <label className="sr-only" htmlFor="mention-q">Search text</label>
+        <Input
+          id="mention-q"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search text…"
+          maxLength={100}
+          className="h-9 min-w-0 flex-1 sm:h-8 sm:w-56 sm:flex-none"
+        />
+        <Button type="submit" variant="secondary" size="sm" className="h-9 sm:h-8">Search</Button>
+      </div>
+      <label className="sr-only" htmlFor="mention-source">Platform</label>
       <select id="mention-source" className={selectCls} value={params.get("source") ?? ""} onChange={(e) => apply({ source: e.target.value || null })}>
-        <option value="">All sources</option>
+        <option value="">All platforms</option>
         {sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+      </select>
+      <label className="sr-only" htmlFor="mention-type">Type</label>
+      <select id="mention-type" className={selectCls} value={params.get("type") ?? ""} onChange={(e) => apply({ type: e.target.value || null })}>
+        <option value="">All types</option>
+        {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
       </select>
       <label className="sr-only" htmlFor="mention-status">Relevance</label>
       <select id="mention-status" className={selectCls} value={params.get("status") ?? ""} onChange={(e) => apply({ status: e.target.value || null })}>
         <option value="">Relevant + needs review</option>
         <option value="review">Needs review</option>
         <option value="relevant">Relevant only</option>
-        <option value="irrelevant">Marked not relevant</option>
+        <option value="irrelevant">Not relevant</option>
         <option value="all">Everything</option>
       </select>
-      <label className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
+      <label className="flex min-h-9 items-center gap-1.5 text-[13px] text-muted-foreground sm:min-h-0">
         <input
           type="checkbox"
           className="size-3.5 accent-[var(--primary)]"
@@ -74,15 +84,15 @@ export function MentionFilters({ sources }: { sources: Array<{ id: string; name:
         />
         Show duplicates &amp; reposts
       </label>
-      <Button type="submit" variant="secondary" size="sm">Search</Button>
       {hasFilters && (
         <Button
           type="button"
           variant="ghost"
           size="sm"
+          className="h-9 sm:h-8"
           onClick={() => {
             setQ("");
-            apply({ q: null, source: null, status: null, dupes: null });
+            apply({ q: null, source: null, type: null, status: null, dupes: null });
           }}
         >
           <X aria-hidden /> Clear
@@ -92,9 +102,52 @@ export function MentionFilters({ sources }: { sources: Array<{ id: string; name:
   );
 }
 
+/**
+ * Content preview clamped to four lines with Read more / Show less. Only the
+ * display is clamped; the full stored text is in the DOM, in its original language.
+ */
+export function ExpandableText({ text, lang }: { text: string; lang: string | null }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => setOverflows(el.scrollHeight - el.clientHeight > 1);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  return (
+    <div className="grid justify-items-start gap-0.5">
+      <p
+        ref={ref}
+        dir="auto"
+        lang={lang ?? undefined}
+        className={cn("whitespace-pre-line break-words text-[13px] leading-relaxed text-muted-foreground", !expanded && "line-clamp-4")}
+      >
+        {text}
+      </p>
+      {(overflows || expanded) && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          className="min-h-9 text-xs font-medium text-primary hover:underline focus-visible:outline-2 focus-visible:outline-ring sm:min-h-0"
+        >
+          {expanded ? "Show less" : "Read more"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 type Decision = "user_relevant" | "user_irrelevant" | null;
 
-/** Relevant / not relevant toggle. Optimistic: the server confirms and RLS has the final word. */
+/** Relevant / Not relevant toggle. Optimistic: the server confirms and RLS has the final word. */
 export function RelevanceButtons({ mentionId, status }: { mentionId: string; status: string }) {
   const current: Decision = status === "user_relevant" || status === "user_irrelevant" ? status : null;
   const [optimistic, setOptimistic] = useOptimistic<Decision, Decision>(current, (_, next) => next);
@@ -108,34 +161,40 @@ export function RelevanceButtons({ mentionId, status }: { mentionId: string; sta
     action(fd);
   };
 
+  const relevant = optimistic === "user_relevant";
+  const irrelevant = optimistic === "user_irrelevant";
+  const base = "h-9 gap-1 px-2.5 text-xs sm:h-7";
+
   return (
-    <div className="flex items-center gap-1">
-      <form action={() => send(optimistic === "user_relevant" ? "reset" : "relevant", optimistic === "user_relevant" ? null : "user_relevant")}>
+    <div className="flex items-center gap-1" role="group" aria-label="Mark relevance">
+      <form action={() => send(relevant ? "reset" : "relevant", relevant ? null : "user_relevant")}>
         <Button
           type="submit"
           variant="ghost"
-          size="icon"
-          aria-pressed={optimistic === "user_relevant"}
+          size="sm"
+          aria-pressed={relevant}
           aria-label="Relevant"
-          title="Relevant"
-          className={cn(optimistic === "user_relevant" && "bg-positive/12 text-positive")}
+          title={relevant ? "Marked relevant. Click to undo." : "Mark as relevant"}
+          className={cn(base, "border", relevant ? "border-positive/40 bg-positive/12 text-positive hover:bg-positive/16" : "border-transparent text-muted-foreground")}
           disabled={pending}
         >
-          <ThumbsUp />
+          {relevant ? <Check aria-hidden /> : <ThumbsUp aria-hidden />}
+          Relevant
         </Button>
       </form>
-      <form action={() => send(optimistic === "user_irrelevant" ? "reset" : "irrelevant", optimistic === "user_irrelevant" ? null : "user_irrelevant")}>
+      <form action={() => send(irrelevant ? "reset" : "irrelevant", irrelevant ? null : "user_irrelevant")}>
         <Button
           type="submit"
           variant="ghost"
-          size="icon"
-          aria-pressed={optimistic === "user_irrelevant"}
+          size="sm"
+          aria-pressed={irrelevant}
           aria-label="Not relevant"
-          title="Not relevant"
-          className={cn(optimistic === "user_irrelevant" && "bg-negative/12 text-negative")}
+          title={irrelevant ? "Marked not relevant. Click to undo." : "Mark as not relevant"}
+          className={cn(base, "border", irrelevant ? "border-negative/40 bg-negative/12 text-negative hover:bg-negative/16" : "border-transparent text-muted-foreground")}
           disabled={pending}
         >
-          <ThumbsDown />
+          {irrelevant ? <Check aria-hidden /> : <ThumbsDown aria-hidden />}
+          Not relevant
         </Button>
       </form>
       {state.status === "error" && <span role="alert" className="text-xs text-negative">{state.message}</span>}

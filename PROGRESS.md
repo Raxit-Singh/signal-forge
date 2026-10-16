@@ -16,6 +16,75 @@ Legend: ✅ verified by an automated check that ran · 🟡 written, not yet exe
 
 Test users created for the walk-through were removed afterwards via the app's own deletion path.
 
+## Refinement — keyword coverage across all connectors (2026-10-16)
+
+Every configured keyword (up to 10) is now monitored on every platform that can search it. Migrations `20261016000003` (SQL first-5 sync retired; `apply_query_groups` disables every unplanned row) and `20261016000004` (scheduler retry key) — additive, applied to the linked project after dry runs.
+
+### Checks
+| Check | Result |
+|---|---|
+| `npm run test:unit` | ✅ 145/145 (adds 9: no keyword dropped on any platform, all 10 keywords on HN/SO/GitHub/YouTube, GitHub OR groups split at 5, Reddit posts + comments, search budgets, fair rotation slots never over budget with equal shares, 7-day guarantee, ambiguous keywords with context, product query groups for all sources, development entitlement conditions; Bluesky time-window paging and refused-page handling) |
+| `npm run test:db` | ✅ 223/223 (M2 query-sync tests rewritten for the new behaviour: SQL no longer writes queries; planned groups take over old rows **with their checkpoints**; unplanned rows disabled, not deleted; a failed check's retry gets a new job inside the same bucket, repeat ticks stay idempotent) |
+| `npm run test:e2e` | ✅ 13/13 (Smart Monitoring now also checks keyword coverage: "Searched on 3 of 3 platforms", per-platform refresh) |
+| typecheck, lint, `npm run build` | ✅ |
+
+### Verified live (dev Supabase project, free sources only)
+- ✅ `octolens` re-planned (`scripts/resync-queries.ts --apply`): 9 groups for "starlink" + "wisprflow" on HN, SO, GitHub (one OR query), Bluesky, DEV; old rows for unchanged searches were taken over with their checkpoints (HN/SO/DEV "starlink"); old rows ("octolens", "otolens.com", the old first-5 GitHub/YouTube queries) disabled, not deleted.
+- ✅ A tick ran the 5 new searches: all succeeded (GitHub "starlink OR wisprflow": 14 fetched, 4 new).
+- ✅ **Bluesky 403 root cause found and fixed:** the public AppView refuses `cursor` requests; a busy keyword's second page failed the whole run. After the fix the same "starlink" search succeeded: 3 pages, 293 posts, 275 new mentions, recorded *partial* (more than 300 in the window), checkpoint held.
+- ✅ **Retry fix:** the Bluesky search's retry had been swallowed by the 24 h job bucket; after migration `…04` the next tick created the retry job.
+- ✅ Keyword coverage card with a throwaway account (deleted): Stack Overflow without a key rotating 4 of 5 searches (2 per check, every 2 days), others every check; desktop and 375 px without horizontal scroll.
+
+### Octolens audit
+- Product `octolens` (workspace owner is the only member). Website is `https://octolens.com` — **already corrected** by the owner on 2026-10-15 15:52/15:55 UTC; verified octolens.com is "Octolens | The AI Social Listening Tool" and otolens.com doesn't resolve. No change made.
+- Keyword history from query rows: originally "octolens" and **"otolens.com"** (the typo as a keyword); replaced on 2026-10-16 around 05:16 UTC with "starlink", then at 05:36 with "starlink" + "wisprflow". Neither relates to Octolens; left unchanged pending the owner's decision. (Keyword edits aren't in `audit_logs`; the only member could have made them.)
+
+### Estimated API cost changes
+- Paid platforms: **unchanged** for typical keyword sets — rotation keeps the per-check search budget (hypothetical 10 keywords: still $5.22–6.72/month on a daily plan). The 7-day guarantee can add up to ~14 % on non-OR platforms when 9 keywords rotate on a daily plan.
+- `octolens`: $2.76–3.90 → $4.05–5.28/month if every paid platform were enabled daily — entirely from the second keyword added today, not from this change.
+- Free sources (no money, more requests): 10 keywords now mean up to 7 HN and 7 Bluesky searches per check (was 5), 2 GitHub queries (was 1), 2 YouTube searches (was 1, shared 100/day quota), Stack Overflow ≤3 per check on average without a key (was 5, covering only 5 keywords).
+
+### Known limitations
+- A keyword busier than one check can read (Bluesky: 300 posts per run) stays *partial*; on the Free plan's 24 h interval "starlink" exceeds that every day.
+- Ambiguous keywords without context words can't be searched safely anywhere; DEV can't search domains/handles (tag feeds).
+- Rotating keywords on paid platforms wait up to 7 days between checks on daily plans with many keywords; each turn re-searches the whole gap (paid look-back is capped at 7 days, matching the guarantee).
+
+## Refinement — automatic Smart Monitoring, keyword audit, Mentions UI (2026-10-16)
+
+Customer-facing Eco/Balanced/Priority modes removed; every platform is ranked by an activity score from stored data and gets its refresh interval automatically (within plan limits). Mentions page: numbered pagination, compact cards. Migrations `20261016000001` and `…02` (additive) applied to the linked Supabase project after a dry run.
+
+### Checks
+| Check | Result |
+|---|---|
+| `npm run test:unit` | ✅ 137/137 (adds 18 net: activity score bounds/monotonicity/normalization, unmeasurable signals, ranking with unranked new platforms, score → interval rule, plan entitlements, paid cost step, per-platform maximum, incomplete coverage, discovery, hysteresis + dead band, spike acceleration, saturation, audits/failures/overdue, Launch Boost, efficiency, explanations, keyword plans per platform incl. Reddit posts + comments, duplicate keywords, plan cap; pagination items/ranges/boundaries/URL; mocked combined-vs-separate query comparison) |
+| `npm run test:db` | ✅ 218/218 (adds 16: activity stats — relevant originals only, 24 h/7 d/28 d windows, authors, engagement vs own p75, spikes, complete vs partial coverage, discovery inputs, only enabled platforms; plan search cap in schedule context; pagination index; ranking/interval-change RLS, constraints, no customer writes) |
+| `npm run test:e2e` | ✅ 13/13 in one full run (mentions: numbered pagination with ranges, aria-current, disabled ends, no duplicates/gaps across pages, back/forward, page past the end; filter persistence + reset; Read more; relevance toggles; mobile. Smart Monitoring: no mode controls, no premature efficiency %, ranking + explanations from stored data, boost → 6 h → cancel → 24 h with logged change, mobile cards) |
+| typecheck, lint, `npm run build` | ✅ |
+
+### Verified live (dev Supabase project)
+- ✅ One real scheduler tick (free sources only, no API Direct key exists): the hourly ranking ran for the real `octolens` product and stored rankings from its data — keyword "starlink": Hacker News 36 relevant mentions in 7 days (score 59), GitHub 33 (62), DEV 6, Bluesky 1 — all **plan-limited to 24 h on the Free plan** (activity alone would justify 2–3 h for HN/GitHub), all still in discovery (monitored ~1 day, < 60 % of the week completely covered).
+- ✅ Hysteresis on real stored data: a re-rank dropped a platform's score 59 → 50; the interval stayed (within the 5-point dead band) with the reason shown.
+- ✅ UI with a throwaway account and synthetic fixtures (deleted afterwards): ranking table, expandable explanations, summary metrics, mobile cards (375 px, no horizontal scroll), light and dark; Mentions pages 1–3, filters, Read more, mobile.
+- ⚠️ That tick's one monitoring job (octolens / Bluesky) failed with **403 from Bluesky**; the identical request returned 200 minutes later. Checkpoint held, rescheduled sooner. Unrelated to this change; documented in API_LIMITATIONS.md.
+
+### Bugs found and fixed during verification
+- Discovery progress read "9 of 3 checks so far" for a platform that had enough checks but not a completely covered week. Now "day 2 of 7, or sooner once a full week is completely covered".
+- Engagement counted every mention as "top quarter" when all had the same engagement (ties at the 75th percentile). Now strictly above it (migration `…02`).
+- Interval explanation said "checked every 24 h because activity is high" when the plan set it, and repeated the plan limit three times. Now: "…every 24 h, the most often your Free plan allows (activity is moderate: on its own that would justify every 3 h)".
+- The first scoring formula capped a steady, very busy platform at 72 (never hourly). Rebalanced to a base score + growth/acceleration momentum (steady 850/week → 85, rising → 93).
+- Mentions filter row wrapped the Search button onto its own line at desktop width.
+
+### NOT verified live
+- ⬜ API Direct connectors (no key; no paid request made) — automatic intervals for paid platforms are tested only in unit/DB tests.
+- ⬜ A platform moving out of discovery and slowing down over days (needs days of scheduled runs; covered by unit tests with simulated time).
+- ⬜ Combined OR queries returning the same mentions as separate queries on live endpoints (shown only on mocked responses).
+
+### Known limitations
+- Milestone 2 sources (Hacker News, Stack Overflow, GitHub, YouTube) still search only a product's first 5 keywords (`sync_monitoring_queries`); the rest are now reported on the Smart Monitoring page instead of silently unused.
+- Paid platforms without OR search at most `max_searches_per_platform` (default 2) keywords per check; others are reported. Rotation or a higher cap is a founder decision (COST_MODEL.md).
+- "Important feedback" is not part of the score until AI classification exists (M4); shown as "not measured".
+- Offset pagination: if mentions arrive while someone pages, later pages can shift by a row (no duplicates or gaps on a stable dataset).
+
 ## Milestones 2.5 + 3 — multi-platform monitoring, cost control, Buzz Analytics (2026-10-15)
 
 Local git checkpoints: `4c94fa1` (before M2.5), then M2.5/M3 commits.

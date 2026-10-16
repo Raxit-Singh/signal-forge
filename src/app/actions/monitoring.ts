@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { failure, logServerError, type ActionState } from "@/lib/server/action-result";
 import { AuthorizationError, getUser, requireWorkspaceRole } from "@/lib/server/session";
+import { refreshActivity } from "@/lib/server/collection/activity";
 import { resolveEnablement, syncOptimizedQueries } from "@/lib/server/collection/query-sync";
 import { getAdapters, paidCollectionEnabled } from "@/lib/server/collection/sources";
 import { isLegacySource, isPaidSource, isPublicSource } from "@/lib/sources/registry";
@@ -15,7 +16,7 @@ async function authorizeProduct(productId: string) {
   if (!user) throw new AuthorizationError("Your session has expired. Sign in again.");
   const supabase = await createClient();
   const { data: product } = await supabase
-    .from("products").select("id, workspace_id, website_url, app_store_url, monitoring_mode, archived_at").eq("id", productId).maybeSingle();
+    .from("products").select("id, workspace_id, website_url, app_store_url, archived_at").eq("id", productId).maybeSingle();
   if (!product || product.archived_at) throw new AuthorizationError("Product not found.");
   await requireWorkspaceRole(product.workspace_id as string, "admin");
   return { user, supabase, product };
@@ -29,24 +30,6 @@ async function resync(productId: string) {
   }
   revalidatePath("/monitoring");
   revalidatePath("/integrations");
-}
-
-const modeSchema = z.object({ productId: z.uuid(), mode: z.enum(["eco", "balanced", "priority"]) });
-
-export async function setMonitoringModeAction(_: ActionState, formData: FormData): Promise<ActionState> {
-  const parsed = modeSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return failure("Invalid monitoring mode.");
-  try {
-    const { supabase } = await authorizeProduct(parsed.data.productId);
-    const { error } = await supabase.from("products").update({ monitoring_mode: parsed.data.mode }).eq("id", parsed.data.productId);
-    if (error) throw error;
-  } catch (e) {
-    if (e instanceof AuthorizationError) return failure(e.message);
-    logServerError("setMonitoringMode", e);
-    return failure("Couldn't change the monitoring mode.");
-  }
-  await resync(parsed.data.productId);
-  return { status: "success", message: "Monitoring mode saved. New intervals apply from each source's next check." };
 }
 
 const sourceSchema = z.object({
@@ -102,7 +85,6 @@ const boostSchema = z.object({
   title: z.string().trim().min(1, "Give the boost a name.").max(120),
   startsAt: z.iso.datetime({ offset: true, local: true }),
   endsAt: z.iso.datetime({ offset: true, local: true }),
-  mode: z.enum(["balanced", "priority"]).default("priority"),
   maxPaidChecks: z.coerce.number().int().min(0).max(100000).default(0),
   confirmPaid: z.string().optional(),
   tzOffsetMinutes: z.coerce.number().int().min(-900).max(900).default(0),
@@ -146,21 +128,15 @@ export async function createBoostAction(_: ActionState, formData: FormData): Pro
     if (notMonitored.length) return failure(`Not monitored for this product yet: ${notMonitored.join(", ")}. Turn them on first.`);
 
     const { error } = await supabase.from("launch_boosts").insert({
-      workspace_id: product.workspace_id, product_id: d.productId, title: d.title, platforms, mode: d.mode,
+      workspace_id: product.workspace_id, product_id: d.productId, title: d.title, platforms, mode: "priority",
       starts_at: startsAt.toISOString(), ends_at: endsAt.toISOString(), max_paid_checks: paidChecks,
       paid_authorized_by: paidChecks > 0 ? user.id : null, paid_authorized_at: paidChecks > 0 ? new Date().toISOString() : null,
       created_by: user.id,
     });
     if (error) throw error;
-    // A boost that starts now takes effect at once instead of waiting for the old interval.
-    // The scheduler's job key is per interval bucket, so the interval must change too or today's
-    // bucket (already used) would block the earlier run.
-    if (startsAt.getTime() <= Date.now() + 60_000) {
-      const boostMin = Number((ctx as { boost_min_minutes?: number } | null)?.boost_min_minutes ?? 60);
-      await admin.from("monitoring_queries").update({ next_run_at: new Date().toISOString(), interval_minutes: boostMin })
-        .eq("product_id", d.productId).eq("enabled", true).in("provider", platforms)
-        .gt("interval_minutes", boostMin);
-    }
+    // A boost that starts now takes effect at once: re-rank so the shorter interval applies
+    // to the next run instead of waiting out the old one (no API calls).
+    if (startsAt.getTime() <= Date.now() + 60_000) await refreshActivity(admin, d.productId).catch((e) => logServerError("createBoost.refresh", e));
   } catch (e) {
     if (e instanceof AuthorizationError) return failure(e.message);
     logServerError("createBoost", e);
@@ -179,6 +155,8 @@ export async function cancelBoostAction(_: ActionState, formData: FormData): Pro
     const { error } = await supabase.from("launch_boosts").update({ canceled_at: new Date().toISOString() })
       .eq("id", id.data).eq("product_id", productId.data).is("canceled_at", null);
     if (error) throw error;
+    // Back to the automatic intervals right away.
+    await refreshActivity(createAdminClient(), productId.data).catch((e) => logServerError("cancelBoost.refresh", e));
   } catch (e) {
     if (e instanceof AuthorizationError) return failure(e.message);
     logServerError("cancelBoost", e);

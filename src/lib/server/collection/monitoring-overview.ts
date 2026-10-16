@@ -1,9 +1,13 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { checksAvoided, expectedDiscoveryMinutes } from "@/lib/sources/adaptive";
-import { planQueries, NON_OR_QUERY_CAP, type MonitoringMode, type SkippedKeyword } from "@/lib/sources/query-optimizer";
-import { isLegacySource, PUBLIC_SOURCES, streamsOf } from "@/lib/sources/registry";
+import { expectedDiscoveryMinutes, monitoringEfficiency, type ActivityAssessment, type Efficiency, type ScoreComponent, type Trend } from "@/lib/sources/adaptive";
+import { explainInterval, explainRank } from "@/lib/sources/explain";
+import { keywordIntervalMinutes, planPlatformKeywords, type KeywordStatus, type PlatformKeywordPlan } from "@/lib/sources/keyword-plan";
+import { devMonitoringFloor } from "@/lib/domain/dev-entitlement";
+import { serverEnv } from "@/lib/server/env";
+import type { SkippedKeyword } from "@/lib/sources/query-optimizer";
+import { isLegacySource, PUBLIC_SOURCES } from "@/lib/sources/registry";
 import type { PublicSourceId } from "@/lib/sources/types";
 import { getCoverageSummary, type CoverageState } from "./status";
 import { getAdapters, paidCollectionEnabled } from "./sources";
@@ -17,41 +21,72 @@ export interface PlatformMonitoring {
   stateDetail?: string;
   /** For sources the product can switch on/off itself. */
   toggle: { enabled: boolean; allowed: boolean; reason?: string } | null;
+  /** Enabled query groups (= searches per check). */
   groups: number;
-  streams: string[];
+  /** Ranking (null until the platform has been scored). */
+  ranking: {
+    phase: "discovery" | "ranked";
+    rank: number | null;
+    score: number | null;
+    components: ScoreComponent[];
+    trend: Trend;
+    growthPct: number | null;
+    baselineWeekly: number | null;
+    recommendedMinutes: number;
+    planLimited: boolean;
+    computedAt: string;
+    rankText: string;
+    intervalText: string;
+  } | null;
+  mentions7d: number;
   intervalMinutes: number | null;
   lastScanAt: string | null;
   nextScanAt: string | null;
   discovery: { typical: number; worst: number } | null;
   confidence: "high" | "medium" | "low" | null;
+  completeShare: number | null;
   reasons: string[];
-  mentions7d: number;
   checks7d: number;
   saturatedRecently: boolean;
   failures: number;
-  searched: string[];
-  skipped: SkippedKeyword[];
+  keywords: { searched: string[]; searches: number; searchesPerCheck: number; rotating: number; combined: boolean; skipped: SkippedKeyword[]; productOnly: boolean };
+}
+
+export interface KeywordPlatformCoverage {
+  platform: PublicSourceId;
+  name: string;
+  status: KeywordStatus;
+  detail: string;
+  /** Effective refresh interval of the search that finds this keyword (null = not searched). */
+  intervalMinutes: number | null;
+  via?: string;
+}
+
+export interface KeywordCoverageRow {
+  term: string;
+  kind: string;
+  platforms: KeywordPlatformCoverage[];
 }
 
 export interface MonitoringOverview {
-  mode: MonitoringMode;
+  plan: { name: string; minIntervalMinutes: number; devFloorMinutes: number | null };
+  keywordCoverage: KeywordCoverageRow[];
   platforms: PlatformMonitoring[];
-  efficiency: {
-    checks7d: number;
-    hourlyEquivalent: number;
-    avoided: number;
-    percentFewer: number;
+  summary: {
+    activePlatforms: number;
+    efficiency: Efficiency;
+    avgDiscoveryMinutes: number | null;
+    intervalChanges7d: number;
+    incompleteCoverage: number;
     sharedFetches: number;
-    intervalChanges: number;
   };
   paid: { serverEnabled: boolean; includedInPlan: boolean; allowanceUsedPercent: number | null; maxBoostPaidChecks: number; boostMinMinutes: number };
-  boosts: Array<{ id: string; title: string; platforms: string[]; mode: string; starts_at: string; ends_at: string; max_paid_checks: number; canceled_at: string | null }>;
+  boosts: Array<{ id: string; title: string; platforms: string[]; starts_at: string; ends_at: string; max_paid_checks: number; canceled_at: string | null }>;
 }
 
 interface QueryRow {
   id: string;
   provider: string;
-  stream: string;
   enabled: boolean;
   last_success_at: string | null;
   next_run_at: string;
@@ -60,50 +95,98 @@ interface QueryRow {
   coverage_confidence: "high" | "medium" | "low" | null;
   consecutive_failures: number;
   last_saturated_at: string | null;
-  params: { terms?: string[] };
+}
+
+interface ActivityRow {
+  platform: string;
+  phase: "discovery" | "ranked";
+  score: number | null;
+  rank: number | null;
+  components: ScoreComponent[];
+  discovery: ActivityAssessment["discovery"];
+  mentions_7d: number;
+  baseline_weekly: number | null;
+  growth_pct: number | null;
+  trend: Trend;
+  coverage_confidence: "high" | "medium" | "low";
+  complete_share: number;
+  recommended_interval: number;
+  interval_minutes: number;
+  plan_limited: boolean;
+  reasons: string[];
+  computed_at: string;
 }
 
 const CONF_RANK = { low: 0, medium: 1, high: 2 } as const;
+const WEEK_MS = 7 * 86_400_000;
+
+/** Rebuilds just enough of an assessment from a stored row to explain it. */
+function storedAssessment(r: ActivityRow, saturatedRecently: boolean): ActivityAssessment {
+  return {
+    phase: r.phase, score: r.score ?? 0, components: r.components ?? [], baselineWeekly: r.baseline_weekly === null ? null : Number(r.baseline_weekly),
+    growthPct: r.growth_pct === null ? null : Number(r.growth_pct), trend: r.trend, confidence: r.coverage_confidence,
+    spikeRecent: (r.components ?? []).some((c) => c.id === "spikes" && c.value === 1),
+    saturatedRecently, auditMissed: 0,
+    discovery: r.phase === "discovery" ? r.discovery : null,
+    notes: [],
+  };
+}
 
 /**
  * Everything the Smart Monitoring page shows for one product. Reads through
- * RLS; plan entitlements come from the service role and are reduced to
- * yes/no and percentages (supplier prices are never exposed).
+ * RLS; plan entitlements come from the service role and are reduced to plan
+ * names, intervals and percentages (supplier prices are never exposed).
  */
 export async function getMonitoringOverview(productId: string, workspaceId: string): Promise<MonitoringOverview> {
   const sb = await createClient();
   const admin = createAdminClient();
-  const since7d = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const nowMs = Date.now();
+  const since7d = new Date(nowMs - WEEK_MS).toISOString();
   const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString().slice(0, 10);
 
-  const [{ data: product }, { data: queries }, { data: execs }, { data: settings }, { data: boosts }, { data: aliases }, coverage, totalsRes, { data: ctx }, { data: alloc }] = await Promise.all([
-    sb.from("products").select("id, website_url, app_store_url, monitoring_mode, archived_at, workspace_id").eq("id", productId).maybeSingle(),
+  const [{ data: product }, { data: queries }, { data: execs }, { data: settings }, { data: boosts }, { data: aliases }, coverage, { data: activity }, { data: changes }, { data: ctx }, { data: alloc }] = await Promise.all([
+    sb.from("products").select("id, website_url, app_store_url, archived_at, workspace_id").eq("id", productId).maybeSingle(),
     sb.from("monitoring_queries")
-      .select("id, provider, stream, enabled, last_success_at, next_run_at, interval_minutes, interval_reasons, coverage_confidence, consecutive_failures, last_saturated_at, params")
+      .select("id, provider, enabled, last_success_at, next_run_at, interval_minutes, interval_reasons, coverage_confidence, consecutive_failures, last_saturated_at")
       .eq("product_id", productId).is("competitor_id", null),
-    sb.from("monitoring_executions").select("query_id, platform, status, shared_with, next_interval_minutes, finished_at")
+    sb.from("monitoring_executions").select("query_id, platform, status, shared_with, finished_at")
       .eq("product_id", productId).gte("finished_at", since7d).order("finished_at").limit(5000),
     sb.from("product_source_settings").select("platform, enabled").eq("product_id", productId),
-    sb.from("launch_boosts").select("id, title, platforms, mode, starts_at, ends_at, max_paid_checks, canceled_at")
-      .eq("product_id", productId).gte("ends_at", new Date(Date.now() - 7 * 86_400_000).toISOString()).order("starts_at", { ascending: false }),
+    sb.from("launch_boosts").select("id, title, platforms, starts_at, ends_at, max_paid_checks, canceled_at")
+      .eq("product_id", productId).gte("ends_at", since7d).order("starts_at", { ascending: false }),
     sb.from("product_aliases").select("term, kind, is_ambiguous, context_terms").eq("product_id", productId).eq("enabled", true),
     getCoverageSummary(productId),
-    sb.rpc("buzz_totals", { p_product_id: productId, p_from: since7d, p_to: new Date().toISOString() }),
+    sb.from("platform_activity")
+      .select("platform, phase, score, rank, components, discovery, mentions_7d, baseline_weekly, growth_pct, trend, coverage_confidence, complete_share, recommended_interval, interval_minutes, plan_limited, reasons, computed_at")
+      .eq("product_id", productId),
+    sb.from("monitoring_interval_changes").select("id").eq("product_id", productId).gte("created_at", since7d).limit(1000),
     admin.rpc("svc_schedule_context", { p_product_id: productId, p_platform: "reddit" }),
     admin.from("api_cost_allocations").select("share, api_cost_ledger!inner(status, estimated_usd, charged_usd, period_start)")
       .eq("workspace_id", workspaceId).eq("api_cost_ledger.period_start", monthStart),
   ]);
   if (!product) throw new Error("Product not found");
 
-  const mode = (product.monitoring_mode ?? "balanced") as MonitoringMode;
   const adapters = getAdapters();
-  const sc = (ctx ?? {}) as { paid_allowance_usd?: number; boost_min_minutes?: number; max_boost_paid_checks?: number };
+  const sc = (ctx ?? {}) as {
+    plan_name?: string; plan_min_minutes?: number; paid_allowance_usd?: number; boost_min_minutes?: number;
+    max_boost_paid_checks?: number; max_searches_per_platform?: number;
+  };
   const allowance = Number(sc.paid_allowance_usd ?? 0);
+  const budget = { planMaxSearches: Number(sc.max_searches_per_platform ?? 2), stackExchangeKey: Boolean(serverEnv().STACKEXCHANGE_KEY) };
+  const devFloor = devMonitoringFloor(process.env, workspaceId);
+  const plans = new Map<PublicSourceId, PlatformKeywordPlan>();
+  const planName = sc.plan_name ?? "current";
   const settingsMap = new Map((settings ?? []).map((s) => [s.platform as string, s.enabled as boolean]));
-  const enablement = new Map(resolveEnablement(adapters, { ...product, monitoring_mode: mode } as never, settingsMap, allowance, paidCollectionEnabled()).map((e) => [e.id, e]));
+  const enablement = new Map(resolveEnablement(adapters, product as never, settingsMap, allowance, paidCollectionEnabled()).map((e) => [e.id, e]));
   const coverageBy = new Map(coverage.sources.map((s) => [s.id, s]));
-  const mentions7d = new Map(((totalsRes.data ?? []) as Array<{ source: string; relevant: number }>).map((r) => [r.source, Number(r.relevant)]));
+  const activityBy = new Map(((activity ?? []) as ActivityRow[]).map((r) => [r.platform, r]));
   const keywords = (aliases ?? []).map((a) => ({ term: a.term, kind: a.kind, isAmbiguous: a.is_ambiguous, contextTerms: a.context_terms ?? [] }));
+  const activeBoost = new Set(
+    (boosts ?? []).filter((b) => !b.canceled_at && new Date(b.starts_at).getTime() <= nowMs && new Date(b.ends_at).getTime() > nowMs)
+      .flatMap((b) => b.platforms as string[]),
+  );
+  const ranked = [...activityBy.values()].filter((r) => r.phase === "ranked");
+  const maxMentions = Math.max(0, ...ranked.map((r) => r.mentions_7d));
 
   const qs = (queries ?? []) as QueryRow[];
   const ex = execs ?? [];
@@ -111,66 +194,82 @@ export async function getMonitoringOverview(productId: string, workspaceId: stri
     const a = adapters[id];
     const cov = coverageBy.get(id);
     const mine = qs.filter((q) => q.provider === id && q.enabled);
+    const act = activityBy.get(id);
     const intervals = mine.map((q) => q.interval_minutes).filter((x): x is number => typeof x === "number");
-    const interval = intervals.length ? Math.min(...intervals) : null;
+    const interval = act?.interval_minutes ?? (intervals.length ? Math.min(...intervals) : null);
     const fastest = mine.find((q) => q.interval_minutes === interval) ?? mine[0];
     const confs = mine.map((q) => q.coverage_confidence).filter((c): c is "high" | "medium" | "low" => Boolean(c));
     const lastScans = mine.map((q) => q.last_success_at).filter(Boolean) as string[];
     const nexts = mine.map((q) => q.next_run_at).filter(Boolean);
+    const saturatedRecently = mine.some((q) => q.last_saturated_at && nowMs - new Date(q.last_saturated_at).getTime() < 3 * 86_400_000);
     const e = enablement.get(id);
     const toggle = isLegacySource(id) ? null : {
       enabled: Boolean(e?.enabled) || settingsMap.get(id) === true,
       allowed: !e?.reason || e.enabled || /Off — turn it on|Turned off/.test(e.reason),
       reason: e?.enabled ? undefined : e?.reason,
     };
-    // Explain which keywords each stream searches and which it skips (same optimizer as the worker).
-    const searched = new Set<string>();
-    const skipped: SkippedKeyword[] = [];
-    if (mine.length && keywords.length) {
-      for (const s of streamsOf(a)) {
-        if (s.queryMode !== "keywords") continue;
-        const plan = planQueries(keywords, s.capabilities, a.paid ? NON_OR_QUERY_CAP[mode] : isLegacySource(id) ? null : 5);
-        plan.groups.forEach((g) => g.terms.forEach((t) => searched.add(t)));
-        for (const k of plan.skipped) if (!skipped.some((x) => x.term === k.term)) skipped.push(k);
-      }
+    const kp = keywords.length || streamsAreProductOnly(id) ? planPlatformKeywords(id, a, keywords, budget) : null;
+    if (kp) plans.set(id, kp);
+    let ranking: PlatformMonitoring["ranking"] = null;
+    if (act) {
+      const assessment = storedAssessment(act, saturatedRecently);
+      const ex2 = {
+        name: a.name, rank: act.rank, assessment, n7: act.mentions_7d, mostMentions: act.mentions_7d === maxMentions,
+        interval: act.interval_minutes, recommended: act.recommended_interval, planLimited: act.plan_limited, planName, boosted: activeBoost.has(id),
+      };
+      ranking = {
+        phase: act.phase, rank: act.rank, score: act.score, components: act.components ?? [], trend: act.trend,
+        growthPct: assessment.growthPct, baselineWeekly: assessment.baselineWeekly,
+        recommendedMinutes: act.recommended_interval, planLimited: act.plan_limited, computedAt: act.computed_at,
+        rankText: explainRank(ex2), intervalText: explainInterval(ex2),
+      };
     }
-    if (isLegacySource(id)) for (const q of mine) (q.params?.terms ?? []).forEach((t) => searched.add(t));
     return {
       id, name: a.name, paid: Boolean(a.paid),
       state: cov?.state ?? "not_started", stateDetail: cov?.detail,
       toggle,
       groups: mine.length,
-      streams: [...new Set(mine.map((q) => q.stream))],
+      ranking,
+      mentions7d: act?.mentions_7d ?? 0,
       intervalMinutes: interval,
       lastScanAt: lastScans.sort().at(-1) ?? null,
       nextScanAt: nexts.sort()[0] ?? null,
       discovery: interval ? expectedDiscoveryMinutes(interval) : null,
-      confidence: confs.length ? confs.reduce((w, c) => (CONF_RANK[c] < CONF_RANK[w] ? c : w)) : null,
-      reasons: fastest?.interval_reasons ?? [],
-      mentions7d: mentions7d.get(id) ?? 0,
-      checks7d: ex.filter((x) => x.platform === id && x.status !== "skipped").length,
-      saturatedRecently: mine.some((q) => q.last_saturated_at && Date.now() - new Date(q.last_saturated_at).getTime() < 3 * 86_400_000),
+      confidence: act?.coverage_confidence ?? (confs.length ? confs.reduce((w, c) => (CONF_RANK[c] < CONF_RANK[w] ? c : w)) : null),
+      completeShare: act ? Number(act.complete_share) : null,
+      reasons: act?.reasons ?? fastest?.interval_reasons ?? [],
+      checks7d: ex.filter((x) => x.platform === id && x.status !== "skipped" && x.status !== "covered_by_shared").length,
+      saturatedRecently,
       failures: Math.max(0, ...mine.map((q) => q.consecutive_failures)),
-      searched: [...searched],
-      skipped,
+      keywords: {
+        searched: kp?.searched ?? [],
+        searches: mine.length,
+        searchesPerCheck: kp?.searchesPerCheck ?? mine.length,
+        rotating: kp?.keywords.filter((k) => k.status === "rotating").length ?? 0,
+        combined: Boolean(kp && kp.booleanOr && kp.searched.length > mine.length),
+        skipped: kp?.skipped ?? [],
+        productOnly: Boolean(kp?.productOnly),
+      },
     };
   });
 
-  // Efficiency over the last 7 days vs. checking every enabled group every hour.
-  const activeGroups = qs.filter((q) => q.enabled).length;
-  const realChecks = ex.filter((x) => x.status !== "skipped" && x.status !== "covered_by_shared").length;
-  // Compare with hourly polling only over the time monitoring has actually run (≤ 7 days).
-  const firstRun = ex.find((x) => x.status !== "skipped")?.finished_at;
-  const hoursRunning = firstRun ? Math.max(1, Math.ceil((Date.now() - new Date(firstRun).getTime()) / 3_600_000)) : 0;
-  const eff = checksAvoided(realChecks, activeGroups, Math.min(168, hoursRunning));
-  let intervalChanges = 0;
-  const lastByQuery = new Map<string, number | null>();
+  // Efficiency over the last 7 days, only for groups that actually ran on platforms that can run,
+  // and only over the hours since each group's first check in the window (no credit for time off).
+  const runnable = new Set(platforms.filter((p) => p.groups > 0 && p.state !== "not_configured" && p.state !== "not_enabled").map((p) => p.id));
+  const byQuery = new Map<string, { first: number; checks: number }>();
   for (const x of ex) {
-    if (!x.query_id || x.next_interval_minutes == null) continue;
-    const prev = lastByQuery.get(x.query_id);
-    if (prev !== undefined && prev !== x.next_interval_minutes) intervalChanges++;
-    lastByQuery.set(x.query_id, x.next_interval_minutes);
+    if (!x.query_id || !runnable.has(x.platform as PublicSourceId) || x.status === "skipped") continue;
+    const cur = byQuery.get(x.query_id) ?? { first: new Date(x.finished_at).getTime(), checks: 0 };
+    if (x.status !== "covered_by_shared") cur.checks++;
+    byQuery.set(x.query_id, cur);
   }
+  const enabledIds = new Set(qs.filter((q) => q.enabled).map((q) => q.id));
+  const efficiency = monitoringEfficiency(
+    [...byQuery].filter(([id]) => enabledIds.has(id)).map(([, v]) => ({ observedHours: (nowMs - v.first) / 3_600_000, checks: v.checks })),
+  );
+
+  const active = platforms.filter((p) => runnable.has(p.id));
+  const delays = active.map((p) => p.discovery?.typical).filter((x): x is number => typeof x === "number");
 
   // Allowance use as a percentage only.
   let spent = 0;
@@ -180,13 +279,35 @@ export async function getMonitoringOverview(productId: string, workspaceId: stri
     spent += amount * Number(r.share);
   }
 
+  // Keyword × platform coverage on the platforms that actually run.
+  const planFloor = Math.min(Number(sc.plan_min_minutes ?? 1440), devFloor ?? Number.POSITIVE_INFINITY);
+  const keywordCoverage: KeywordCoverageRow[] = keywords.map((k) => ({
+    term: k.term,
+    kind: k.kind,
+    platforms: active.flatMap((p): KeywordPlatformCoverage[] => {
+      const term = k.term.replace(/["()]/g, " ").replace(/\s+/g, " ").trim();
+      const c = plans.get(p.id)?.keywords.find((x) => x.term === term);
+      if (!c || c.status === "not_applicable") return [];
+      const searched = c.status === "every_check" || c.status === "rotating" || c.status === "covered" || c.status === "duplicate";
+      return [{
+        platform: p.id, name: p.name, status: c.status, detail: c.detail, via: c.via,
+        // Not scheduled yet: the scheduler falls back to the plan's interval.
+        intervalMinutes: searched ? keywordIntervalMinutes(p.intervalMinutes ?? planFloor, c.rotation) : null,
+      }];
+    }),
+  }));
+
   return {
-    mode,
+    plan: { name: planName, minIntervalMinutes: Number(sc.plan_min_minutes ?? 1440), devFloorMinutes: devFloor },
+    keywordCoverage,
     platforms,
-    efficiency: {
-      checks7d: realChecks, hourlyEquivalent: eff.hourly, avoided: eff.avoided, percentFewer: eff.percentFewer,
+    summary: {
+      activePlatforms: active.length,
+      efficiency,
+      avgDiscoveryMinutes: delays.length ? Math.round(delays.reduce((t, d) => t + d, 0) / delays.length) : null,
+      intervalChanges7d: (changes ?? []).length,
+      incompleteCoverage: active.filter((p) => p.confidence !== "high").length,
       sharedFetches: ex.filter((x) => x.status === "covered_by_shared" || (x.shared_with ?? 1) > 1).length,
-      intervalChanges,
     },
     paid: {
       serverEnabled: paidCollectionEnabled(),
@@ -197,4 +318,8 @@ export async function getMonitoringOverview(productId: string, workspaceId: stri
     },
     boosts: (boosts ?? []) as MonitoringOverview["boosts"],
   };
+}
+
+function streamsAreProductOnly(id: PublicSourceId) {
+  return id === "trustpilot" || id === "app_store";
 }

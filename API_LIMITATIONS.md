@@ -37,8 +37,8 @@ Checked against official documentation or live API responses on 2026-10-14/15 un
 ## Free official sources added in Milestone 2.5 (verified live 2026-10-15)
 
 ### Bluesky — AppView `app.bsky.feed.searchPosts`
-- Endpoint `https://api.bsky.app/xrpc/app.bsky.feed.searchPosts`, no auth needed (**measured**: 200). `public.api.bsky.app` returned **403** for search from this environment, so it isn't used. This unauthenticated access is not a documented guarantee — monitor `source_health`.
-- `q` supports phrases and `since` / `until` / `sort=latest` / `cursor`; **no OR**, so one query per keyword (≤5 per product). Replies are found by search (flagged `reply`).
+- Endpoint `https://api.bsky.app/xrpc/app.bsky.feed.searchPosts`, no auth needed (**measured**: 200). `public.api.bsky.app` returned **403** for search from this environment, so it isn't used. This unauthenticated access is not a documented guarantee — monitor `source_health`. **Observed 2026-10-16 05:00 UTC:** one scheduled check got **403** from `api.bsky.app` too; the same request (same parameters and User-Agent) returned 200 minutes later from curl and Node. The job is not retried (403 is treated as an auth error), but the query's checkpoint holds and it is rescheduled sooner (30 min × 2ⁿ), so the window is re-searched. **Root cause (found 2026-10-16 07:15 UTC):** the unauthenticated AppView answers the first page but refuses every request carrying a `cursor` (403 "Request forbidden by administrative rules"), so any keyword with more than one page of results failed the whole run. The adapter now pages by moving `until` back to the oldest post seen (measured: 3 pages, 293 unique "starlink" posts, all 200), and a refused later page keeps the earlier results as a partial run. If unauthenticated search is restricted further, Bluesky will need an authenticated session.
+- `q` supports phrases and `since` / `until` / `sort=latest` / `cursor`; **no OR**, so one query per keyword (every configured keyword since 2026-10-16; previously ≤5). Replies are found by search (flagged `reply`).
 - Search covers what Bluesky has indexed; it is not a complete archive. Jetstream (the full firehose) would need a long-running WebSocket consumer, which this serverless deployment doesn't have; not implemented.
 - **Live check:** 82 Excalidraw mentions stored (55 posts, 27 replies); all 82 re-fetched via `app.bsky.feed.getPosts` exist and mention Excalidraw; 5/5 sampled links returned 200.
 
@@ -94,6 +94,26 @@ General (docs): `X-API-Key` header; `GET https://apidirect.io/v1/...`; errors `{
 | Product Hunt | API terms restrict commercial use without permission. |
 
 SignalForge will not scrape platforms or use methods meant to bypass their restrictions.
+
+## Keyword coverage per platform (updated 2026-10-16)
+
+`npm run audit:keywords` prints this for each product. **Every configured keyword (up to 10) is monitored on every platform that can search it**; the Smart Monitoring page shows each keyword's real refresh interval per platform.
+
+| Platform | Combining keywords | Per check |
+|---|---|---|
+| Reddit (posts and comments), X, LinkedIn, Google web, Google News | OR (+ phrases; Reddit/X/web also grouping) | One group for brand terms, one for category terms (per stream), split at the platform's term/length limits |
+| GitHub | OR, ≤5 terms | OR groups of up to 5 keywords (10 keywords → 2 queries) |
+| YouTube | `\|`, ≤5 terms | Same, 2 queries for 10 keywords (each uses the shared 100 searches/day quota) |
+| Hacker News, Bluesky, DEV (tags) | none | One search per keyword, every check |
+| Stack Overflow | none | One search per keyword; **without `STACKEXCHANGE_KEY` at most 3 per check** (shared 300 requests/day) — the rest take turns |
+| TikTok, Instagram, Facebook, Substack (paid) | none | One search per keyword; at most the plan's `max_searches_per_platform` (default 2) per check — the rest take turns |
+| Trustpilot, App Store | — | Reviews of the product's own page; keywords not used |
+
+**Fair rotation:** the highest-priority search (the product name) runs every check; the others take turns in fixed time slots, never more than the budget per slot, each search with its own checkpoint (a turn re-searches everything since that keyword's last check). **Minimum coverage guarantee:** every searchable keyword is searched at least every 7 days, even if that exceeds the per-check budget. Keywords found by a broader search ("Octolens pricing" via "Octolens") or identical to another are covered by that search. Only what a platform genuinely can't search is left out: domains/handles on DEV (tag feeds only), and ambiguous keywords without context words (anywhere). Ambiguous keywords with context are searched with their first context word where a platform can't group (HN/SO/GitHub/YouTube search them alone and keep results only when a context word appears, as before).
+
+The first-5-keyword limit of the Milestone 2 sources (`sync_monitoring_queries`) was removed on 2026-10-16; rows whose search is unchanged were taken over with their checkpoints.
+
+The combined-vs-separate equivalence (same mentions from one OR query as from one query per keyword) is shown only on **mocked** responses that apply the documented OR semantics; it has not been measured against live endpoints.
 
 ## Platform-wide rules SignalForge follows
 - Store only what each platform permits (excerpts and IDs; honour deletion where the API exposes it).

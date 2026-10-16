@@ -336,21 +336,42 @@ select t.throws($$select public.svc_prepare_account_deletion(gen_random_uuid())$
 reset role;
 
 -- ===================================================================== collection (M2)
--- Query sync: replacing keywords derives monitoring queries.
+-- Query sync: keyword changes no longer derive queries in SQL (that path searched only the first 5
+-- keywords); the server's planner writes groups for every keyword through svc_apply_query_groups.
+insert into public.monitoring_queries (workspace_id, product_id, provider, query, params, enabled, managed_by, cursor) values
+  ((select v from ids where k = 'ws_a'), (select v from ids where k = 'p_a'), 'hackernews', 'FocusFlow', '{"terms":["FocusFlow"]}', true, 'legacy', '{"until":"2026-10-01T00:00:00Z"}'),
+  ((select v from ids where k = 'ws_a'), (select v from ids where k = 'p_a'), 'stackexchange', 'old keyword', '{"terms":["old keyword"]}', true, 'legacy', '{}');
 select t.as_user('00000000-0000-0000-0000-00000000000a');
 set role authenticated;
 select public.replace_product_aliases((select v from ids where k = 'p_a'),
   '[{"term":"FocusFlow","kind":"exact_name"},{"term":"focusflow.app","kind":"domain"},{"term":"Flow","kind":"custom","is_ambiguous":true,"context_terms":["pomodoro"]},{"term":"off","kind":"custom","enabled":false}]');
+select t.ok((select count(*) from public.monitoring_queries where product_id = (select v from ids where k = 'p_a') and enabled) = 2,
+  'replacing keywords writes no queries in SQL any more (existing rows untouched until the server re-plans)');
+reset role;
+set role service_role;
+select t.ok(public.svc_apply_query_groups((select v from ids where k = 'p_a'), jsonb_build_array(
+  jsonb_build_object('provider', 'hackernews', 'stream', 'default', 'query', 'FocusFlow', 'params', '{"terms":["FocusFlow"]}'),
+  jsonb_build_object('provider', 'hackernews', 'stream', 'default', 'query', 'focusflow.app', 'params', '{"terms":["focusflow.app"]}'),
+  jsonb_build_object('provider', 'hackernews', 'stream', 'default', 'query', 'Flow', 'params', '{"terms":["Flow"]}'),
+  jsonb_build_object('provider', 'github', 'stream', 'default', 'query', 'FocusFlow OR "focusflow.app" OR Flow', 'params', '{"terms":["FocusFlow","focusflow.app","Flow"]}'))) = 4,
+  'the server writes one group per planned search, for every keyword');
+reset role;
 select t.ok((select count(*) from public.monitoring_queries where product_id = (select v from ids where k = 'p_a') and enabled and provider = 'hackernews') = 3,
   'one HN query per enabled keyword');
-select t.ok((select query from public.monitoring_queries where product_id = (select v from ids where k = 'p_a') and enabled and provider = 'github') = 'FocusFlow | focusflow.app | Flow',
-  'GitHub gets one combined query, exact name first');
-select t.ok(not exists (select 1 from public.monitoring_queries where product_id = (select v from ids where k = 'p_a') and enabled and query = 'off'),
-  'disabled keywords are not monitored');
-select public.replace_product_aliases((select v from ids where k = 'p_a'), '[{"term":"FocusFlow","kind":"exact_name"}]');
+select t.ok((select managed_by || ' ' || (cursor ->> 'until') from public.monitoring_queries
+              where product_id = (select v from ids where k = 'p_a') and provider = 'hackernews' and query = 'FocusFlow') = 'optimizer 2026-10-01T00:00:00Z',
+  'an old first-5 row matching a planned search is taken over in place and keeps its checkpoint');
+select t.ok(exists (select 1 from public.monitoring_queries where product_id = (select v from ids where k = 'p_a') and query = 'old keyword' and not enabled),
+  'old rows that are no longer planned are disabled, not deleted');
+set role service_role;
+select public.svc_apply_query_groups((select v from ids where k = 'p_a'), jsonb_build_array(
+  jsonb_build_object('provider', 'hackernews', 'stream', 'default', 'query', 'FocusFlow', 'params', '{"terms":["FocusFlow"]}'),
+  jsonb_build_object('provider', 'stackexchange', 'stream', 'default', 'query', 'FocusFlow', 'params', '{"terms":["FocusFlow"]}'),
+  jsonb_build_object('provider', 'github', 'stream', 'default', 'query', 'FocusFlow', 'params', '{"terms":["FocusFlow"]}'),
+  jsonb_build_object('provider', 'youtube', 'stream', 'default', 'query', 'FocusFlow', 'params', '{"terms":["FocusFlow"]}')));
+reset role;
 select t.ok((select count(*) from public.monitoring_queries where product_id = (select v from ids where k = 'p_a') and enabled) = 4,
   'removing keywords disables their queries (1 per source left)');
-reset role;
 
 -- A user cannot sync another workspace's product even with a direct grant path.
 select t.as_user('00000000-0000-0000-0000-00000000000c');
@@ -662,7 +683,7 @@ select t.ok(public.svc_schedule_context((select v from ids where k = 'p_a'), 'gi
   'a boost only applies to its selected platforms');
 reset role;
 
--- Optimizer query groups: streams coexist; the legacy sync leaves them alone.
+-- Optimizer query groups: streams coexist; keyword replacement in SQL leaves them alone.
 set role service_role;
 select t.ok(public.svc_apply_query_groups((select v from ids where k = 'p_a'), jsonb_build_array(
   jsonb_build_object('provider', 'reddit', 'stream', 'posts', 'query', 'FocusFlow', 'fingerprint', repeat('a', 64), 'params', '{"terms":["FocusFlow"]}'),
@@ -676,7 +697,7 @@ set role authenticated;
 select public.replace_product_aliases((select v from ids where k = 'p_a'), '[{"term":"FocusFlow","kind":"exact_name"}]');
 reset role;
 select t.ok((select count(*) from public.monitoring_queries where product_id = (select v from ids where k = 'p_a') and provider = 'reddit' and enabled) = 2,
-  'keyword re-sync of legacy sources does not disable optimizer groups');
+  'replacing keywords in SQL does not disable planned groups');
 set role service_role;
 select public.svc_apply_query_groups((select v from ids where k = 'p_a'), jsonb_build_array(
   jsonb_build_object('provider', 'reddit', 'stream', 'comments', 'query', 'FocusFlow', 'fingerprint', repeat('b', 64))));
@@ -690,6 +711,20 @@ select t.ok(public.svc_schedule_due_queries(array['reddit'], 10) = 1, 'scheduler
 select t.ok((select next_run_at > now() + interval '115 minutes' and next_run_at < now() + interval '130 minutes'
   from public.monitoring_queries where product_id = (select v from ids where k = 'p_a') and stream = 'comments'),
   'provisional next run follows the adaptive interval (2 h), not the plan default');
+reset role;
+
+-- A failed check gets its quicker retry even inside the same interval bucket.
+set role service_role;
+create temp table cq as select id from public.monitoring_queries where product_id = (select v from ids where k = 'p_a') and stream = 'comments';
+update public.monitoring_queries set next_run_at = now() - interval '1 minute', consecutive_failures = 1 where id = (select id from cq);
+select t.ok(public.svc_schedule_due_queries(array['reddit'], 10) = 1, 'a failed group is due again');
+select t.ok((select count(*) from public.jobs where idempotency_key like 'mq:' || (select id from cq) || ':%') = 2
+  and exists (select 1 from public.jobs where idempotency_key like 'mq:' || (select id from cq) || ':%:f1'),
+  'after a failure, the retry is a new job in the same bucket');
+update public.monitoring_queries set next_run_at = now() - interval '1 minute' where id = (select id from cq);
+select public.svc_schedule_due_queries(array['reddit'], 10);
+select t.ok((select count(*) from public.jobs where idempotency_key like 'mq:' || (select id from cq) || ':%') = 2,
+  'without a new failure, rescheduling in the same bucket stays idempotent');
 reset role;
 
 -- ===================================================================== M3 Buzz analytics
@@ -786,6 +821,75 @@ select t.as_user('00000000-0000-0000-0000-00000000000a');
 set role authenticated;
 select t.ok((select count(*) from public.buzz_spikes) = 0 and (select count(*) from public.monitoring_executions where product_id = (select v from ids where k = 'p_d')) = 0,
   'other workspaces cannot see spikes or execution logs');
+reset role;
+
+-- ===================================================================== Automatic Smart Monitoring
+-- Ranking signals come from stored data only; rankings are customer-readable, never customer-writable.
+insert into public.monitoring_queries (workspace_id, product_id, provider, stream, query, params, enabled, managed_by)
+values ((select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d'), 'bluesky', 'posts', 'DaveApp', '{"terms":["DaveApp"]}', true, 'optimizer');
+set role service_role;
+select public.svc_ingest_mentions((select v from ids where k = 'p_d'), 'bluesky', jsonb_build_array(
+  jsonb_build_object('external_id', 'b1', 'source_url', 'https://bsky.app/profile/a/post/b1', 'published_at', now() - interval '2 hours',
+    'relevance_status', 'relevant', 'author_external_id', 'did:a', 'engagement_score', 60),
+  jsonb_build_object('external_id', 'b2', 'source_url', 'https://bsky.app/profile/b/post/b2', 'published_at', now() - interval '30 hours',
+    'relevance_status', 'relevant', 'author_external_id', 'did:b', 'engagement_score', 1),
+  jsonb_build_object('external_id', 'b3', 'source_url', 'https://bsky.app/profile/a/post/b3', 'published_at', now() - interval '3 days',
+    'relevance_status', 'user_relevant', 'author_external_id', 'did:a', 'engagement_score', 2),
+  jsonb_build_object('external_id', 'b4', 'source_url', 'https://bsky.app/profile/c/post/b4', 'published_at', now() - interval '10 days',
+    'relevance_status', 'relevant', 'author_external_id', 'did:c', 'engagement_score', 50),
+  jsonb_build_object('external_id', 'b5', 'source_url', 'https://bsky.app/profile/d/post/b5', 'published_at', now() - interval '1 hour',
+    'relevance_status', 'irrelevant', 'author_external_id', 'did:d'),
+  jsonb_build_object('external_id', 'b6', 'source_url', 'https://bsky.app/profile/e/post/b6', 'published_at', now() - interval '1 hour',
+    'relevance_status', 'pending', 'author_external_id', 'did:e'),
+  jsonb_build_object('external_id', 'b7', 'source_url', 'https://bsky.app/profile/f/post/b7', 'published_at', now() - interval '40 days',
+    'relevance_status', 'relevant', 'author_external_id', 'did:f')));
+reset role;
+insert into public.coverage_windows (workspace_id, product_id, provider, window_start, window_end, status) values
+  ((select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d'), 'bluesky', now() - interval '7 days', now() - interval '1 day', 'complete'),
+  ((select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d'), 'bluesky', now() - interval '1 day', now(), 'partial');
+insert into public.buzz_spikes (workspace_id, product_id, platform, granularity, period_start, period_end, observed, expected, baseline_periods, severity)
+values ((select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d'), 'bluesky', 'hour', now() - interval '2 hours', now() - interval '1 hour', 9, 1, 100, 'notable');
+
+set role service_role;
+create temp table st as select * from public.svc_platform_activity_stats((select v from ids where k = 'p_d')) where platform = 'bluesky';
+reset role;
+select t.ok((select n24 || '/' || prev24 || '/' || n7 || '/' || n28 from st) = '1/1/3/4',
+  'activity stats: relevant originals only, irrelevant / needs-review / older than 28 days left out');
+select t.ok((select authors7 || '/' || authored7 from st) = '2/3', 'activity stats: distinct authors over 7 days');
+select t.ok((select eng_history || '/' || eng_high7 from st) = '4/1', 'activity stats: engagement vs the platform''s own 75th percentile');
+select t.ok((select spike_recent from st), 'activity stats: a spike in the last 72 h is seen');
+select t.ok((select complete_share7 between 0.85 and 0.86 and covered_share7 > 0.99 and complete_share_prior = 0 from st),
+  'activity stats: complete vs any coverage of the last 7 days, and of the baseline weeks');
+select t.ok((select completed_checks = 2 and first_monitored_at > now() - interval '25 hours' from st), 'activity stats: checks and first monitored time');
+select t.ok((select count(*) from public.svc_platform_activity_stats((select v from ids where k = 'p_d')) where platform = 'youtube') = 0,
+  'activity stats: only platforms with enabled query groups');
+select t.ok((select (private.schedule_context((select v from ids where k = 'p_d'), 'reddit') ->> 'max_searches_per_platform')::int) = 2,
+  'plan entitlement: separate searches per platform without OR (default 2)');
+select t.ok(exists (select 1 from pg_indexes where indexname = 'mentions_product_published_id_idx'), 'index for numbered mention pagination');
+
+insert into public.platform_activity (product_id, workspace_id, platform, phase, score, rank, trend, coverage_confidence, recommended_interval, interval_minutes, reasons)
+values ((select v from ids where k = 'p_d'), (select v from ids where k = 'ws_d'), 'bluesky', 'ranked', 42, 1, 'stable', 'medium', 240, 1440, '{"Activity score 42/100"}');
+insert into public.monitoring_interval_changes (workspace_id, product_id, platform, from_minutes, to_minutes, score, reasons)
+values ((select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d'), 'bluesky', 360, 240, 42, '{"Activity increased"}');
+select t.throws(format($$insert into public.monitoring_interval_changes (workspace_id, product_id, platform, from_minutes, to_minutes) values (%L, %L, 'bluesky', 240, 240)$$,
+  (select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d')), 'an interval change must change the interval', 'check');
+select t.throws(format($$insert into public.platform_activity (product_id, workspace_id, platform, phase, trend, coverage_confidence, recommended_interval, interval_minutes) values (%L, %L, 'x', 'ranked', 'stable', 'high', 30, 60)$$,
+  (select v from ids where k = 'p_d'), (select v from ids where k = 'ws_d')), 'intervals stay within 1–24 h', 'check');
+
+select t.as_user('00000000-0000-0000-0000-00000000000d');
+set role authenticated;
+select t.ok((select score from public.platform_activity where platform = 'bluesky') = 42
+  and (select count(*) from public.monitoring_interval_changes) = 1, 'workspace sees its platform ranking and interval changes');
+select t.throws($$update public.platform_activity set interval_minutes = 60$$, 'users cannot change their schedule', 'permission denied');
+select t.throws($$insert into public.monitoring_interval_changes (workspace_id, product_id, platform, from_minutes, to_minutes) values (gen_random_uuid(), gen_random_uuid(), 'x', 60, 120)$$,
+  'users cannot write interval changes', 'permission denied');
+select t.throws(format($$select * from public.svc_platform_activity_stats(%L)$$, (select v from ids where k = 'p_d')), 'users cannot call the stats function', 'permission denied');
+reset role;
+select t.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+select t.ok((select count(*) from public.platform_activity where product_id = (select v from ids where k = 'p_d')) = 0
+  and (select count(*) from public.monitoring_interval_changes where product_id = (select v from ids where k = 'p_d')) = 0,
+  'other workspaces cannot see rankings or interval changes');
 reset role;
 
 -- ===================================================================== summary

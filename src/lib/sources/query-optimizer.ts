@@ -6,20 +6,20 @@
 //     where the platform supports OR, within its length/term limits
 //   * a keyword containing another searched keyword as a whole word ("FocusFlow
 //     review" ⊃ "FocusFlow") is already covered on word-matching platforms
-//   * ambiguous keywords are only searched with their context terms, and only
-//     where the platform supports grouping; otherwise they are reported as skipped
+//   * ambiguous keywords are only searched with their context terms (grouped where
+//     the platform supports it, otherwise with the first context word)
 //   * generic/category phrases are never OR-combined with brand aliases (they
 //     would drown them); they get their own lower-priority group
-//   * on platforms without OR, the number of single-keyword queries is capped by
-//     monitoring mode; uncapped keywords are reported, never silently dropped
+//   * keywords that differ only in letter case, spacing or quotes are one search
+//   * on paid platforms without OR, the number of single-keyword queries per check
+//     is capped by the plan (highest-priority keywords first); every keyword that
+//     isn't searched is reported with the reason, never silently dropped
 // Every keyword still drives local relevance matching, searched or not.
 
 import { createHash } from "node:crypto";
 import { containsTerm } from "./relevance.ts";
 import type { AliasKind } from "../domain/aliases.ts";
 import type { QueryCapabilities } from "./types.ts";
-
-export type MonitoringMode = "eco" | "balanced" | "priority";
 
 export interface OptimizerKeyword {
   term: string;
@@ -37,8 +37,10 @@ export interface QueryGroup {
 
 export interface SkippedKeyword {
   term: string;
-  reason: "covered" | "ambiguous_unsupported" | "query_cap" | "too_long";
+  reason: "covered" | "duplicate" | "unsupported" | "ambiguous_unsupported" | "query_cap" | "too_long";
   detail: string;
+  /** For covered / duplicate keywords: the searched keyword that finds them. */
+  via?: string;
 }
 
 export interface QueryPlan {
@@ -47,9 +49,6 @@ export interface QueryPlan {
 }
 
 export const MAX_KEYWORDS = 10;
-
-/** Most single-keyword queries per platform without OR, by mode (paid platforms). */
-export const NON_OR_QUERY_CAP: Record<MonitoringMode, number> = { eco: 1, balanced: 2, priority: 4 };
 
 const BRAND_KINDS = new Set<AliasKind>(["exact_name", "domain", "handle", "misspelling", "abbreviation"]);
 const PRIORITY: Record<AliasKind, number> = { exact_name: 0, domain: 1, handle: 2, custom: 3, abbreviation: 4, misspelling: 5 };
@@ -79,13 +78,18 @@ function isCategory(k: OptimizerKeyword, brandTerms: string[]): boolean {
  */
 export function planQueries(keywords: OptimizerKeyword[], caps: QueryCapabilities, nonOrCap: number | null): QueryPlan {
   const skipped: SkippedKeyword[] = [];
-  const seen = new Set<string>();
+  const seen = new Map<string, string>();
   const list = keywords
     .map((k) => ({ ...k, term: clean(k.term) }))
     .filter((k) => {
       const key = k.term.toLowerCase();
-      if (!k.term || seen.has(key)) return false;
-      seen.add(key);
+      if (!k.term) return false;
+      const first = seen.get(key);
+      if (first !== undefined) {
+        skipped.push({ term: k.term, reason: "duplicate", detail: `Same search as "${first}" (differs only in letter case, spacing or quotes)`, via: first });
+        return false;
+      }
+      seen.set(key, k.term);
       return true;
     })
     .slice(0, MAX_KEYWORDS)
@@ -102,7 +106,7 @@ export function planQueries(keywords: OptimizerKeyword[], caps: QueryCapabilitie
   const primary: OptimizerKeyword[] = [...brand];
   for (const k of brandish) {
     const by = /\s/.test(k.term) ? brandTerms.find((b) => containsTerm(k.term, b)) : undefined;
-    if (caps.wordMatch && by) skipped.push({ term: k.term, reason: "covered", detail: `Found by searching "${by}"` });
+    if (caps.wordMatch && by) skipped.push({ term: k.term, reason: "covered", detail: `Found by searching "${by}"`, via: by });
     else primary.push(k);
   }
 
@@ -134,14 +138,15 @@ export function planQueries(keywords: OptimizerKeyword[], caps: QueryCapabilitie
 
   for (const k of ambiguous) {
     const ctx = k.contextTerms.map(clean).filter(Boolean).slice(0, 5);
-    if (!caps.grouping || !caps.booleanOr || ctx.length === 0) {
-      skipped.push({
-        term: k.term, reason: "ambiguous_unsupported",
-        detail: ctx.length === 0 ? "Ambiguous keyword without context terms" : "This platform can't require context words in a search",
-      });
+    if (ctx.length === 0) {
+      skipped.push({ term: k.term, reason: "ambiguous_unsupported", detail: "Ambiguous keyword without context words: add context words to search it" });
       continue;
     }
-    const expression = `${quote(k.term, caps)} (${orJoin(ctx.map((c) => quote(c, caps)), caps)})`;
+    // With grouping: term AND (any context word). Without: term plus its first context word
+    // (all words required on keyword platforms); local relevance still checks every context word.
+    const expression = caps.grouping && caps.booleanOr
+      ? `${quote(k.term, caps)} (${orJoin(ctx.map((c) => quote(c, caps)), caps)})`
+      : `${quote(k.term, caps)} ${quote(ctx[0]!, caps)}`;
     if (expression.length > caps.maxQueryLength) {
       skipped.push({ term: k.term, reason: "too_long", detail: `Longer than this platform's ${caps.maxQueryLength}-character limit` });
       continue;
@@ -149,11 +154,14 @@ export function planQueries(keywords: OptimizerKeyword[], caps: QueryCapabilitie
     groups.push({ expression, terms: [k.term], role: "ambiguous" });
   }
 
-  // Without OR every keyword is its own query; cap them by mode (highest priority first).
+  // Without OR every keyword is its own query; cap them per plan (highest priority first).
   if (!caps.booleanOr && nonOrCap !== null && groups.length > nonOrCap) {
     for (const g of groups.slice(nonOrCap)) {
       for (const t of g.terms) {
-        skipped.push({ term: t, reason: "query_cap", detail: "Not searched on this platform in the current monitoring mode (still used to match results)" });
+        skipped.push({
+          term: t, reason: "query_cap",
+          detail: `Not searched here: this platform can't combine keywords, and your plan allows ${nonOrCap} separate search${nonOrCap === 1 ? "" : "es"} per check (still used to match results)`,
+        });
       }
     }
     groups.splice(nonOrCap);

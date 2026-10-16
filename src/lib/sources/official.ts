@@ -77,28 +77,54 @@ export const bluesky: SourceAdapter = {
   async searchMentions(req: SearchRequest, ctx: SourceContext): Promise<SearchResult> {
     const q = (req.query ?? req.terms[0] ?? "").trim();
     if (!q) throw new SourceError("bad_request", "Empty query");
-    const items: CandidateMention[] = [];
-    let cursor: string | undefined;
+    // Pages walk back in time by moving `until` to the oldest post seen: the public AppView
+    // refuses `cursor` requests (403 "forbidden by administrative rules", observed 2026-10-16).
+    const items = new Map<string, CandidateMention>();
+    let until = req.window.until;
+    let more = false;
+    let refused = false;
     let pages = 0;
     const max = Math.max(1, Math.min(CAPS.blueskyPosts.maxPagesPerRun, req.maxPages));
     do {
-      const params = new URLSearchParams({
-        q, sort: "latest", limit: "100", since: req.window.since.toISOString(), until: req.window.until.toISOString(),
-      });
-      if (cursor) params.set("cursor", cursor);
+      const params = new URLSearchParams({ q, sort: "latest", limit: "100", since: req.window.since.toISOString(), until: until.toISOString() });
       const res = await ctx.request({ url: `https://api.bsky.app/xrpc/app.bsky.feed.searchPosts?${params}`, endpoint: "searchPosts", headers: UA, signal: req.signal });
-      if (!res.ok) throw httpError("Bluesky", res);
+      if (!res.ok) {
+        // Keep what earlier pages found; the run is recorded as incomplete and its checkpoint holds.
+        if (pages > 0 && res.status === 403) {
+          refused = true;
+          break;
+        }
+        throw httpError("Bluesky", res);
+      }
       const body = (await res.json()) as { posts?: BskyPost[]; cursor?: string };
       pages++;
-      for (const p of body.posts ?? []) {
+      const posts = body.posts ?? [];
+      let oldest = Number.POSITIVE_INFINITY;
+      for (const p of posts) {
         const m = normalizeBskyPost(p);
-        if (m) items.push(m);
+        if (m) items.set(m.externalId, m);
+        for (const t of [p.record?.createdAt, p.indexedAt]) {
+          const ms = t ? Date.parse(t) : NaN;
+          if (Number.isFinite(ms)) oldest = Math.min(oldest, ms);
+        }
       }
-      cursor = body.cursor && (body.posts?.length ?? 0) > 0 ? body.cursor : undefined;
-    } while (cursor && pages < max);
+      more = Boolean(body.cursor) && Number.isFinite(oldest);
+      if (!more) break;
+      // +1 ms: `until` is exclusive; posts at the boundary may repeat and are de-duplicated.
+      const next = new Date(oldest + 1);
+      if (next <= req.window.since) {
+        more = false; // reached the start of the window
+        break;
+      }
+      if (next >= until) break; // a full page within one millisecond: can't move further (stays incomplete)
+      until = next;
+    } while (pages < max);
+    const incomplete = more || refused;
     return {
-      items, complete: !cursor, saturated: Boolean(cursor), pagesRequested: pages,
-      incompleteReason: cursor ? `Bluesky had more than ${pages * 100} matching posts in the window; the newest were collected.` : undefined,
+      items: [...items.values()], complete: !incomplete, saturated: incomplete, pagesRequested: pages,
+      incompleteReason: refused
+        ? "Bluesky refused a further page of results; the newest were collected."
+        : more ? `Bluesky had more than ${pages * 100} matching posts in the window; the newest were collected.` : undefined,
     };
   },
 

@@ -36,4 +36,12 @@ export const CAPS = {
   // DEV: tag feed only (no documented full-text search).
   devArticles: { ...base, maxQueryLength: 30, dateFilter: "none", sortNewest: true, pagination: "page", maxPagesPerRun: 1, wordMatch: false },
   appStoreReviews: { ...base, dateFilter: "none", sortNewest: true, pagination: "page", maxPagesPerRun: 2 },
+  // Milestone 2 sources. Each adapter builds its own query from a group's terms.
+  // Hacker News (Algolia) and Stack Exchange: one search per keyword, all words required.
+  hackernews: { ...base, maxQueryLength: 256, dateFilter: "range", sortNewest: true, pagination: "page", maxPagesPerRun: 5 },
+  stackexchange: { ...base, maxQueryLength: 256, dateFilter: "range", sortNewest: true, pagination: "page", maxPagesPerRun: 5 },
+  // GitHub issue search: OR of quoted terms, at most 5 operators per query.
+  github: { ...base, booleanOr: "OR", exactPhrase: true, maxTerms: 5, maxQueryLength: 256, dateFilter: "range", sortNewest: true, pagination: "page", maxPagesPerRun: 5 },
+  // YouTube search.list: `|` as OR; quota-limited, so few pages.
+  youtube: { ...base, booleanOr: "|", exactPhrase: true, maxTerms: 5, maxQueryLength: 256, dateFilter: "range", sortNewest: true, pagination: "cursor", maxPagesPerRun: 2 },
 } as const satisfies Record<string, QueryCapabilities>;

@@ -4,8 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { CAPS } from "./capabilities.ts";
-import { NON_OR_QUERY_CAP, normalizeExpression, planQueries, queryFingerprint, type OptimizerKeyword } from "./query-optimizer.ts";
-import { activityInterval, auditDue, checksAvoided, decideInterval, INTERVAL_STEPS, type ScheduleInput } from "./adaptive.ts";
+import { normalizeExpression, planQueries, queryFingerprint, type OptimizerKeyword } from "./query-optimizer.ts";
 import { selectExpansions } from "./expansion.ts";
 import { appStoreIds, bluesky, bskyPostUrl, devTag, flattenDevComments, normalizeAppStoreEntry, normalizeBskyPost } from "./official.ts";
 import type { SourceContext, SourceRequest } from "./types.ts";
@@ -38,18 +37,29 @@ test("domains and handles are searched in their own right, not treated as covere
   assert.equal(plan.skipped.length, 0);
 });
 
-test("platform without OR: one query per keyword, capped by monitoring mode, the rest reported", () => {
-  const eco = planQueries(FOCUSFLOW, CAPS.tiktokVideos, NON_OR_QUERY_CAP.eco);
-  assert.deepEqual(eco.groups.map((g) => g.expression), ["FocusFlow"]);
-  assert.ok(eco.skipped.some((s) => s.term === "focusflow.app" && s.reason === "query_cap"));
-  const priority = planQueries(FOCUSFLOW, CAPS.tiktokVideos, NON_OR_QUERY_CAP.priority);
-  assert.deepEqual(priority.groups.map((g) => g.expression), ["FocusFlow", "focusflow.app", "Focus Flow"]);
+test("paid platform without OR: one query per keyword, capped by the plan, the rest reported", () => {
+  const one = planQueries(FOCUSFLOW, CAPS.tiktokVideos, 1);
+  assert.deepEqual(one.groups.map((g) => g.expression), ["FocusFlow"]);
+  const capped = one.skipped.find((s) => s.term === "focusflow.app");
+  assert.equal(capped?.reason, "query_cap");
+  assert.match(capped!.detail, /plan allows 1 separate search per check/);
+  const three = planQueries(FOCUSFLOW, CAPS.tiktokVideos, 3);
+  assert.deepEqual(three.groups.map((g) => g.expression), ["FocusFlow", "focusflow.app", "Focus Flow"]);
   // No keyword silently disappears.
-  const named = new Set([...priority.groups.flatMap((g) => g.terms), ...priority.skipped.map((s) => s.term)]);
+  const named = new Set([...three.groups.flatMap((g) => g.terms), ...three.skipped.map((s) => s.term)]);
   for (const k of FOCUSFLOW) assert.ok(named.has(k.term), k.term);
+  // Free platforms without OR (no cap) search every distinct keyword.
+  const free = planQueries(FOCUSFLOW, CAPS.blueskyPosts, null);
+  assert.equal(free.skipped.filter((s) => s.reason === "query_cap").length, 0);
 });
 
-test("category terms are never OR-combined with brand aliases; ambiguous terms need grouping + context", () => {
+test("keywords differing only in case or spacing are one search, and the duplicate is reported", () => {
+  const plan = planQueries([kw("FocusFlow"), kw("focusflow", "misspelling"), kw("  FocusFlow ", "custom")], CAPS.redditPosts, null);
+  assert.deepEqual(plan.groups.map((g) => g.expression), ["FocusFlow"]);
+  assert.deepEqual(plan.skipped.map((s) => [s.term, s.reason]), [["focusflow", "duplicate"], ["FocusFlow", "duplicate"]]);
+});
+
+test("category terms are never OR-combined with brand aliases; ambiguous terms need context", () => {
   const keywords = [
     kw("FocusFlow"), kw("pomodoro app", "custom"), kw("deep work timer", "custom"),
     kw("Flow", "abbreviation", { isAmbiguous: true, contextTerms: ["pomodoro", "focus timer"] }),
@@ -62,8 +72,10 @@ test("category terms are never OR-combined with brand aliases; ambiguous terms n
     ["ambiguous", 'Flow (pomodoro OR "focus timer")'],
   ]);
   assert.ok(reddit.skipped.some((s) => s.term === "FF" && s.reason === "ambiguous_unsupported"));
-  const tiktok = planQueries(keywords, CAPS.tiktokVideos, 5);
-  assert.ok(tiktok.skipped.some((s) => s.term === "Flow" && s.reason === "ambiguous_unsupported"));
+  // Without grouping: searched with its first context word (all words required), not dropped.
+  const tiktok = planQueries(keywords, CAPS.tiktokVideos, null);
+  assert.ok(tiktok.groups.some((g) => g.role === "ambiguous" && g.expression === "Flow pomodoro"));
+  assert.ok(tiktok.skipped.some((s) => s.term === "FF" && s.reason === "ambiguous_unsupported"), "no context words: can't search it safely");
 });
 
 test("query length and term limits split groups instead of truncating", () => {
@@ -85,88 +97,11 @@ test("shared query registry: fingerprints ignore case/whitespace, not platform, 
   assert.equal(normalizeExpression('A or B OR "C D"'), 'a or b OR "c d"', "lowercase 'or' is a word, uppercase OR an operator");
 });
 
-// ------------------------------------------------------------------ adaptive engine
-
-const base = (o: Partial<ScheduleInput> = {}): ScheduleInput => ({
-  now: NOW, mode: "balanced", paid: true, platformImportance: 1, planMinMinutes: 60,
-  activity: { last24h: 0, prev24h: 0, dailyAvg7d: 0, dailyAvg28d: 0 },
-  spikeActive: false, negativeSpike: null, lastRun: { complete: true, saturated: false },
-  consecutiveFailures: 0, auditMissed: 0, previousIntervalMinutes: 720, boost: null, ...o,
-});
-
-test("intervals are always one of 1/2/3/4/6/12/24 h and never above 24 h", () => {
-  for (const mode of ["eco", "balanced", "priority"] as const) {
-    for (const last24h of [0, 1, 3, 10, 50]) {
-      for (const plan of [60, 180, 360, 1440]) {
-        const d = decideInterval(base({ mode, planMinMinutes: plan, activity: { last24h, prev24h: 0, dailyAvg7d: last24h, dailyAvg28d: 1 } }));
-        assert.ok((INTERVAL_STEPS as readonly number[]).includes(d.intervalMinutes), `${mode}/${last24h}/${plan}: ${d.intervalMinutes}`);
-        assert.ok(d.intervalMinutes >= plan, "plan floor respected");
-        assert.ok(d.reasons.length > 0);
-      }
-    }
-  }
-});
-
-test("busy platforms are checked more often; quiet ones less, but only one step at a time", () => {
-  assert.equal(activityInterval(25), 60);
-  assert.equal(activityInterval(0), 1440);
-  const busy = decideInterval(base({ mode: "priority", activity: { last24h: 30, prev24h: 25, dailyAvg7d: 28, dailyAvg28d: 25 } }));
-  assert.equal(busy.intervalMinutes, 60);
-  const quiet = decideInterval(base({ mode: "eco", previousIntervalMinutes: 240 }));
-  assert.equal(quiet.intervalMinutes, 360, "from 4 h it may only slow to 6 h, not jump to 24 h");
-  assert.ok(quiet.reasons.some((r) => /gradually/.test(r)));
-});
-
-test("low confidence blocks slowing down (no self-reinforcing gaps)", () => {
-  const d = decideInterval(base({ mode: "eco", previousIntervalMinutes: 240, consecutiveFailures: 2 }));
-  assert.equal(d.confidence, "low");
-  assert.equal(d.intervalMinutes, 240);
-});
-
-test("spikes, saturation and audit misses speed monitoring up", () => {
-  assert.equal(decideInterval(base({ spikeActive: true, previousIntervalMinutes: 720 })).intervalMinutes, 120);
-  const sat = decideInterval(base({ lastRun: { complete: false, saturated: true }, activity: { last24h: 1, prev24h: 1, dailyAvg7d: 1, dailyAvg28d: 1 } }));
-  assert.equal(sat.intervalMinutes, 240, "6 h → 4 h after a saturated run");
-  const audit = decideInterval(base({ auditMissed: 2, activity: { last24h: 1, prev24h: 1, dailyAvg7d: 1, dailyAvg28d: 1 } }));
-  assert.equal(audit.intervalMinutes, 240);
-  assert.equal(audit.confidence, "medium");
-});
-
-test("failures schedule a quicker recovery run without changing the interval", () => {
-  const d = decideInterval(base({ consecutiveFailures: 1 }));
-  assert.equal(d.nextRunAt.getTime() - NOW.getTime(), 30 * 60_000);
-  const d3 = decideInterval(base({ consecutiveFailures: 3 }));
-  assert.equal(d3.nextRunAt.getTime() - NOW.getTime(), 120 * 60_000);
-});
-
-test("Launch Boost raises frequency down to the boost minimum, then expires", () => {
-  const boost = { mode: "priority" as const, minMinutes: 60, endsAt: new Date(NOW.getTime() + 3 * 86_400_000) };
-  const quiet = base({ planMinMinutes: 360, previousIntervalMinutes: 360, activity: { last24h: 25, prev24h: 20, dailyAvg7d: 20, dailyAvg28d: 20 } });
-  assert.equal(decideInterval(quiet).intervalMinutes, 360, "without boost: plan floor (6 h)");
-  const boosted = decideInterval({ ...quiet, boost });
-  assert.equal(boosted.intervalMinutes, 60);
-  assert.match(boosted.reasons[0]!, /Launch Boost active/);
-  const expired = decideInterval({ ...quiet, boost: { ...boost, endsAt: new Date(NOW.getTime() - 1) } });
-  assert.equal(expired.intervalMinutes, 360, "returns to normal automatically");
-});
-
-test("eco mode makes fewer paid checks; free sources aren't penalized for cost", () => {
-  const act = { last24h: 3, prev24h: 3, dailyAvg7d: 3, dailyAvg28d: 3 };
-  const paidEco = decideInterval(base({ mode: "eco", activity: act, previousIntervalMinutes: 360 }));
-  const freeEco = decideInterval(base({ mode: "eco", paid: false, activity: act, previousIntervalMinutes: 360 }));
-  assert.ok(paidEco.intervalMinutes > freeEco.intervalMinutes);
-});
-
-test("source minimums (YouTube) and audits", () => {
-  assert.equal(decideInterval(base({ sourceMinMinutes: 1440, spikeActive: true })).intervalMinutes, 1440);
-  assert.equal(auditDue(null, "balanced", true, NOW), true);
-  assert.equal(auditDue(new Date(NOW.getTime() - 8 * 86_400_000), "eco", true, NOW), false, "eco audits paid sources every 14 days");
-  assert.deepEqual(checksAvoided(30, 2, 168), { hourly: 336, avoided: 306, percentFewer: 91 });
-});
+// Adaptive scheduling (activity ranking, intervals, hysteresis) is tested in monitoring.test.ts.
 
 // ------------------------------------------------------------------ comment expansion
 
-test("expansion picks the most promising discussions, skips small or unchanged ones, capped by mode", () => {
+test("expansion picks the most promising discussions, skips small or unchanged ones, capped per run", () => {
   const parent = (id: string, comments: number, ageDays = 0) => ({
     parent: { externalId: id, platformId: id, sourceUrl: `https://x.com/a/status/${id}`, title: "t", commentCount: comments, publishedAt: new Date(NOW.getTime() - ageDays * 86_400_000) },
     relevance: 0.9,
@@ -178,12 +113,12 @@ test("expansion picks the most promising discussions, skips small or unchanged o
   ]);
   const d = selectExpansions(
     [parent("small", 1), parent("big-old", 500, 30), parent("big-new", 200), parent("seen-recent", 80), parent("seen-grown", 40), parent("seen-flat", 42)],
-    history, { mode: "balanced", now: NOW },
+    history, { maxParents: 2, now: NOW },
   );
   assert.deepEqual(d.selected.map((p) => p.externalId), ["big-new", "seen-grown"]);
   const reasons = Object.fromEntries(d.skipped.map((s) => [s.externalId, s.reason]));
   assert.deepEqual(reasons, { small: "few_comments", "seen-recent": "recently_expanded", "seen-flat": "no_new_comments", "big-old": "lower_priority" });
-  assert.equal(selectExpansions([parent("a", 10), parent("b", 10)], new Map(), { mode: "eco", now: NOW }).selected.length, 1);
+  assert.equal(selectExpansions([parent("a", 10), parent("b", 10)], new Map(), { maxParents: 1, now: NOW }).selected.length, 1);
 });
 
 // ------------------------------------------------------------------ official sources
@@ -204,7 +139,9 @@ test("Bluesky: post URL, replies, engagement; one query per keyword with since/u
     async request(req) {
       calls.push(req);
       const page = calls.length;
-      return new Response(JSON.stringify({ posts: [{ uri: `at://did:plc:abc/app.bsky.feed.post/${page}`, author: { handle: "a" }, record: { text: "FocusFlow", createdAt: "2026-10-15T09:00:00Z" } }], cursor: page < 5 ? `c${page}` : undefined }));
+      // Each page is an hour older; createdAt carries a zone offset (as real posts do).
+      const createdAt = `2026-10-15T${String(11 - page).padStart(2, "0")}:00:00+02:00`;
+      return new Response(JSON.stringify({ posts: [{ uri: `at://did:plc:abc/app.bsky.feed.post/${page}`, author: { handle: "a" }, record: { text: "FocusFlow", createdAt } }], cursor: page < 5 ? `c${page}` : undefined }));
     },
     async paidRequest() { throw new Error("free source"); },
     async cooldown() {},
@@ -216,9 +153,27 @@ test("Bluesky: post URL, replies, engagement; one query per keyword with since/u
   assert.equal(u.searchParams.get("q"), '"Focus Flow"');
   assert.equal(u.searchParams.get("sort"), "latest");
   assert.equal(u.searchParams.get("since"), "2026-10-14T00:00:00.000Z");
-  assert.equal(new URL(calls[1]!.url).searchParams.get("cursor"), "c1");
+  // No cursor requests (the public AppView refuses them): the next page moves `until` to the oldest post (+1 ms).
+  assert.equal(new URL(calls[1]!.url).searchParams.get("cursor"), null);
+  assert.equal(new URL(calls[1]!.url).searchParams.get("until"), "2026-10-15T08:00:00.001Z");
+  assert.equal(res.items.length, 2);
   assert.equal(res.saturated, true, "more pages left = saturated, not complete");
   assert.equal(res.complete, false);
+
+  // A refused later page keeps the earlier results and records the run as incomplete.
+  let n = 0;
+  const refusing: SourceContext = {
+    ...ctx,
+    async request() {
+      n++;
+      if (n > 1) return new Response("<h1>403 Forbidden</h1>", { status: 403 });
+      return new Response(JSON.stringify({ posts: [{ uri: "at://did:plc:abc/app.bsky.feed.post/x", author: { handle: "a" }, record: { text: "FocusFlow", createdAt: "2026-10-15T09:00:00Z" } }], cursor: "c" }));
+    },
+  };
+  const kept = await bluesky.searchMentions({ terms: ["FocusFlow"], window: { since: new Date("2026-10-14T00:00:00Z"), until: NOW }, maxPages: 3 }, refusing);
+  assert.equal(kept.items.length, 1);
+  assert.equal(kept.complete, false);
+  assert.match(kept.incompleteReason!, /refused a further page/);
 });
 
 test("DEV: keywords become tags; comment trees are flattened with links", () => {

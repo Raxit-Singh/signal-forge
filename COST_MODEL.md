@@ -40,22 +40,19 @@ Prices from apidirect.io/docs/pricing, verified 2026-10-15, stored in the `provi
 
 Zero-result answers are billed. Every account gets 50 free requests per endpoint per month (ignored in estimates — conservative).
 
-**Per product, per check (optimizer keeps OR-capable platforms to one query; one page unless a run was saturated):**
+**How often paid platforms are checked** is decided automatically (Smart Monitoring, 2026-10-16): each platform's activity score sets its interval, quiet paid platforms run one step slower, and **the plan's minimum interval is a hard floor** (Free/Starter 24 h, Pro 6 h, Business 3 h). So the plan bounds the worst case; activity only decides how close a platform gets to it. The former Eco/Balanced/Priority modes are gone; their one cost lever that remains is `plan_paid_allowances.max_searches_per_platform` — searches per check on paid platforms that can't OR-combine keywords (TikTok, Instagram, Facebook, Substack) — default **2**. Since 2026-10-16 this budget no longer drops keywords: the rest **take turns** (each searched every few checks), so cost per check stays at the budget while every keyword is covered, except where the **7-day coverage guarantee** forces extra searches (e.g. 9 rotating keywords on a daily plan: 1 + 9/7 ≈ 2.3 searches per check instead of 2, about +14 % on those platforms).
 
-| Setup | Search cost/check | + comment expansion (balanced: ≤2 parents × 1 page) |
+**Per product, per check:** `npm run audit:keywords` prints the exact query groups, requests and estimated cost per platform from the stored keywords and `provider_pricing` (read-only). Estimates assume 2 pages per check (the default), no saturation, and comment expansion of 1 parent per run on X/TikTok/Instagram/Facebook (1–4 by activity score). Reddit counts both post and comment searches.
+
+**Measured with the planner (2026-10-16):**
+
+| Product / keywords | Paid searches per check (all 10 platforms) | If all 10 paid platforms ran daily (Free/Starter floor) |
 |---|---|---|
-| Reddit (posts + comments) + X | $0.012 | X replies ≤ $0.012 |
-| All 10 paid platforms | $0.061 | ≤ $0.052 (X, TikTok, Instagram, Facebook) |
+| `octolens`, stored keywords (1: "starlink") | 12 | $2.76–3.90 / month |
+| Same product, hypothetical 10 keywords (brand, domain, handle, 2 spellings, 2 brand phrases, 2 category terms, 1 competitor) | 23 (Reddit: 7 keywords → 2 groups × posts + comments; TikTok/Instagram/Facebook: 2 per check, 6 more taking turns) | $5.22–6.72 / month (**unchanged** by rotation; re-measured 2026-10-16) |
+| `octolens`, stored keywords as of 2026-10-16 (2: "starlink", "wisprflow") | 17 | $4.05–5.28 / month (higher than the row above only because a keyword was added) |
 
-**Monthly, one product (30 days), estimates:**
-
-| Mode / typical interval | Reddit + X | All 10 platforms |
-|---|---|---|
-| Eco, quiet product (24 h) | $0.36–0.72 | $1.8–3.4 |
-| Balanced (12 h) | $0.72–1.44 | $3.7–6.8 |
-| Priority, busy product (1–2 h) | $4.3–17 | $22–81 |
-
-Upper bounds assume expansion on every run; saturated runs add a page (×1 per extra page). Completeness audits add ~1 check/week/group. Launch Boost spend is capped separately by its paid-check limit.
+At a 6 h interval multiply by 4, at 3 h by 8 (e.g. the 10-keyword product on Business with every paid platform busy enough for its 3 h floor: about $42–54 / month) — the plan's paid allowance caps actual spend either way. Saturated runs add a page per group; completeness audits add ~1 check/week/group (fortnightly on quiet paid platforms). Launch Boost spend is capped separately by its paid-check limit. Each endpoint's first 50 requests a month are free (ignored here — conservative). **No paid request has been made yet: these are estimates, not measurements.**
 
 **Controls (enforced in Postgres before every paid call):** global monthly budget (no row ⇒ no paid calls), optional provider and platform budgets, each workspace's plan allowance (`plan_paid_allowances`, proposed: Free $0, Starter $1, Pro $5, Business $20 — **founder decision**), optional workspace/product budgets, and per-boost paid-check caps. Shared fetches split one request's cost across every product with the same query. API Direct's own account-level daily/monthly spending limits are a second line of defence (set them in its dashboard). Reconcile monthly: compare the API Direct invoice with `select sum(coalesce(charged_usd, estimated_usd)) from api_cost_ledger where period_start = '<month>' and status <> 'released'` and record it in `billing_reconciliations`.
 
@@ -82,6 +79,7 @@ AI usage is deliberately left out of totals until M4 measures tokens per mention
 
 ## Founder decisions needed (will ask before acting)
 0. **API Direct:** create the account, set its spending limits, decide the global monthly budget and per-plan paid allowances, and authorize a capped live test (`npm run test:apidirect-live -- --confirm --max-usd 0.05`).
+0b. **Searches per check on paid platforms without OR** (`plan_paid_allowances.max_searches_per_platform`, default 2 for every plan). Every keyword is now searched (rotation); raising it per plan shortens how long rotating keywords wait, at proportionally higher cost.
 1. Supabase Pro at first paying customer (US$25/mo).
 2. Vercel Pro vs. an alternative host before charging customers (US$20/mo).
 3. Which AI provider/model backs SignalForge credits, and per-plan token budgets (M4).

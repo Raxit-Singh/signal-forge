@@ -19,7 +19,8 @@
     "typecheck:core": "tsc -p tsconfig.core.json",
     "test:e2e": "playwright test",
     "dev:cron": "node scripts/dev-cron.mjs",
-    "test:apidirect-live": "node scripts/apidirect-live-test.ts"
+    "test:apidirect-live": "node scripts/apidirect-live-test.ts",
+    "audit:keywords": "node scripts/keyword-audit.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.7.0",

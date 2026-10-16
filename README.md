@@ -2,7 +2,7 @@
 
 Social listening, buzz analytics and product intelligence for software teams: where people talk about your product, how often, what they like and dislike, which bugs and feature requests come up, and what to look at next — with every number traceable to stored data.
 
-**Status (2026-10-15): Milestones 1, 2, 2.5 and 3 implemented.** Free sources (Hacker News, GitHub, Stack Overflow, Bluesky, DEV, App Store reviews) are verified against their live APIs. YouTube and all ten API Direct (paid) connectors are built and tested with mocked responses only — they need credentials (and, for paid sources, an authorized test budget) before they can be called verified. Buzz Analytics and Smart Monitoring are verified in the browser. See [PROGRESS.md](PROGRESS.md) for the exact verification log.
+**Status (2026-10-16): Milestones 1, 2, 2.5 and 3 implemented, plus automatic Smart Monitoring (platforms ranked by activity; no monitoring modes to choose) and numbered mention pagination.** Free sources (Hacker News, GitHub, Stack Overflow, Bluesky, DEV, App Store reviews) are verified against their live APIs. YouTube and all ten API Direct (paid) connectors are built and tested with mocked responses only — they need credentials (and, for paid sources, an authorized test budget) before they can be called verified. Buzz Analytics and Smart Monitoring are verified in the browser. See [PROGRESS.md](PROGRESS.md) for the exact verification log.
 
 ## Stack
 
@@ -25,12 +25,13 @@ Full setup (Supabase auth settings, email templates, Google OAuth, keys): [ENVIR
 
 | Command | What it runs | Needs |
 |---|---|---|
-| `npm run test:unit` | 119 tests: domain logic, validation, encryption, source adapters incl. API Direct (mocked responses), query optimizer, adaptive scheduling, comment expansion, analytics math (`node --test`) | Node ≥ 22.18 |
-| `npm run test:db` | All migrations + 202 RLS / isolation / plan-limit / job-queue / ingestion / budget / analytics tests on a throwaway local Postgres | Nothing extra — uses the `embedded-postgres` dev dependency (set `PGBIN` to use a system Postgres) |
+| `npm run test:unit` | 145 tests: domain logic, validation, encryption, source adapters incl. API Direct (mocked responses), query optimizer + keyword plans + fair rotation, activity ranking, automatic intervals + hysteresis, comment expansion, analytics math, pagination (`node --test`) | Node ≥ 22.18 |
+| `npm run test:db` | All migrations + 223 RLS / isolation / plan-limit / job-queue / ingestion / budget / analytics / activity-ranking tests on a throwaway local Postgres | Nothing extra — uses the `embedded-postgres` dev dependency (set `PGBIN` to use a system Postgres) |
 | `npm run typecheck` | `tsc --noEmit` over the whole app | `npm install` |
 | `npm run lint` | ESLint (next/core-web-vitals + typescript) | `npm install` |
 | `npm run build` | Production build | `npm install`, env vars |
-| `npm run test:e2e` | Playwright (9 tests): onboarding; mentions list, pagination, filters, relevance; Buzz Analytics; Smart Monitoring + Launch Boost (deterministic fixtures) | `.env.local`, `npx playwright install chromium` |
+| `npm run test:e2e` | Playwright (13 tests): onboarding; mentions numbered pagination, filters, Read more, relevance, mobile; Buzz Analytics; automatic Smart Monitoring ranking, keyword coverage, explanations, Launch Boost, mobile (deterministic fixtures) | `.env.local`, `npx playwright install chromium` |
+| `npm run audit:keywords -- [--product <id>] [--keywords "a:exact_name,b:domain"]` | Read-only: configured keywords, query groups per platform, what isn't searched and why, estimated monthly requests and API Direct cost | `.env.local` |
 | `npm run test:apidirect-live -- --confirm --max-usd 0.05` | **Paid.** Budget-capped live check of API Direct connectors. Never runs in CI or without `--confirm` | `API_DIRECT_API_KEY`, your authorization |
 | `npm run dev:cron` | Calls the scheduler every 120 s during local development | `JOBS_TICK_SECRET` |
 
