@@ -1007,6 +1007,30 @@ select t.ok((select count(*) from public.platform_activity where product_id = (s
   'other workspaces cannot see rankings or interval changes');
 reset role;
 
+-- Internal testing grants: plan limits without a subscription; readable, not writable, by members.
+insert into public.internal_plan_grants (workspace_id, plan_id, reason, granted_by)
+select v, 'pro', 'internal_testing', 'rls_test' from ids where k = 'ws_d';
+select t.ok(private.effective_plan_id((select v from ids where k = 'ws_d')) = 'pro'
+  and (select plan_id from public.subscriptions where workspace_id = (select v from ids where k = 'ws_d')) = 'free'
+  and (private.workspace_usage((select v from ids where k = 'ws_d')) ->> 'entitlement') = 'internal_testing'
+  and (private.workspace_usage((select v from ids where k = 'ws_d')) ->> 'mention_allowance')::int = 15000,
+  'internal grant gives Pro limits; the subscription row stays Free (nothing billed)');
+select t.ok((private.schedule_context((select v from ids where k = 'p_d'), 'reddit') ->> 'max_keywords')::int = 10,
+  'internal grant applies to monitoring entitlements');
+select t.as_user('00000000-0000-0000-0000-00000000000d');
+set role authenticated;
+select t.ok((select plan_id from public.internal_plan_grants) = 'pro', 'members can see their workspace''s grant');
+select t.throws($$update public.internal_plan_grants set plan_id = 'scale'$$, 'members cannot change grants', 'permission denied');
+select t.throws(format($$insert into public.internal_plan_grants (workspace_id, plan_id, reason, granted_by) values (%L, 'scale', 'internal_testing', 'me')$$,
+  (select v from ids where k = 'ws_d')), 'members cannot grant themselves a plan', 'permission denied');
+reset role;
+select t.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+select t.ok((select count(*) from public.internal_plan_grants) = 0, 'other workspaces cannot see a grant');
+reset role;
+update public.internal_plan_grants set revoked_at = now() where workspace_id = (select v from ids where k = 'ws_d');
+select t.ok(private.effective_plan_id((select v from ids where k = 'ws_d')) = 'free', 'revoking a grant falls back to the subscription immediately');
+
 -- ===================================================================== summary
 do $$
 declare passed int; failed int;

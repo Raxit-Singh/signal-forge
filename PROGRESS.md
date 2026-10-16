@@ -16,6 +16,16 @@ Legend: ✅ verified by an automated check that ran · 🟡 written, not yet exe
 
 Test users created for the walk-through were removed afterwards via the app's own deletion path.
 
+## Follow-up — security checks, internal Pro grants, effective keyword intervals, budget simulation (2026-10-16)
+
+Subscription work committed as `b760d5f`. Migration `20261016000006_internal_plan_grants` (additive) applied after a dry run.
+
+- ✅ **Credentials:** none of the 7 secret values in `.env.local` (GitHub, Stack Exchange, YouTube, API Direct, Supabase secret, encryption key, tick secret) occur in the staged diff, in any commit on any ref (`git log -p --all`), in unreachable objects or stashes; there is no git remote. The keys pasted into `.env.example` were moved to `.env.local` before any `git add`. **Rotation must be done by the owner** in each provider's console (not possible from here).
+- ✅ **Internal Pro testing entitlements** (not subscriptions) for workspaces `signalforge` and `Starlink` via `scripts/grant-internal-plan.ts`; their `subscriptions` rows stay Free/provider none (the only two subscriptions in the database). Both products re-planned: all keywords searched again (octolens: starlink + wisprflow, 10 groups; Starlink: 3 keywords, 16 groups). `PAID_SOURCES_ENABLED=false`, no global paid budget — paid monitoring stays off.
+- ✅ **Dashboard shows effective keyword intervals:** the keyword card now uses each search's scheduled interval (platform interval × rotation turns) and marks estimates "(est.)" until a search is scheduled; the ranking table shows "keywords every …" under the platform interval when they differ, and the details panel repeats it with any target conflict. E2E: Stack Overflow at 24 h with a 2-turn rotation shows "keywords every 2 days" and the conflict.
+- ✅ **Budget simulation** (`scripts/simulate-plan-costs.ts`, no API calls): results and decision in COST_MODEL.md. Internal budgets **not raised** (Pro $25, Scale $75).
+- Checks: unit 154/154, DB 258/258 (adds internal grants: Pro limits without a subscription, applies to monitoring, readable not writable by members, isolated, revocable), e2e 17/17, typecheck, lint, build ✅.
+
 ## Refinement — subscription restructure, mention allowances, API Direct live validation (2026-10-16)
 
 Monitoring refinements committed first (`f01b957`). Migration `20261016000005_plans_and_mention_billing` (additive) applied to the linked project after a dry run.

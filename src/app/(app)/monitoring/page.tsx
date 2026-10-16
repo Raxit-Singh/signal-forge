@@ -36,6 +36,12 @@ function toRow(p: PlatformMonitoring, now: number, planName: string, planMin: nu
     trend: r?.trend ?? "new",
     growthPct: r?.growthPct ?? null,
     interval: p.intervalMinutes ? formatInterval(p.intervalMinutes) : "—",
+    // Effective keyword refresh (platform interval × rotation turns), shown when it differs from the platform's.
+    keywordInterval: p.keywordIntervals && p.intervalMinutes && p.keywordIntervals.max !== p.intervalMinutes
+      ? (p.keywordIntervals.min === p.keywordIntervals.max ? formatInterval(p.keywordIntervals.max)
+        : `${formatInterval(p.keywordIntervals.min)} – ${formatInterval(p.keywordIntervals.max)}`)
+      : null,
+    keywordConflict: p.keywordConflict,
     next: next === null ? "—" : next <= now ? "Due now" : formatRelative(new Date(next), new Date(now)),
     nextUtc: p.nextScanAt ? formatUtc(p.nextScanAt) : null,
     last: p.lastScanAt ? formatRelative(new Date(p.lastScanAt), new Date(now)) : "Not yet",
@@ -323,8 +329,8 @@ function KeywordCoverageList({ rows }: { rows: KeywordCoverageRow[] }) {
                         {p.status === "covered" || p.status === "duplicate" ? `Found by the "${p.via}" search` : p.detail}
                       </span>
                     </span>
-                    <span className={p.intervalMinutes === null ? "shrink-0 text-warning" : "shrink-0 tabular"}>
-                      {p.intervalMinutes === null ? "Not searched" : `every ${formatInterval(p.intervalMinutes)}`}
+                    <span className={p.intervalMinutes === null ? "shrink-0 text-warning" : "shrink-0 tabular"} title={p.scheduled ? "From this search's schedule" : "Estimated: not scheduled yet"}>
+                      {p.intervalMinutes === null ? "Not searched" : `every ${formatInterval(p.intervalMinutes)}${p.scheduled ? "" : " (est.)"}`}
                     </span>
                   </li>
                 ))}

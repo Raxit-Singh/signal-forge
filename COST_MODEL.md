@@ -87,6 +87,25 @@ Whatever target can't be met is stored (`platform_activity.keyword_conflict`) an
 
 So with many keywords, the paid budget — not the plan floor — decides how fresh non-OR paid platforms are. Raising a plan's budget or `max_searches_per_platform` is the lever; both are rows, not code. Saturated runs add a page per group; completeness audits add ~1 check/week/group (fortnightly on quiet paid platforms). Launch Boost spend is capped separately by its paid-check limit. Each endpoint's first 50 requests a month are free (ignored here — conservative). **No paid request has been made yet: these are estimates, not measurements.**
 
+### Pro / Scale budget simulation (2026-10-16, `node scripts/simulate-plan-costs.ts`)
+
+Read-only model on the production planner (OR groups, Reddit posts + comments streams, rotation, plan targets) with the live-observed page sizes, each endpoint's billing (page-loop endpoints pay for pages fetched; `pages=N` endpoints pay for every requested page, results or not), saturation (+1 page up to the platform cap), comment expansion on X/TikTok/Instagram/Facebook (`expansionsPerRun` parents per check), and pacing with interval-dependent cost. **Volumes are assumptions** (per keyword per day, e.g. a category phrase ≈ 80 X posts, 40 Reddit comments; brand terms ≈ 4 X posts; "quiet"/"typical"/"busy" brand = ×0.5/×1/×10 at 24 h/6 h/2 h activity). Configurations: 10 keywords (name, domain, handle, variant, 2 covered brand phrases, 2 category phrases, 2 competitors) and 40 (6 brand terms, 6 covered phrases, 14 category, 10 competitors, 4 feature phrases).
+
+| Plan · budget | 10 kw quiet | 10 kw typical | 10 kw busy | 40 kw (quiet / typical / busy) |
+|---|---|---|---|---|
+| Pro $25 | $23.91 ✅ targets met | $24.48 (unpaced $34.08) ✅ TikTok/Facebook 42 h, Substack 28 h | $24.06 ❌ TikTok 84 h, Facebook 168 h, X brand searches saturate | — |
+| Pro $35 | $23.91 ✅ | **$34.08 ✅ all targets met** | $34.92 ❌ TikTok 42 h, Facebook 84 h, X brand saturation | — |
+| Scale $75 | $64.32 ✅ | $65.04 ✅ | $74.96 ✅ TikTok/Facebook 9 h (target 6 h) | $72–74 ❌ non-OR platforms 22–132 h |
+| Scale $100 | $64.32 ✅ | $65.04 ✅ | $89.76 ✅ all met | $95–99 ❌ non-OR platforms 22–66 h |
+
+✅ = acceptable: spend ≤ budget, target met on OR platforms, every platform within 2× target, no brand search saturated. Reddit comments are $0.45–8.64/month of these totals; comment expansion $0.18–15.84.
+
+**Findings:**
+- **Pro $35** fully meets the 24 h target for a typical 10-keyword product (vs 28–42 h on non-OR platforms at $25); a busy product still misses at either budget. **Scale $100** only changes the busy 10-keyword case; **40 keywords miss the 6 h target at both $75 and $100** because TikTok, Instagram, Facebook and Substack need one search per keyword (34 searches each, 68 on Substack) — the budget isn't the lever there.
+- **Page right-sizing saves ~30 %:** the monitor requests 2 pages by default on `pages=N` endpoints and is billed for both even when one page holds every result (quiet Pro: $23.91 → $15.54; typical Scale: $65.04 → $42.96).
+- **Pacing can cause misses:** lengthening the costliest platform first pushed X to 12 h for a busy product, where brand searches overflow the 3-page cap — those mentions would be missed, not just delayed.
+- **Decision (not activated):** internal budgets stay **Pro $25 / Scale $75**. Pro $35 is justified for typical products; Scale $100 is not justified by freshness for 40 keywords. Recommended before raising budgets: right-size pages, make pacing avoid brand saturation (pace category/rotating searches first), and decide whether Scale's 6 h target should apply to non-OR paid platforms or only to brand keywords there.
+
 **Controls (enforced in Postgres before every paid call):** global monthly budget (no row ⇒ no paid calls), optional provider and platform budgets, each workspace's plan allowance (`plan_paid_allowances`: Free $0, Pro $25, Scale $75 — internal operating targets, not customer credits; retired Starter $1 / Business $20 rows kept), optional workspace/product budgets, and per-boost paid-check caps. Shared fetches split one request's cost across every product with the same query. API Direct's own account-level daily/monthly spending limits are a second line of defence (set them in its dashboard). Reconcile monthly: compare the API Direct invoice with `select sum(coalesce(charged_usd, estimated_usd)) from api_cost_ledger where period_start = '<month>' and status <> 'released'` and record it in `billing_reconciliations`.
 
 ## Variable costs (assumptions to validate in M2–M4)

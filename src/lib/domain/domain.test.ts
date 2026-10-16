@@ -221,3 +221,11 @@ test("plan rows carry keyword allowance, refresh target and retirement", () => {
   const usage = usageFromRpc({ plan_id: "pro", plan_name: "Pro", mention_allowance: 15000, mentions_consumed: 12, mentions_remaining: 14988, max_keywords: 10 });
   assert.deepEqual([usage.mentionAllowance, usage.mentionsRemaining, usage.exhaustedAt], [15000, 14988, null]);
 });
+
+test("internal testing grants: take precedence while active, never a subscription", () => {
+  const grant = { plan_id: "pro", reason: "internal_testing", expires_at: null, revoked_at: null };
+  assert.equal(effectivePlanId(null, grant), "pro", "no subscription needed");
+  assert.equal(effectivePlanId({ plan_id: "free", status: "active" }, grant), "pro");
+  assert.equal(effectivePlanId({ plan_id: "free", status: "active" }, { ...grant, revoked_at: "2026-10-16T00:00:00Z" }), "free", "revoked → subscription");
+  assert.equal(effectivePlanId(null, { ...grant, expires_at: "2020-01-01T00:00:00Z" }), "free", "expired → free");
+});

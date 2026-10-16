@@ -114,7 +114,13 @@ It lowers only the plan's minimum interval for the listed workspaces, only under
 E2E creates several accounts in quick succession; Supabase Auth's verify rate limit (429 `over_request_rate_limit`) can fail a second full run started right after the first. Wait a few minutes and rerun.
 First E2E run: `npx playwright install chromium`. E2E tests never call external data sources; they insert synthetic fixtures into their own throwaway workspace. No automated test makes a paid request: API Direct connectors are tested with mocked responses only (one manual, capped live validation is recorded in API_LIMITATIONS.md).
 
-**Plans and usage in development:** plan rows are data (`plans`, `plan_paid_allowances`). To try Pro/Scale limits on a dev workspace, an operator can update its `subscriptions.plan_id` with the service role (there is no checkout yet; never do this for customers). `/settings/billing` shows the current period's mention usage, keyword allowance and plan options; warnings appear app-wide at 80 / 90 / 100 %.
+**Plans and usage in development:** plan rows are data (`plans`, `plan_paid_allowances`). To give a SignalForge-owned test workspace Pro or Scale limits **without a subscription**, use an internal grant (nothing billed; `subscriptions` untouched; refuses workspaces with a payment-provider subscription):
+```bash
+node scripts/grant-internal-plan.ts --workspace <uuid> --plan pro            # dry run
+node scripts/grant-internal-plan.ts --workspace <uuid> --plan pro --apply   # optional --days N
+node scripts/grant-internal-plan.ts --workspace <uuid> --revoke --apply
+```
+Then re-plan its products (`node scripts/resync-queries.ts --product <uuid> --apply`). Billing shows "Internal testing entitlement — not a paid subscription". Paid collection still needs `PAID_SOURCES_ENABLED=true` and a global budget. `node scripts/simulate-plan-costs.ts` estimates Pro/Scale paid cost and keyword freshness (read-only). `/settings/billing` shows the current period's mention usage, keyword allowance and plan options; warnings appear app-wide at 80 / 90 / 100 %.
 
 ## 5. Hosting
 

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
-  adminInsert, adminSelect, createUser, createWorkspaceWithProduct, deleteUser, seedMentions, signInPath, type FixtureMention, type TestUser,
+  adminInsert, adminSelect, adminUpdate, createUser, createWorkspaceWithProduct, deleteUser, seedMentions, signInPath, type FixtureMention, type TestUser,
 } from "./support";
 
 // Automatic Smart Monitoring. Synthetic fixtures only; no source is ever called.
@@ -112,6 +112,33 @@ test("ranking from stored activity, explanations, and a Launch Boost that return
   await page.reload();
   await expect(ranking(page).getByRole("row").filter({ hasText: "Hacker News" })).toContainText("24 h");
   await expect(page.locator("div", { has: page.getByText("Interval adjustments (7 days)", { exact: true }) }).last()).toContainText("1");
+});
+
+test("dashboard shows each keyword's actual scheduled refresh, not only the platform interval", async ({ page }) => {
+  // Stack Overflow checked every 24 h, but its FixtureFlow search takes turns with another one (2 turns): every 2 days.
+  await adminInsert("platform_activity", {
+    product_id: ids.productId, workspace_id: ids.workspaceId, platform: "stackexchange", phase: "ranked", score: 30, rank: 1,
+    trend: "stable", coverage_confidence: "high", recommended_interval: 1440, interval_minutes: 1440, reasons: ["Activity score 30/100"],
+    keyword_target_minutes: 1440, slowest_keyword_minutes: 2880,
+    keyword_conflict: "Keyword refresh target (24 h) not met on Stack Overflow: each keyword is searched every 2 days because keywords take turns.",
+  });
+  await adminUpdate(`monitoring_queries?product_id=eq.${ids.productId}&provider=eq.stackexchange`, {
+    interval_minutes: 2880, params: { terms: ["FixtureFlow"], role: "brand", rotation: { position: 0, rotating: 2, slots: 1 } },
+  });
+  await page.reload();
+  const so = ranking(page).getByRole("row").filter({ hasText: "Stack Overflow" });
+  await expect(so).toContainText("24 h");
+  await expect(so).toContainText("keywords every 2 days");
+  await so.getByRole("button", { name: "Stack Overflow" }).click();
+  await expect(page.locator("#details-stackexchange")).toContainText("each keyword is searched every 2 days");
+
+  const coverage = page.getByRole("list", { name: "Keyword coverage" });
+  await expect(coverage).toContainText("Every 24 h – 2 days");
+  await coverage.getByText("FixtureFlow", { exact: true }).click();
+  const byPlatform = page.getByRole("list", { name: "FixtureFlow by platform" });
+  await expect(byPlatform.getByRole("listitem").filter({ hasText: "Stack Overflow" })).toContainText("every 2 days");
+  await expect(byPlatform.getByRole("listitem").filter({ hasText: "Stack Overflow" })).not.toContainText("(est.)");
+  await expect(page.getByRole("list", { name: "Keyword schedule conflicts" })).toContainText("not met on Stack Overflow");
 });
 
 test("mobile: ranking becomes cards with no horizontal overflow", async ({ page }) => {

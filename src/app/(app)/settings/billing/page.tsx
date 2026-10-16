@@ -25,7 +25,7 @@ const day = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: 
 export default async function BillingSettings() {
   const { workspace } = await requireWorkspace();
   const supabase = await createClient();
-  const [{ plan: current, status }, usage, { data: rows }] = await Promise.all([
+  const [{ plan: current, status, internalGrant }, usage, { data: rows }] = await Promise.all([
     getWorkspacePlan(workspace.id),
     getWorkspaceUsage(workspace.id),
     supabase.from("plans").select("*").eq("is_public", true).order("sort_order"),
@@ -41,15 +41,20 @@ export default async function BillingSettings() {
         <CardHeader>
           <CardTitle className="flex flex-wrap items-center gap-2">
             Current plan: {current.name}
-            <span className="text-[13px] font-normal text-muted-foreground tabular">
-              {current.priceCentsMonthly === 0 ? "$0" : formatPrice(current.priceCentsMonthly, current.currency)}/month
-            </span>
-            {status && status !== "active" && <Badge tone="warning" className="capitalize">{status.replace("_", " ")}</Badge>}
+            {internalGrant ? (
+              <Badge tone="info">Internal testing entitlement — not a paid subscription</Badge>
+            ) : (
+              <span className="text-[13px] font-normal text-muted-foreground tabular">
+                {current.priceCentsMonthly === 0 ? "$0" : formatPrice(current.priceCentsMonthly, current.currency)}/month
+              </span>
+            )}
+            {!internalGrant && status && status !== "active" && <Badge tone="warning" className="capitalize">{status.replace("_", " ")}</Badge>}
             {current.retired && <Badge tone="warning">Retired plan</Badge>}
           </CardTitle>
           <CardDescription>
             {usage ? `Billing period ${day(usage.periodStart)} – ${day(usage.periodEnd)} (renews ${day(usage.periodEnd)}).` : "Usage is unavailable right now."}
             {" "}Limits are enforced on the server for every workspace.
+            {internalGrant && ` This workspace has ${current.name} limits for internal testing${internalGrant.expires_at ? ` until ${day(internalGrant.expires_at)}` : ""}; nothing is billed.`}
           </CardDescription>
         </CardHeader>
         {usage && (

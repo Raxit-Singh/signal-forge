@@ -3,7 +3,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { planFromRow, effectivePlanId, usageFromRpc, type Plan, type PlanRow, type SubscriptionStatus, type WorkspaceUsage } from "@/lib/domain/plans";
+import { planFromRow, effectivePlanId, grantIsActive, usageFromRpc, type InternalGrant, type Plan, type PlanRow, type SubscriptionStatus, type WorkspaceUsage } from "@/lib/domain/plans";
 
 export type WorkspaceRole = "owner" | "admin" | "member" | "viewer";
 const RANK: Record<WorkspaceRole, number> = { owner: 40, admin: 30, member: 20, viewer: 10 };
@@ -135,17 +135,19 @@ export const getActiveProduct = cache(async (workspaceId: string): Promise<Produ
   return products.find((p) => p.id === wanted) ?? products[0] ?? null;
 });
 
-export const getWorkspacePlan = cache(async (workspaceId: string): Promise<{ plan: Plan; status: SubscriptionStatus | null }> => {
+export const getWorkspacePlan = cache(async (workspaceId: string): Promise<{ plan: Plan; status: SubscriptionStatus | null; internalGrant: InternalGrant | null }> => {
   const supabase = await createClient();
-  const [{ data: sub }, { data: plans, error }] = await Promise.all([
+  const [{ data: sub }, { data: grant }, { data: plans, error }] = await Promise.all([
     supabase.from("subscriptions").select("plan_id, status").eq("workspace_id", workspaceId).maybeSingle(),
+    supabase.from("internal_plan_grants").select("plan_id, reason, expires_at, revoked_at").eq("workspace_id", workspaceId).maybeSingle(),
     supabase.from("plans").select("*"),
   ]);
   if (error) throw new Error(`Failed to load plans: ${error.message}`);
-  const id = effectivePlanId(sub as { plan_id: string; status: SubscriptionStatus } | null);
+  const g = grantIsActive(grant as InternalGrant | null) ? (grant as InternalGrant) : null;
+  const id = effectivePlanId(sub as { plan_id: string; status: SubscriptionStatus } | null, g);
   const row = (plans ?? []).find((p) => p.id === id) ?? (plans ?? []).find((p) => p.id === "free");
   if (!row) throw new Error("Plan configuration missing (no 'free' plan row).");
-  return { plan: planFromRow(row as PlanRow), status: (sub?.status as SubscriptionStatus | undefined) ?? null };
+  return { plan: planFromRow(row as PlanRow), status: (sub?.status as SubscriptionStatus | undefined) ?? null, internalGrant: g };
 });
 
 /** Current billing period usage (mention allowance, keywords). Null if it can't be read. */

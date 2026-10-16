@@ -73,6 +73,8 @@ export function planFromRow(row: PlanRow): Plan {
 export interface WorkspaceUsage {
   planId: string;
   planName: string;
+  /** "subscription", or an internal grant reason ("internal_testing", "development"). */
+  entitlement: string;
   periodStart: string;
   periodEnd: string;
   mentionAllowance: number;
@@ -91,7 +93,7 @@ export interface WorkspaceUsage {
 export function usageFromRpc(r: Record<string, unknown>): WorkspaceUsage {
   const n = (k: string) => Number(r[k] ?? 0);
   return {
-    planId: String(r.plan_id), planName: String(r.plan_name),
+    planId: String(r.plan_id), planName: String(r.plan_name), entitlement: String(r.entitlement ?? "subscription"),
     periodStart: String(r.period_start), periodEnd: String(r.period_end),
     mentionAllowance: n("mention_allowance"), mentionsConsumed: n("mentions_consumed"), mentionsRemaining: n("mentions_remaining"),
     mentionsHeld: n("mentions_held"), mentionsNotHeld: n("mentions_not_held"),
@@ -125,8 +127,23 @@ export function checkKeywordLimit(plan: Pick<Plan, "maxKeywords" | "name">, acti
 export type SubscriptionStatus =
   | "active" | "trialing" | "past_due" | "canceled" | "incomplete" | "unpaid" | "paused";
 
-/** Mirrors private.effective_plan_id: lapsed subscriptions fall back to free. */
-export function effectivePlanId(sub: { plan_id: string; status: SubscriptionStatus } | null): string {
+export interface InternalGrant {
+  plan_id: string;
+  reason: string;
+  expires_at: string | null;
+  revoked_at: string | null;
+}
+
+export function grantIsActive(g: InternalGrant | null | undefined, now = new Date()): g is InternalGrant {
+  return Boolean(g && !g.revoked_at && (!g.expires_at || new Date(g.expires_at) > now));
+}
+
+/**
+ * Mirrors private.effective_plan_id: an active internal grant (staff testing, not
+ * billed) wins; otherwise lapsed subscriptions fall back to free.
+ */
+export function effectivePlanId(sub: { plan_id: string; status: SubscriptionStatus } | null, grant?: InternalGrant | null): string {
+  if (grantIsActive(grant)) return grant.plan_id;
   if (!sub) return "free";
   return sub.status === "active" || sub.status === "trialing" || sub.status === "past_due" ? sub.plan_id : "free";
 }

@@ -133,6 +133,9 @@ export interface RankingRow {
   trend: "rising" | "stable" | "falling" | "new" | "unknown";
   growthPct: number | null;
   interval: string;
+  /** Effective keyword refresh when keywords take turns (differs from the platform interval). */
+  keywordInterval: string | null;
+  keywordConflict: string | null;
   next: string;
   nextUtc: string | null;
   last: string;
@@ -210,6 +213,8 @@ function Details({ r, productId, canEdit }: { r: RankingRow; productId: string; 
         <section className="grid gap-1">
           <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Why this interval</h4>
           {r.intervalText && <p>{r.intervalText}</p>}
+          {r.keywordInterval && <p>Each keyword is searched every {r.keywordInterval}: keywords take turns within the plan&apos;s searches per check.</p>}
+          {r.keywordConflict && <p className="text-warning">{r.keywordConflict}</p>}
           {r.reasons.length > 0 && (
             <ul className="list-disc pl-4 text-xs text-muted-foreground">
               {r.reasons.map((x) => <li key={x}>{x}</li>)}
@@ -313,7 +318,10 @@ export function RankingTable({ rows, productId, canEdit }: { rows: RankingRow[];
                   <td className="py-2 pr-2"><Score r={r} /></td>
                   <td className="py-2 pr-2 text-right tabular">{r.mentions7d.toLocaleString("en-US")}</td>
                   <td className="py-2 pr-2"><Trend r={r} /></td>
-                  <td className="py-2 pr-2 tabular">{r.interval}</td>
+                  <td className="py-2 pr-2 tabular">
+                    {r.interval}
+                    {r.keywordInterval && <span className="block text-xs text-muted-foreground">keywords every {r.keywordInterval}</span>}
+                  </td>
                   <td className="py-2 pr-2" title={r.nextUtc ?? undefined}>{r.next}</td>
                   <td className="py-2"><Coverage r={r} /></td>
                 </tr>
@@ -350,7 +358,7 @@ export function RankingTable({ rows, productId, canEdit }: { rows: RankingRow[];
                 <span className="grid"><span className="text-muted-foreground">Score</span><Score r={r} /></span>
                 <span className="grid"><span className="text-muted-foreground">7 days</span><span className="tabular">{r.mentions7d}</span></span>
                 <span className="grid"><span className="text-muted-foreground">Trend</span><Trend r={r} /></span>
-                <span className="grid"><span className="text-muted-foreground">Every</span><span className="tabular">{r.interval}</span></span>
+                <span className="grid"><span className="text-muted-foreground">Every</span><span className="tabular">{r.interval}{r.keywordInterval && <span className="block text-muted-foreground">kw {r.keywordInterval}</span>}</span></span>
                 <span className="grid"><span className="text-muted-foreground">Next</span><span>{r.next}</span></span>
                 <span className="grid justify-items-start"><span className="text-muted-foreground">Coverage</span><Coverage r={r} /></span>
               </span>

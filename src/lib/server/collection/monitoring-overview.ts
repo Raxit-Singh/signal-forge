@@ -53,6 +53,8 @@ export interface PlatformMonitoring {
   keywords: { searched: string[]; searches: number; searchesPerCheck: number; rotating: number; combined: boolean; skipped: SkippedKeyword[]; productOnly: boolean };
   /** Slowest keyword's effective interval on this platform, and why the plan's target isn't met (if it isn't). */
   slowestKeywordMinutes: number | null;
+  /** Effective keyword refresh range from the scheduled searches (platform interval × rotation turns). */
+  keywordIntervals: { min: number; max: number } | null;
   keywordConflict: string | null;
   budgetPaced: boolean;
 }
@@ -64,6 +66,8 @@ export interface KeywordPlatformCoverage {
   detail: string;
   /** Effective refresh interval of the search that finds this keyword (null = not searched). */
   intervalMinutes: number | null;
+  /** True when it comes from the scheduled search itself; false = computed (not scheduled yet). */
+  scheduled: boolean;
   via?: string;
 }
 
@@ -99,6 +103,7 @@ export interface MonitoringOverview {
 interface QueryRow {
   id: string;
   provider: string;
+  params: { terms?: string[]; rotation?: unknown } | null;
   enabled: boolean;
   last_success_at: string | null;
   next_run_at: string;
@@ -162,7 +167,7 @@ export async function getMonitoringOverview(productId: string, workspaceId: stri
   const [{ data: product }, { data: queries }, { data: execs }, { data: settings }, { data: boosts }, { data: aliases }, coverage, { data: activity }, { data: changes }, { data: ctx }, { data: alloc }] = await Promise.all([
     sb.from("products").select("id, website_url, app_store_url, archived_at, workspace_id").eq("id", productId).maybeSingle(),
     sb.from("monitoring_queries")
-      .select("id, provider, enabled, last_success_at, next_run_at, interval_minutes, interval_reasons, coverage_confidence, consecutive_failures, last_saturated_at")
+      .select("id, provider, params, enabled, last_success_at, next_run_at, interval_minutes, interval_reasons, coverage_confidence, consecutive_failures, last_saturated_at")
       .eq("product_id", productId).is("competitor_id", null),
     sb.from("monitoring_executions").select("query_id, platform, status, shared_with, finished_at")
       .eq("product_id", productId).gte("finished_at", since7d).order("finished_at").limit(5000),
@@ -270,6 +275,10 @@ export async function getMonitoringOverview(productId: string, workspaceId: stri
         productOnly: Boolean(kp?.productOnly),
       },
       slowestKeywordMinutes: act?.slowest_keyword_minutes ?? null,
+      keywordIntervals: (() => {
+        const xs = mine.map((q) => q.interval_minutes).filter((x): x is number => typeof x === "number");
+        return xs.length ? { min: Math.min(...xs), max: Math.max(...xs) } : null;
+      })(),
       keywordConflict: act?.keyword_conflict ?? null,
       budgetPaced: Boolean(act?.budget_paced),
     };
@@ -312,10 +321,16 @@ export async function getMonitoringOverview(productId: string, workspaceId: stri
       const c = plans.get(p.id)?.keywords.find((x) => x.term === term);
       if (!c || c.status === "not_applicable") return [];
       const searched = c.status === "every_check" || c.status === "rotating" || c.status === "covered" || c.status === "duplicate";
+      // The actual schedule: the enabled search(es) that carry this keyword (or the keyword that covers it).
+      const clean = (t: string) => t.replace(/["()]/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+      const want = clean(c.via ?? term);
+      const stored = qs.filter((q) => q.enabled && q.provider === p.id && (q.params?.terms ?? []).some((t) => clean(t) === want))
+        .map((q) => q.interval_minutes).filter((x): x is number => typeof x === "number");
       return [{
         platform: p.id, name: p.name, status: c.status, detail: c.detail, via: c.via,
-        // Not scheduled yet: the scheduler falls back to the plan's interval.
-        intervalMinutes: searched ? keywordIntervalMinutes(p.intervalMinutes ?? planFloor, c.rotation) : null,
+        // Scheduled: the search's own interval (platform interval × rotation turns). Not scheduled yet: computed from the plan floor.
+        intervalMinutes: !searched ? null : stored.length ? Math.min(...stored) : keywordIntervalMinutes(p.intervalMinutes ?? planFloor, c.rotation),
+        scheduled: searched && stored.length > 0,
       }];
     }),
   })), ...pausedKeywords.map((k) => ({ term: k.term, kind: k.kind, paused: true, platforms: [] }))];
