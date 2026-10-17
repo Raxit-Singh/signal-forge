@@ -93,6 +93,17 @@ Paid collection needs **all three**: `API_DIRECT_API_KEY`, `PAID_SOURCES_ENABLED
 
 Prices change in one place: insert a row into `provider_pricing` with a new `effective_from`.
 
+### 3b-2. Supabase CLI without the macOS Keychain
+
+```bash
+bash scripts/supabase-auth-setup.sh                # hidden prompts: access token (sbp_…) and, optionally, the DB password
+bash scripts/supabase-cli.sh db push --dry-run     # refuses unless the linked project = the project in .env.local
+bash scripts/supabase-cli.sh db push
+```
+
+- Credentials are kept in `~/.config/signalforge/supabase.env` (mode 600, outside the repo). They are passed to the CLI only as environment variables, never printed.
+- To revoke, delete the token in the Supabase dashboard and remove the file.
+
 ### 3c. AI (optional; costs money)
 
 - **SignalForge AI credits:** `ANTHROPIC_API_KEY` (server only) and `AI_SIGNALFORGE_ENABLED=true`, **plus** a monthly limit row:

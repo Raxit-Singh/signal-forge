@@ -237,7 +237,8 @@ export async function toggleTestClassifierAction(_: ActionState, formData: FormD
 
 const spikePayload = z.object({
   workspaceId: z.uuid(), productId: z.uuid(), granularity: z.enum(["day", "hour"]),
-  platform: z.string().regex(/^[a-z_]{2,32}$/).optional().transform((v) => v || null),
+  // Empty = the spike covers all monitored platforms.
+  platform: z.union([z.literal(""), z.string().regex(/^[a-z_]{2,32}$/)]).optional().transform((v) => v || null),
   periodStart: z.iso.datetime({ offset: true }), force: z.enum(["true", "false"]).optional(),
 });
 

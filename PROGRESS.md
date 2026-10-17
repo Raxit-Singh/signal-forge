@@ -18,7 +18,7 @@ Test users created for the walk-through were removed afterwards via the app's ow
 
 ## Milestone 4 — AI intelligence (2026-10-17)
 
-Built and tested against fake providers and the development-only test classifier. **No model was called** (no AI key is configured; SignalForge AI credits need the founder's approval, a global budget row and `AI_SIGNALFORGE_ENABLED=true`). Migration `20261017000001_ai_intelligence` (additive) passes the local database suite but is **not yet applied to the dev project**: `supabase db push` needs the database password, which only the founder can enter. The new browser tests (`e2e/ai.spec.ts`) need that migration and have not run yet.
+Built and tested against fake providers and the development-only test classifier. **No model was called** (no AI key is configured; SignalForge AI credits need the founder's approval, a global budget row and `AI_SIGNALFORGE_ENABLED=true`). Migration `20261017000001_ai_intelligence` (additive) applied to the dev project (`qwcsglwwxljyyjqsppiz`, checked against `.env.local`) after a dry run that listed only this file, via `scripts/supabase-cli.sh` (token-based CLI auth without the macOS Keychain; credentials in `~/.config/signalforge/supabase.env`, mode 600, outside the repo).
 
 ### What was built
 - **Providers:** Anthropic via the official SDK (`@anthropic-ai/sdk`): classification on `claude-haiku-5-5` (low effort, thinking off), on-demand analysis on `claude-opus-5-5` (medium effort, server-side refusal fallback). OpenAI and Gemini are BYOK only, over HTTPS, using the model the customer names. Every output is validated with the same Zod schema.
@@ -39,6 +39,8 @@ Built and tested against fake providers and the development-only test classifier
 - **Issues (Feedback page):** TF-IDF grouping per category, with product names excluded. An issue needs two or more independent reports (reposts, duplicates and repeat authors count once). Each issue shows its supporting posts, platforms, first/last dates, suggested priority and confidence. Team status (acknowledged/resolved/dismissed) survives re-clustering.
 - **Explanations:** spike explanations (Buzz) and issue summaries (Feedback) cite posts. Statements without valid citations are discarded. With fewer than 3 usable posts, the result is "insufficient data" and no model call is made. A failure marks only that analysis as failed.
 - **Prompt-injection hardening:** posts are passed as escaped JSON inside data blocks, with local ids (m1…/e1…) and no tools. Labels come from fixed lists, links are removed from model text, and output is rendered as plain text.
+- **Fixed during browser testing:** "Explain this spike" rejected spikes covering all platforms (they send an empty platform value).
+- **Known UX gap:** a second "Explain" click while the page is refreshing from the first can be dropped. It only needs another click.
 - **UI:**
   - AI settings: status, verify, provider choice, model field, usage by purpose, auto-classify, BYOK cap, dev-only test classifier.
   - Feedback page: classification status, "Classify now", sentiment toward the product, issues with evidence, "Summarize with AI".
@@ -52,7 +54,8 @@ Built and tested against fake providers and the development-only test classifier
 | `npm run test:unit` | ✅ 216/216 (adds 12 AI pipeline + 5 provider-adapter tests with a fake fetch) |
 | `npm run test:db` | ✅ 310/310 (adds 26: budget reservation and settlement, global and plan limits, unknown price, BYOK cap, stale reservations, RLS on settings/cache/budget/usage/analyses, no forged classifications or AI fields) |
 | typecheck, lint, `npm run build` | ✅ |
-| `e2e/ai.spec.ts` (2 tests) | 🟡 written; needs migration `20261017000001` on the dev project |
+| `e2e/ai.spec.ts` (2 tests) | ✅ 2/2 against the dev project. Covers test-classifier labels, issues with evidence (a repeat author counts once), a cited summary, team status, a cited spike explanation, and "insufficient data" with no model call; relevance and the allowance are untouched; usage is reserved and settled |
+| Full browser suite | ✅ 23/23 (21 on the first run; 2 hit the Supabase Auth rate limit (429 / expired link) and passed on re-run) |
 | Live model calls | ⬜ none made (no key; needs authorization) |
 
 ## Discovery Engine V2 — pagination, adaptive monitoring, historical search, spikes, realtime (2026-10-16)
