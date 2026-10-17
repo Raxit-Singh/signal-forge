@@ -14,6 +14,7 @@ import { classifyProduct, productsAwaitingClassification } from "../ai/classify"
 import { reclusterProduct } from "../ai/clusters";
 import { runInvestigation } from "../ai/investigate";
 import { workspaceAvailability } from "../ai/gateway";
+import { expireStaleTasks } from "../agent/tasks";
 
 const LEASE_SECONDS = 180;
 const CLAIM_BATCH = 4;
@@ -180,7 +181,11 @@ export async function tick(budgetMs: number): Promise<TickSummary> {
       // Every 5 minutes: classification jobs for products with new mentions, only in
       // workspaces whose AI provider can run (nothing is queued while AI is off).
       const { data: aiTurn } = await admin.rpc("svc_try_acquire_lock", { p_name: "ai:classify", p_holder: holder, p_ttl_seconds: 5 * 60 - 10 });
-      if (aiTurn) ai = await scheduleClassification(admin);
+      if (aiTurn) {
+        ai = await scheduleClassification(admin);
+        // Developer-agent tasks whose Claude session never reported back.
+        await expireStaleTasks(admin);
+      }
     } finally {
       await admin.rpc("svc_release_lock", { p_name: "scheduler", p_holder: holder });
     }

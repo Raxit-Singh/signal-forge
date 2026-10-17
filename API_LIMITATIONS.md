@@ -175,3 +175,62 @@ The combined-vs-separate equivalence (same mentions from one OR query as from on
 ## Platform-wide rules SignalForge follows
 - Store only what each platform permits (excerpts and IDs; honour deletion where the API exposes it).
 - Missing or failed monitoring windows are recorded in `coverage_windows` and shown as gaps — never as zero mentions.
+
+## SignalForge Intelligence — Gemini (verified from documentation 2026-10-17; no live calls)
+
+- **SDK:** official `@google/genai` 2.30. `generateContent` with `responseMimeType: application/json` + `responseJsonSchema`; every answer is validated again with Zod.
+- **Models:** chosen by configuration. Current ids and prices come from ai.google.dev/gemini-api/docs/models and /pricing (page dated 2026-10-16). Cheapest text model is `gemini-3.1-flash-lite` ($0.25 in / $1.50 out per 1M tokens). Embeddings use `gemini-embedding-2` ($0.20 per 1M input tokens). Flash prices double on 2027-01-01.
+- **Not live-tested:** no Gemini key has been used. Request shapes are tested against a fake transport only.
+- **Embeddings:** the SDK response carries no token count. Usage is estimated from billable characters (≈4 per token) and marked as estimated. SignalForge requests 256 dimensions (supported range 128–3072) to keep a product's vectors loadable in one pass.
+- **Thinking tokens** (`thoughtsTokenCount`) are billed as output and counted as such.
+- **Provider-reported cost:** not available from Gemini responses, so `provider_cost_microusd` stays null.
+- **Semantic grouping thresholds** (cosine 0.86 to join, 0.74–0.86 for a model check) are not calibrated on production data. They need tuning once real feedback is embedded.
+- **Relevance (shadow mode):** AI relevance is a recommendation only. It must not affect billing until precision and recall, measured against manual labels (Settings → SignalForge Intelligence), are reviewed and approved by the product owner. At least 100 decided comparisons are required before the numbers mean much.
+
+## Developer agent — Claude (verified from Anthropic documentation 2026-10-17)
+
+### Connector
+- **Setup:** customers add `<site>/api/mcp` as a custom connector in Claude (claude.ai, Desktop, mobile, Claude Code). This is documented at claude.com/docs/connectors/building/authentication.
+- **What SignalForge implements:**
+  - OAuth with Dynamic Client Registration;
+  - S256 PKCE;
+  - RFC 9728 and RFC 8414 discovery;
+  - a 401 response with a `resource_metadata` pointer;
+  - form-encoded token requests;
+  - rotating refresh tokens;
+  - token revocation.
+- **Allowed callbacks:** only Claude's hosted callback (`https://claude.ai/api/mcp/auth_callback`, plus the claude.com variant) and Claude Code's loopback `http://localhost|127.0.0.1:<any>/callback`.
+- **Requirements Claude imposes:** public HTTPS, reachable from Anthropic's egress range `160.79.104.0/21`, and responses within 10 s (refresh within 30 s).
+- **Not tested with Claude itself:** the dev server is localhost only. The flow is tested end to end by a browser test that plays the client.
+- **Connected status is honest:** "Connected" means an authorized grant that Claude has actually used. Authorizing alone shows "Setup required".
+- **Read access only:** MCP authorization grants read access plus task reporting. It never starts code changes: implementation needs a separate approval in SignalForge.
+
+### Claude Code routines (customer-funded execution)
+- **Documentation:** platform.claude.com/docs/en/api/claude-code/routines-fire (experimental) and code.claude.com/docs/en/routines (research preview).
+- **Supported:**
+  - The customer creates a routine at claude.ai/code/routines, selecting repositories, an environment and connectors.
+  - They add an API trigger and give SignalForge the URL and a per-routine token (`sk-ant-oat01-…`).
+  - A POST with `anthropic-version: 2023-06-01` and `{text}` starts a session. It returns `claude_code_session_id` and `claude_code_session_url`.
+  - Requires a Pro, Max, Team or Enterprise plan with Claude Code on the web.
+  - Runs bill against the customer's Claude subscription, not SignalForge and not a Claude API key.
+  - Limits: 30 fires per hour per routine and 100 API fires per hour per account. There is no idempotency key.
+- **Not available:**
+  - No API to read a run's status or result, so SignalForge relies on the agent reporting through MCP tools, and tasks with no report fail after 6 hours.
+  - No API to create routines or tokens, so setup is manual.
+- **Fire text is untrusted:** fire text arrives wrapped as untrusted data. SignalForge sends only `signalforge-task: <id>`; instructions come from the authenticated `get_agent_task` tool, and the saved prompt opts in to the payload.
+- **Unverified live:** no customer routine has been fired. Tests use a development-only stand-in (`/api/dev/mock-routine/…`, 404 in production builds).
+
+### Investigation is not technically read-only
+- **Full permissions:** routines run "as full Claude Code cloud sessions" with no permission-mode picker. They can run shell commands, use every included connector, and push to `claude/`-prefixed branches with the customer's GitHub identity.
+- **What "no code changes" means:** during an investigation it is an **instruction**. SignalForge cannot enforce it, and the product does not describe it as read-only.
+- **Mitigations:**
+  - SignalForge requires an explicit acknowledgement before it starts a routine run.
+  - When the GitHub App is configured, SignalForge flags pull requests opened during the investigation. Pushes without a pull request are not detected.
+  - A report never approves itself: approval is a separate admin action, bound to workspace, issue, repository, plan hash and execution environment, and usable once.
+  - SignalForge never merges or deploys.
+- **Customer protections recommended in the UI:** branch protection or rulesets on the default branch, a dedicated routine with only the needed repository and connectors, and restricted network access in its environment.
+
+### GitHub App
+- **Permissions:** read-only (metadata, contents, pull requests). It is used to link a repository and to verify reported pull requests. It cannot push.
+- **Installation proof:** ownership is proven with the install-time user token and `GET /user/installations`.
+- **Not registered yet:** no App exists. The flow is unit-tested against a fake transport and, in browser tests, replaced by stored rows. Pull requests show "not verified with GitHub" until the App is configured.

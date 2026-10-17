@@ -57,6 +57,8 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     // Skip static assets and the scheduler endpoint (authenticated by its own secret).
-    "/((?!_next/static|_next/image|favicon.ico|api/jobs|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml)$).*)",
+    // Also skipped: the MCP server, OAuth endpoints and discovery documents (bearer-token or
+    // public; no browser session), and the development-only routine stand-in.
+    "/((?!_next/static|_next/image|favicon.ico|api/jobs|api/mcp|api/oauth|api/dev/mock-routine|\\.well-known|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml)$).*)",
   ],
 };

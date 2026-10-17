@@ -1,0 +1,287 @@
+import { createHash, randomBytes } from "node:crypto";
+import { expect, test, type Page } from "@playwright/test";
+import {
+  adminInsert, adminSelect, createUser, createWorkspaceWithProduct, deleteUser, seedMentions, signInPath, type FixtureMention, type TestUser,
+} from "./support";
+
+// Developer agent (SYSTEM B) end to end against the dev server, with no Claude
+// account: the test plays Claude's connector client (DCR → consent → PKCE token
+// exchange → MCP tool calls) and the agent (get_agent_task / reports). Claude
+// Code routines are replaced by the development-only stand-in endpoint, and the
+// GitHub App (not configured here) by a stored installation + repository row.
+// Nothing is executed in any real repository.
+
+const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3000";
+const CALLBACK = "http://localhost:5555/callback";
+
+let user: TestUser | null = null;
+let other: TestUser | null = null;
+let ids = { workspaceId: "", productId: "" };
+
+const FIXTURES: FixtureMention[] = [
+  { source: "hackernews", externalId: "ag-bug-1", title: "The app freezes when I log in", content: "The app freezes when I log in", hoursAgo: 30, author: "ann" },
+  { source: "reddit", externalId: "ag-bug-2", title: "Opening the login screen makes the app hang", content: "Opening the login screen makes the app hang", hoursAgo: 29, author: "bo" },
+  { source: "github", externalId: "ag-bug-3", title: "Signing in gets stuck forever", content: "Signing in gets stuck forever", hoursAgo: 28, author: "cy" },
+  { source: "reddit", externalId: "ag-feat-1", title: "Please add dark mode", content: "Please add dark mode", hoursAgo: 27, author: "dee" },
+  { source: "hackernews", externalId: "ag-feat-2", title: "Please add dark mode support", content: "Please add dark mode support", hoursAgo: 26, author: "eve" },
+];
+
+test.beforeEach(async () => {
+  user = await createUser();
+  ids = await createWorkspaceWithProduct(user);
+  await seedMentions(ids.productId, ids.workspaceId, FIXTURES, 30);
+});
+
+test.afterEach(async () => {
+  for (const u of [user, other]) if (u) await deleteUser(u.id);
+  user = null;
+  other = null;
+});
+
+const b64url = (b: Buffer) => b.toString("base64url");
+
+async function mcp(token: string | null, name: string, args: Record<string, unknown> = {}) {
+  const res = await fetch(`${BASE}/api/mcp`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json, text/event-stream", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: name === "tools/list" ? "tools/list" : "tools/call", params: name === "tools/list" ? {} : { name, arguments: args } }),
+  });
+  if (res.status !== 200) return { status: res.status, www: res.headers.get("www-authenticate"), error: true, text: await res.text(), data: null as unknown };
+  const j = (await res.json()) as { result?: { content?: Array<{ text: string }>; isError?: boolean; tools?: Array<{ name: string }> } };
+  if (name === "tools/list") return { status: 200, www: null, error: false, text: "", data: j.result?.tools ?? [] };
+  const text = j.result?.content?.[0]?.text ?? "";
+  let data: unknown = null;
+  try { data = JSON.parse(text); } catch { /* error text */ }
+  return { status: 200, www: null, error: !!j.result?.isError, text, data };
+}
+
+async function form(url: string, body: Record<string, string>) {
+  const res = await fetch(`${BASE}${url}`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(body).toString() });
+  return { status: res.status, json: (await res.json().catch(() => ({}))) as Record<string, string> };
+}
+
+/** Plays Claude's connector client: registration, consent in the browser, token exchange. */
+async function connectClaude(page: Page) {
+  const reg = await fetch(`${BASE}/api/oauth/register`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ client_name: "Claude (e2e)", redirect_uris: [CALLBACK], grant_types: ["authorization_code", "refresh_token"], token_endpoint_auth_method: "none" }),
+  });
+  expect(reg.status).toBe(201);
+  const client = (await reg.json()) as { client_id: string };
+  const verifier = b64url(randomBytes(32));
+  const challenge = b64url(createHash("sha256").update(verifier).digest());
+  const state = b64url(randomBytes(8));
+  let redirected = "";
+  await page.route(`${CALLBACK}**`, (r) => { redirected = r.request().url(); return r.fulfill({ status: 200, body: "ok" }); });
+  const q = new URLSearchParams({
+    response_type: "code", client_id: client.client_id, redirect_uri: CALLBACK, code_challenge: challenge, code_challenge_method: "S256",
+    state, scope: "signalforge:read signalforge:agent", resource: `${BASE}/api/mcp`,
+  });
+  await page.goto(`/oauth/authorize?${q}`);
+  await expect(page.getByRole("heading", { name: "Connect Claude (e2e) to SignalForge" })).toBeVisible();
+  await expect(page.getByText("This returns to a program on your own computer")).toBeVisible();
+  await expect(page.getByText(/start code changes on its own/)).toBeVisible();
+  await page.getByRole("button", { name: "Approve" }).click();
+  await expect.poll(() => redirected, { timeout: 15_000 }).toContain("code=");
+  const back = new URL(redirected);
+  expect(back.searchParams.get("state")).toBe(state);
+  const code = back.searchParams.get("code")!;
+  // A wrong PKCE verifier is refused (and the code is consumed: codes are single-use).
+  const bad = await form("/api/oauth/token", { grant_type: "authorization_code", code, client_id: client.client_id, redirect_uri: CALLBACK, code_verifier: b64url(randomBytes(32)) });
+  expect(bad.json.error).toBe("invalid_grant");
+  return { client, verifier, challenge, getFreshCode: async () => {
+    redirected = "";
+    await page.goto(`/oauth/authorize?${new URLSearchParams({ ...Object.fromEntries(q), state: "s2" })}`);
+    await page.getByRole("button", { name: "Approve" }).click();
+    await expect.poll(() => redirected, { timeout: 15_000 }).toContain("code=");
+    return new URL(redirected).searchParams.get("code")!;
+  } };
+}
+
+async function classify(page: Page) {
+  await page.goto("/settings/ai");
+  await page.getByRole("button", { name: "Use test classifier" }).click();
+  await expect(page.locator("#main").getByTestId("ai-status")).toContainText("Test classifier");
+  await page.goto("/feedback");
+  await page.getByRole("button", { name: "Classify now" }).click();
+  await expect(async () => {
+    await page.reload();
+    await expect(page.locator("#main").getByTestId("feedback-issue")).toHaveCount(2, { timeout: 2000 });
+  }).toPass({ timeout: 45_000 });
+}
+
+test("Claude connection → investigation → approval → implementation → pull request, with isolation, cancellation and revocation", async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.goto(await signInPath(user!.email, "/settings/agent"));
+  const main = page.locator("#main");
+  await expect(main.getByTestId("agent-readiness")).toContainText("Not connected");
+  await expect(main.getByText("The SignalForge GitHub App isn't configured on this server yet")).toBeVisible();
+  await classify(page);
+
+  // --- Connect Claude (OAuth 2.1 + PKCE), then the MCP server.
+  const unauth = await mcp(null, "tools/list");
+  expect(unauth.status).toBe(401);
+  expect(unauth.www).toContain('resource_metadata="');
+  const { client, verifier, getFreshCode } = await connectClaude(page);
+  const code = await getFreshCode();
+  const tok = await form("/api/oauth/token", { grant_type: "authorization_code", code, client_id: client.client_id, redirect_uri: "http://localhost:6123/callback", code_verifier: verifier });
+  expect(tok.json.access_token, "loopback redirect matches on any port").toBeTruthy();
+  const replay = await form("/api/oauth/token", { grant_type: "authorization_code", code, client_id: client.client_id, redirect_uri: CALLBACK, code_verifier: verifier });
+  expect(replay.json.error, "codes are single-use").toBe("invalid_grant");
+  // Code reuse revokes everything issued from it: get a clean grant.
+  const code2 = await getFreshCode();
+  const t2 = await form("/api/oauth/token", { grant_type: "authorization_code", code: code2, client_id: client.client_id, redirect_uri: CALLBACK, code_verifier: verifier });
+  let access = t2.json.access_token!;
+  expect((await mcp(tok.json.access_token!, "tools/list")).status, "the reused code's tokens were revoked").toBe(401);
+
+  const tools = (await mcp(access, "tools/list")).data as Array<{ name: string }>;
+  expect(tools.map((t) => t.name).sort()).toEqual([
+    "get_agent_task", "get_feedback_issues", "get_implementation_context", "get_issue_details", "get_issue_evidence", "get_issue_priority",
+    "get_product_context", "get_spike_analysis", "report_implementation_status", "submit_investigation_report",
+  ].sort());
+  const issues = (await mcp(access, "get_feedback_issues")).data as { issues: Array<{ id: string; title: string; category: string }> };
+  expect(issues.issues.length).toBe(2);
+  const bug = issues.issues.find((i) => i.category === "bug_report")!;
+  const feature = issues.issues.find((i) => i.category === "feature_request")!;
+  const evidence = (await mcp(access, "get_issue_evidence", { issue_id: bug.id })).data as { posts: unknown[]; note: string };
+  expect(evidence.posts.length).toBe(3);
+  expect(evidence.note).toMatch(/untrusted/);
+  const priority = (await mcp(access, "get_issue_priority", { issue_id: bug.id })).data as { evidence: { observed: unknown; inferred: unknown } };
+  expect(priority.evidence.observed && priority.evidence.inferred).toBeTruthy();
+
+  // Workspace isolation: another workspace's issue is invisible through this token.
+  other = await createUser();
+  const otherWs = await createWorkspaceWithProduct(other, "OtherApp");
+  await adminInsert("feedback_clusters", { workspace_id: otherWs.workspaceId, product_id: otherWs.productId, category: "bug_report", title: "Secret issue" });
+  const [secret] = await adminSelect<Array<{ id: string }>>(`feedback_clusters?workspace_id=eq.${otherWs.workspaceId}&select=id`);
+  const leak = await mcp(access, "get_issue_details", { issue_id: secret!.id });
+  expect(leak.error).toBe(true);
+  expect(leak.text).toMatch(/not found in this workspace/);
+  expect(JSON.stringify((await mcp(access, "get_feedback_issues")).data)).not.toContain("Secret issue");
+
+  // --- Connection status, repository (simulated App install: not configured here), routine.
+  await page.goto("/settings/agent");
+  await expect(main.getByTestId("mcp-state")).toContainText("Connected — last used");
+  await expect(main.getByTestId("agent-readiness")).toContainText("Repository access required");
+  await adminInsert("github_installations", { workspace_id: ids.workspaceId, installation_id: 4242, account_login: "e2e-org" });
+  await adminInsert("agent_repositories", { workspace_id: ids.workspaceId, product_id: ids.productId, installation_id: 4242, repo_id: 99, full_name: "e2e-org/app", default_branch: "main", private: true });
+  await page.reload();
+  await expect(main.getByText("e2e-org/app")).toBeVisible();
+  await expect(main.getByTestId("agent-readiness")).toContainText("Coding-agent execution unavailable");
+  await main.getByLabel("Routine API trigger URL").fill(`${BASE}/api/dev/mock-routine/trig_E2EROUTINE01/fire`);
+  await main.getByLabel("Routine token").fill(`sk-ant-oat01-${b64url(randomBytes(24))}`);
+  await main.getByRole("button", { name: "Save routine" }).click();
+  await expect(main.getByText("Routine saved")).toBeVisible();
+  await expect(main.getByTestId("agent-readiness")).toContainText("Ready for investigation");
+  const conn = await adminSelect<Array<{ secret_id: string; fire_url: string }>>(`agent_connections?workspace_id=eq.${ids.workspaceId}&select=secret_id,fire_url`);
+  const [stored] = await adminSelect<Array<{ ciphertext: string }>>(`credential_secrets?id=eq.${conn[0]!.secret_id}&select=ciphertext`);
+  expect(stored!.ciphertext, "the routine token is stored encrypted").not.toContain("sk-ant-oat01");
+
+  // --- Investigate: the routine needs an explicit acknowledgement (it can't be made read-only).
+  await page.goto("/feedback");
+  const bugCard = main.getByTestId("feedback-issue").filter({ hasText: "Bug reports" });
+  await expect(bugCard.getByRole("checkbox")).toBeVisible();
+  await bugCard.getByRole("checkbox").check();
+  await bugCard.getByRole("button", { name: "Investigate with Claude" }).click();
+  await expect(bugCard.getByTestId("agent-status")).toHaveText("Investigating");
+  await expect(bugCard.getByRole("link", { name: /Open the Claude Code investigation session/ })).toHaveAttribute("href", /^https:\/\/claude\.ai\/code\/session_dev/);
+  const [inv] = await adminSelect<Array<{ id: string; execution_acknowledged_at: string | null }>>(`agent_tasks?cluster_id=eq.${bug.id}&stage=eq.investigation&select=id,execution_acknowledged_at`);
+  expect(inv!.execution_acknowledged_at).toBeTruthy();
+
+  // The agent: fetch the task (no code changes allowed), can't skip to implementation, submits a report.
+  const got = (await mcp(access, "get_agent_task", { task_id: inv!.id })).data as { stage: string; code_changes_allowed: boolean; instructions: string[]; context: { evidence_note: string } };
+  expect(got.stage).toBe("investigation");
+  expect(got.code_changes_allowed).toBe(false);
+  expect(got.context.evidence_note).toMatch(/untrusted/);
+  const skip = await mcp(access, "report_implementation_status", { task_id: inv!.id, status: "pr_created", pull_request_url: "https://github.com/e2e-org/app/pull/1" });
+  expect(skip.error, "an investigation can't report a pull request").toBe(true);
+  const report = {
+    summary: "Login waits on a lock that is never released.", recommendation: "implement", feasibility: "high", complexity: "small",
+    expected_benefit: "Users can sign in again.", affected_components: [{ path: "src/auth/session.ts", reason: "lock handling" }],
+    risks: ["Session refresh timing"], implementation_plan: ["Release the lock in finally", "Add a regression test"], tests: ["login timeout test"], open_questions: [],
+  };
+  const sub = (await mcp(access, "submit_investigation_report", { task_id: inv!.id, report })).data as { accepted: boolean; plan_hash: string };
+  expect(sub.accepted).toBe(true);
+
+  // --- Human approval of that exact plan, then implementation.
+  await page.reload();
+  await expect(bugCard.getByTestId("agent-status")).toHaveText("Awaiting your approval");
+  await expect(bugCard.getByTestId("agent-report")).toContainText("Release the lock in finally");
+  await expect(bugCard.getByTestId("agent-warnings"), "unchecked changes during the investigation are disclosed").toContainText("couldn't be checked");
+  await bugCard.getByRole("button", { name: "Approve this plan" }).click();
+  await expect(bugCard.getByTestId("agent-status")).toHaveText("Approved");
+  await bugCard.getByRole("button", { name: "Start implementation" }).click();
+  await expect(bugCard).toContainText("Implementation: Implementing");
+  const [impl] = await adminSelect<Array<{ id: string }>>(`agent_tasks?cluster_id=eq.${bug.id}&stage=eq.implementation&select=id`);
+  const approvals = await adminSelect<Array<{ used_at: string | null; plan_hash: string; repository_full_name: string; environment: string }>>(`agent_approvals?investigation_task_id=eq.${inv!.id}&select=used_at,plan_hash,repository_full_name,environment`);
+  expect(approvals.length).toBe(1);
+  expect(approvals[0]!.used_at, "the approval is used once").toBeTruthy();
+  expect(approvals[0]!).toMatchObject({ plan_hash: sub.plan_hash, repository_full_name: "e2e-org/app", environment: "claude_code_routine:trig_E2EROUTINE01" });
+
+  const implTask = (await mcp(access, "get_agent_task", { task_id: impl!.id })).data as { stage: string; approved_plan: { implementation_plan: string[] } };
+  expect(implTask.stage).toBe("implementation");
+  expect(implTask.approved_plan.implementation_plan).toEqual(report.implementation_plan);
+  const wrongRepo = await mcp(access, "report_implementation_status", { task_id: impl!.id, status: "pr_created", pull_request_url: "https://github.com/someone/else/pull/3" });
+  expect(wrongRepo.error, "only a PR in the approved repository counts").toBe(true);
+  const pr = (await mcp(access, "report_implementation_status", {
+    task_id: impl!.id, status: "pr_created", branch: "claude/fix-login-lock", pull_request_url: "https://github.com/e2e-org/app/pull/7",
+    summary: "Released the lock; added a test.", tests: { ran: true, passed: true, summary: "212 passed" },
+  })).data as { accepted: boolean; pr_state: string };
+  expect(pr).toEqual({ accepted: true, pr_state: "unverified" });
+  await page.reload();
+  await expect(bugCard.getByTestId("agent-pr")).toHaveAttribute("href", "https://github.com/e2e-org/app/pull/7");
+  await expect(bugCard.getByTestId("agent-pr")).toContainText("not verified with GitHub");
+  const late = await mcp(access, "report_implementation_status", { task_id: impl!.id, status: "implementing" });
+  expect(late.error, "finished tasks accept no further reports").toBe(true);
+
+  // --- Cancellation: the agent's later reports are refused.
+  const featCard = main.getByTestId("feedback-issue").filter({ hasText: "Feature requests" });
+  await featCard.getByRole("checkbox").check();
+  await featCard.getByRole("button", { name: "Investigate with Claude" }).click();
+  await expect(featCard.getByTestId("agent-status")).toHaveText("Investigating");
+  await featCard.getByRole("button", { name: "Cancel investigation" }).click();
+  await expect(featCard.getByTestId("agent-status")).toHaveText("Cancelled");
+  const [cancelled] = await adminSelect<Array<{ id: string }>>(`agent_tasks?cluster_id=eq.${feature.id}&select=id`);
+  const refused = await mcp(access, "submit_investigation_report", { task_id: cancelled!.id, report });
+  expect(refused.error).toBe(true);
+  expect(refused.text).toMatch(/cancelled/);
+
+  // --- Token rotation and revocation.
+  const rotated = await form("/api/oauth/token", { grant_type: "refresh_token", refresh_token: t2.json.refresh_token!, client_id: client.client_id });
+  expect(rotated.json.access_token).toBeTruthy();
+  access = rotated.json.access_token!;
+  expect((await mcp(access, "get_product_context")).status).toBe(200);
+  await page.goto("/settings/agent");
+  const connections = main.getByRole("list", { name: "Claude connections" }).getByRole("listitem");
+  await expect(connections.first()).toBeVisible();
+  const before = await connections.count();
+  // Newest connection first: the one whose token we hold.
+  await connections.first().getByRole("button", { name: "Revoke" }).click();
+  await expect(connections).toHaveCount(before - 1);
+  const after = await mcp(access, "get_product_context");
+  expect(after.status, "revoked in SignalForge → Claude loses access at once").toBe(401);
+  const reuse = await form("/api/oauth/token", { grant_type: "refresh_token", refresh_token: rotated.json.refresh_token!, client_id: client.client_id });
+  expect(reuse.json.error).toBe("invalid_grant");
+});
+
+test("OAuth consent: denial, foreign redirect URIs and unregistered clients", async ({ page }) => {
+  await page.goto(await signInPath(user!.email, "/settings/agent"));
+  const evil = await fetch(`${BASE}/api/oauth/register`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ redirect_uris: ["https://evil.example/cb"] }) });
+  expect(evil.status).toBe(400);
+  expect(((await evil.json()) as { error: string }).error).toBe("invalid_redirect_uri");
+  const reg = (await (await fetch(`${BASE}/api/oauth/register`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ client_name: "Claude (e2e)", redirect_uris: [CALLBACK] }) })).json()) as { client_id: string };
+  const challenge = b64url(createHash("sha256").update(b64url(randomBytes(32))).digest());
+  const base = { response_type: "code", client_id: reg.client_id, code_challenge: challenge, code_challenge_method: "S256", state: "xyz" };
+  await page.goto(`/oauth/authorize?${new URLSearchParams({ ...base, redirect_uri: "https://evil.example/cb" })}`);
+  await expect(page.getByText("didn't come from a registered Claude client")).toBeVisible();
+  await page.goto(`/oauth/authorize?${new URLSearchParams({ ...base, redirect_uri: CALLBACK, client_id: "sfc_" + "x".repeat(30) })}`);
+  await expect(page.getByText("didn't come from a registered Claude client")).toBeVisible();
+  let redirected = "";
+  await page.route(`${CALLBACK}**`, (r) => { redirected = r.request().url(); return r.fulfill({ status: 200, body: "ok" }); });
+  await page.goto(`/oauth/authorize?${new URLSearchParams({ ...base, redirect_uri: CALLBACK })}`);
+  await page.getByRole("button", { name: "Deny" }).click();
+  await expect.poll(() => redirected).toContain("error=access_denied");
+  expect(new URL(redirected).searchParams.get("state")).toBe("xyz");
+  const grants = await adminSelect<unknown[]>(`oauth_grants?workspace_id=eq.${ids.workspaceId}&select=id`);
+  expect(grants.length, "denying creates no grant").toBe(0);
+});

@@ -116,15 +116,19 @@ Chosen per product at onboarding (Since launch — launch date required —, 7 /
 
 `workspace_events` is in the `supabase_realtime` publication; postgres_changes applies each subscriber's RLS (`has_workspace_role(workspace_id, 'viewer')`), so a member only ever receives their own workspace's events, and events carry counts only (no mention text, credentials or prices). `RealtimeProvider` (in the app layout, keyed by workspace) subscribes with the user's token (re-set on token refresh, dropped on sign-out), ignores other products' events, and refreshes server components debounced (1.5 s, ≥ 4 s apart) — pages re-read authoritative data through RLS. Recovery: a catch-up refresh 2.5 s after first connect (events between render and subscription), one refresh after any reconnect, after a tab was hidden > 30 s and on `online`; while disconnected, a refresh every 60 s (visible tabs only). The Mentions page holds refreshes on older pages and shows "X new mentions found — View latest" (counted through RLS), keeping filters.
 
-### AI intelligence (Milestone 4)
-- **Pure modules (`src/lib/ai`):** prompts and schemas, the pipeline (stage gates, batching, cache keys, evidence selection), clustering, pricing, provider adapters, and the test classifier.
-- **Server (`src/lib/server/ai`):**
-  - `gateway`: resolves the workspace's provider, decrypts BYOK keys, and wraps each call in reserve → call → settle/release.
-  - `classify`: writes AI columns and classification history only.
-  - `clusters`: reconciles issues with stored decisions.
-  - `investigate`: evidence-cited analyses.
-- **Jobs:** `ai.classify` is scheduled every 5 minutes by the tick and also runs after "Classify now". `ai.investigate` runs right after a request, through the queue.
-- **Failure isolation:** AI never writes `relevance_status`, the mention allowance or analytics tables. A failed model call leaves those untouched and marks only the affected mentions or analysis.
+### Two AI systems (Milestone 4, corrected 2026-10-17)
+
+**SYSTEM A — SignalForge Intelligence** (SignalForge's Gemini key; never the customer's Claude):
+- `src/lib/ai` (pure): prompts and Zod schemas (taxonomy: relevance relevant/irrelevant/uncertain, sentiment toward the product, 8 categories, signals, severity, area, confidence), pipeline stage gates, `semantic.ts` (embedding grouping + merge candidates), `cluster.ts` (word-based fallback, reconciliation), `priority.ts`, `evaluation.ts` (shadow relevance), `pricing.ts`, `providers.ts` (Gemini via `@google/genai`), `mock.ts` (test classifier).
+- `src/lib/server/ai`: `gateway` (availability from server env; reserve → call → settle/release, also for embeddings), `classify` (writes AI columns + history only), `clusters` (embeddings → semantic groups → throttled, cached merge checks → priority → reconcile), `investigate` (spike explanations at product/platform/keyword level with measured facts; issue summaries).
+- Pipeline: ingestion is never blocked. The tick queues `ai.classify` every 5 minutes for products with waiting mentions in workspaces where Intelligence can run; "Classify now" queues one immediately. Jobs use the existing queue/leases; retries are idempotent (`processing_status`, attempts, cache by content hash). Realtime `ai` events refresh pages.
+- Failure isolation: AI never writes `relevance_status`, the mention allowance or collection/analytics tables.
+
+**SYSTEM B — Developer agent** (the customer's Claude; SignalForge runs no model and pays nothing):
+- `src/lib/agent` (pure): OAuth rules (redirects, PKCE, DCR validation, metadata), signed redirect state, task state machine, context package, report schemas, approval scope, routine client, GitHub App client.
+- `src/lib/server/agent`: `oauth-store` (hashed codes/tokens, rotation, reuse detection, revocation, membership re-check on every request), `mcp` (MCP server: 7 read tools + 3 agent tools, every query filtered by the token's workspace), `tasks` (readiness, investigation with acknowledgement, approval, single-use implementation, PR verification, timeouts).
+- Routes: `/api/mcp` (stateless Streamable HTTP), `/api/oauth/*`, `/.well-known/*`, `/oauth/authorize` (consent), `/api/github/{install,callback}`, dev-only `/api/dev/mock-routine`.
+- Workflow: investigation (instructed: no code changes; not technically enforceable) → report → admin approval of the exact plan hash (bound to workspace, issue, repository, environment) → implementation task (approval used once) → PR reported via MCP and checked with the GitHub App.
 
 ## Data model
 

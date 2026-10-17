@@ -6,11 +6,11 @@
 // reports become issues; reposts and duplicates never add demand, and one
 // author posting several times counts once.
 
-import type { FeedbackCategory, Sentiment } from "./types.ts";
+import type { FeedbackCategory, Sentiment, Severity } from "./types.ts";
 
 export const CLUSTER_CATEGORIES: ReadonlySet<FeedbackCategory> = new Set([
   "bug_report", "feature_request", "usability_complaint", "pricing_complaint",
-  "performance_issue", "security_concern", "support_question", "competitor_comparison",
+  "performance_issue", "security_concern", "support_question", "competitor_comparison", "complaint",
 ]);
 
 export const SIMILARITY_THRESHOLD = 0.3;
@@ -26,6 +26,9 @@ export interface ClusterInput {
   source: string;
   authorId: string | null;
   publishedAt: string;
+  /** AI-inferred affected area and severity (optional). */
+  area?: string | null;
+  severity?: Severity | null;
 }
 
 export interface ComputedCluster {
@@ -42,6 +45,8 @@ export interface ComputedCluster {
   firstDetectedAt: string;
   lastDetectedAt: string;
   topTerms: string[];
+  /** Most common AI-inferred area among members, when most of them agree. */
+  area: string | null;
 }
 
 const STOP = new Set((
@@ -96,7 +101,7 @@ const CATEGORY_LABEL: Record<FeedbackCategory, string> = {
   bug_report: "Bug reports", feature_request: "Feature requests", usability_complaint: "Usability complaints",
   pricing_complaint: "Pricing complaints", performance_issue: "Performance issues", security_concern: "Security concerns",
   positive_review: "Praise", general_discussion: "Discussion", support_question: "Support questions",
-  competitor_comparison: "Competitor comparisons",
+  competitor_comparison: "Competitor comparisons", complaint: "Complaints", other: "Other feedback",
 };
 export const categoryLabel = (c: FeedbackCategory) => CATEGORY_LABEL[c];
 
@@ -110,6 +115,45 @@ export function suggestPriority(category: FeedbackCategory, reports: number, neg
   if (reports >= 10 || (category === "bug_report" && reports >= 5 && negativeShare >= 0.5)) return "high";
   if (reports >= 4 || (category === "bug_report" && reports >= 3)) return "medium";
   return "low";
+}
+
+/** Most common non-empty value when at least half the members share it. */
+export function majorityArea(members: Pick<ClusterInput, "area">[]): string | null {
+  const counts = new Map<string, number>();
+  for (const m of members) if (m.area) counts.set(m.area, (counts.get(m.area) ?? 0) + 1);
+  const best = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
+  return best && best[1] * 2 >= members.length ? best[0] : null;
+}
+
+/** Statistics, title and confidence for one group of members (similarity = each member's match to the group). */
+export function describeGroup(category: FeedbackCategory, members: ClusterInput[], similarity: Record<string, number>, topTerms: string[]): ComputedCluster {
+  const reports = independentReports(members);
+  const cohesion = members.reduce((s, m) => s + (similarity[m.id] ?? 0), 0) / members.length;
+  const confidence = Math.round(Math.min(1, (members.reduce((s, m) => s + m.categoryConfidence, 0) / members.length) * Math.min(1, cohesion + 0.3)) * 100) / 100;
+  const sentiments = members.map((m) => m.sentiment).filter((s): s is Sentiment => !!s && s !== "uncertain");
+  const negativeShare = sentiments.length ? sentiments.filter((s) => s === "negative").length / sentiments.length : 0;
+  const counts = new Map<Sentiment, number>();
+  for (const s of sentiments) counts.set(s, (counts.get(s) ?? 0) + 1);
+  const sentiment = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  const area = majorityArea(members);
+  const dates = members.map((m) => m.publishedAt).sort();
+  const label = area ?? (topTerms.length ? topTerms.join(", ") : null);
+  return {
+    category,
+    title: label ? `${CATEGORY_LABEL[category]}: ${label}` : CATEGORY_LABEL[category],
+    memberIds: members.map((m) => m.id),
+    similarity,
+    reportCount: reports,
+    uniqueReporters: members.every((m) => m.authorId) ? new Set(members.map((m) => `${m.source}:${m.authorId}`)).size : null,
+    platforms: [...new Set(members.map((m) => m.source))].sort(),
+    sentiment,
+    suggestedPriority: suggestPriority(category, reports, negativeShare),
+    confidence,
+    firstDetectedAt: dates[0]!,
+    lastDetectedAt: dates.at(-1)!,
+    topTerms,
+    area,
+  };
 }
 
 /**
@@ -152,43 +196,15 @@ export function clusterFeedback(items: ClusterInput[], exclude: ReadonlySet<stri
 
     for (const g of groups) {
       const members = g.idx.map((i) => list[i]!);
-      const reports = independentReports(members);
-      if (reports < MIN_INDEPENDENT_REPORTS) continue;
+      if (independentReports(members) < MIN_INDEPENDENT_REPORTS) continue;
       const sims: Record<string, number> = {};
-      let simSum = 0;
-      g.idx.forEach((i) => {
-        const s = Math.round(cosine(vecs[i]!, g.centroid) * 1000) / 1000;
-        sims[list[i]!.id] = s;
-        simSum += s;
-      });
-      const cohesion = simSum / g.idx.length;
-      const confidence = Math.round(Math.min(1, (members.reduce((s, m) => s + m.categoryConfidence, 0) / members.length) * Math.min(1, cohesion + 0.3)) * 100) / 100;
-      const sentiments = members.map((m) => m.sentiment).filter((s): s is Sentiment => !!s && s !== "uncertain");
-      const negativeShare = sentiments.length ? sentiments.filter((s) => s === "negative").length / sentiments.length : 0;
-      const counts = new Map<Sentiment, number>();
-      for (const s of sentiments) counts.set(s, (counts.get(s) ?? 0) + 1);
-      const sentiment = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+      g.idx.forEach((i) => { sims[list[i]!.id] = Math.round(cosine(vecs[i]!, g.centroid) * 1000) / 1000; });
       const topTerms = [...g.centroid.entries()]
         .filter(([t]) => g.idx.filter((i) => docs[i]!.includes(t)).length >= Math.min(2, g.idx.length))
         .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
         .slice(0, 3)
         .map(([t]) => t);
-      const dates = members.map((m) => m.publishedAt).sort();
-      out.push({
-        category,
-        title: topTerms.length ? `${CATEGORY_LABEL[category]}: ${topTerms.join(", ")}` : CATEGORY_LABEL[category],
-        memberIds: members.map((m) => m.id),
-        similarity: sims,
-        reportCount: reports,
-        uniqueReporters: members.every((m) => m.authorId) ? new Set(members.map((m) => `${m.source}:${m.authorId}`)).size : null,
-        platforms: [...new Set(members.map((m) => m.source))].sort(),
-        sentiment,
-        suggestedPriority: suggestPriority(category, reports, negativeShare),
-        confidence,
-        firstDetectedAt: dates[0]!,
-        lastDetectedAt: dates.at(-1)!,
-        topTerms,
-      });
+      out.push(describeGroup(category, members, sims, topTerms));
     }
   }
   return out.sort((a, b) => b.reportCount - a.reportCount || b.lastDetectedAt.localeCompare(a.lastDetectedAt));

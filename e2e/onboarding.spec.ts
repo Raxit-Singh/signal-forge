@@ -49,7 +49,9 @@ test("registration → verification → workspace → product → keywords → s
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page).toHaveURL(/\/ai$/);
 
-  await page.getByRole("button", { name: "Use SignalForge credits" }).click();
+  await expect(page.getByText("SignalForge Intelligence").first()).toBeVisible();
+  await expect(page.getByText("you never need an AI key")).toBeVisible();
+  await page.getByRole("button", { name: "Continue" }).click();
   await expect(page).toHaveURL(/\/scan$/);
 
   // Historical search: the user chooses how far back; nothing runs or is estimated before they start it.

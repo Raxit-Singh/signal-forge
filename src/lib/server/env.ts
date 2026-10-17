@@ -15,11 +15,20 @@ const serverSchema = z.object({
   // and an operator-set global budget row (api_budgets, scope 'global').
   API_DIRECT_API_KEY: z.string().optional(),
   PAID_SOURCES_ENABLED: z.enum(["true", "false"]).default("false"),
-  // SignalForge AI credits (Milestone 4). SERVER ONLY. Calls also need
-  // AI_SIGNALFORGE_ENABLED=true and an operator-set row in ai_global_budget.
-  // Customers' own keys (BYOK) don't use these.
-  ANTHROPIC_API_KEY: z.string().optional(),
-  AI_SIGNALFORGE_ENABLED: z.enum(["true", "false"]).default("false"),
+  // SignalForge Intelligence (SYSTEM A; paid by SignalForge). SERVER ONLY. Also needs an
+  // operator-set row in ai_global_budget. Customers never supply AI keys for this.
+  SIGNALFORGE_AI_ENABLED: z.enum(["true", "false"]).default("false"),
+  SIGNALFORGE_AI_PROVIDER: z.string().optional(),
+  SIGNALFORGE_GEMINI_API_KEY: z.string().optional(),
+  SIGNALFORGE_AI_MODEL: z.string().optional(),
+  SIGNALFORGE_AI_DEEP_MODEL: z.string().optional(),
+  SIGNALFORGE_EMBEDDING_MODEL: z.string().optional(),
+  // Developer agent (SYSTEM B): GitHub App for customer repository authorization.
+  GITHUB_APP_ID: z.string().optional(),
+  GITHUB_APP_SLUG: z.string().optional(),
+  GITHUB_APP_CLIENT_ID: z.string().optional(),
+  GITHUB_APP_CLIENT_SECRET: z.string().optional(),
+  GITHUB_APP_PRIVATE_KEY: z.string().optional(),
 });
 
 let cached: z.output<typeof serverSchema> | null = null;

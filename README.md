@@ -54,7 +54,8 @@ src/
     onboarding/      workspace → product → keywords → sources → AI → historical search
     (app)/           authenticated shell: overview, mentions, buzz, feedback,
                      competitors, insights, integrations, reports, settings
-    actions/         server actions (workspace, product, scans, mentions, ai keys, account, notifications)
+    actions/         server actions (workspace, product, scans, mentions, AI, developer agent, account, notifications)
+    api/mcp          SignalForge remote MCP server (Claude connector); api/oauth + .well-known: its OAuth 2.1 server
     api/jobs/tick/   scheduler endpoint (secret-protected)
   components/        ui primitives, app shell, product form, keyword editor, history form/progress, realtime provider, …
   lib/
@@ -78,3 +79,8 @@ scripts/dev-cron.mjs local scheduler
 scripts/apidirect-live-test.ts  authorized, budget-capped paid connector check
 scripts/simulate-plan-costs.ts  read-only paid cost / freshness / backfill simulation (V2; --v1 for the previous engine)
 ```
+
+## Two AI systems
+
+- **SignalForge Intelligence** (paid by SignalForge, Gemini): classifies collected mentions (relevance in shadow mode, product-targeted sentiment, categories, severity), groups feedback into prioritised issues by meaning, and explains spikes with cited posts. Customers connect nothing. Off until the operator configures it (ENVIRONMENT_SETUP.md §3c).
+- **Developer agent** (the customer's own Claude): customers add SignalForge as a custom connector in Claude (OAuth), link their GitHub repository, and optionally a Claude Code routine. "Investigate with Claude" → report → explicit, single-use approval of that exact plan → implementation and a pull request for human review. Runs on the customer's Claude subscription; SignalForge never merges or deploys. Limits: API_LIMITATIONS.md → "Developer agent".

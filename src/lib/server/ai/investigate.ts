@@ -21,15 +21,19 @@ export interface InvestigationReport {
   dropped_findings: number;
   test_classifier: boolean;
   prompt_version: string;
+  /** Measured facts shown next to the AI text (spike explanations only). */
+  facts?: Record<string, unknown> | null;
 }
 
-export const spikeSubject = (s: { granularity: string; platform: string | null; periodStart: string }) =>
-  `${s.granularity}|${s.platform ?? "all"}|${new Date(s.periodStart).toISOString()}`;
+/** Product-level, platform-level or keyword-level spike. */
+export const spikeSubject = (s: { granularity: string; platform: string | null; periodStart: string; keyword?: string | null }) =>
+  `${s.granularity}|${s.platform ?? "all"}|${new Date(s.periodStart).toISOString()}${s.keyword ? `|kw:${s.keyword}` : ""}`;
 
-export function parseSpikeSubject(key: string): { granularity: "day" | "hour"; platform: string | null; periodStart: string } | null {
-  const [g, p, start] = key.split("|");
+export function parseSpikeSubject(key: string): { granularity: "day" | "hour"; platform: string | null; periodStart: string; keyword: string | null } | null {
+  const [g, p, start, kw] = key.split("|");
   if ((g !== "day" && g !== "hour") || !p || !start || Number.isNaN(Date.parse(start))) return null;
-  return { granularity: g, platform: p === "all" ? null : p, periodStart: start };
+  if (kw !== undefined && !kw.startsWith("kw:")) return null;
+  return { granularity: g, platform: p === "all" ? null : p, periodStart: start, keyword: kw ? kw.slice(3) : null };
 }
 
 /**
@@ -65,21 +69,69 @@ export async function requestInvestigation(
 type MentionRow = {
   id: string; source: string; source_url: string; title: string | null; content: string | null;
   published_at: string; engagement_score: number | null; ai_about_product: "yes" | "no" | "unsure" | null;
+  sentiment: string | null; processing_status: string;
 };
-const MENTION_COLS = "id, source, source_url, title, content, published_at, engagement_score, ai_about_product";
+const MENTION_COLS = "id, source, source_url, title, content, published_at, engagement_score, ai_about_product, sentiment, processing_status";
 
 async function spikeEvidence(admin: SupabaseClient, productId: string, subject: NonNullable<ReturnType<typeof parseSpikeSubject>>) {
-  const { data: spike } = await admin.from("buzz_spikes").select("period_start, period_end, observed, expected, platform")
-    .eq("product_id", productId).eq("granularity", subject.granularity).eq("period_start", subject.periodStart)
-    .then((r) => ({ data: (r.data ?? []).find((s) => (s.platform ?? null) === subject.platform) ?? null }));
+  const table = subject.keyword ? "buzz_keyword_spikes" : "buzz_spikes";
+  let sq = admin.from(table).select("period_start, period_end, observed, expected" + (subject.keyword ? ", keyword" : ", platform"))
+    .eq("product_id", productId).eq("granularity", subject.granularity).eq("period_start", subject.periodStart);
+  if (subject.keyword) sq = sq.eq("keyword", subject.keyword);
+  const { data: spikes } = await sq;
+  const spike = ((spikes ?? []) as unknown as Array<{ period_end: string; observed: number; expected: number; platform?: string | null }>)
+    .find((s) => subject.keyword || (s.platform ?? null) === subject.platform) ?? null;
   const start = subject.periodStart;
   const end = spike?.period_end ?? new Date(Date.parse(start) + (subject.granularity === "day" ? 86_400_000 : 3_600_000)).toISOString();
   let q = admin.from("mentions").select(MENTION_COLS).eq("product_id", productId).eq("dedup_kind", "original")
-    .in("relevance_status", ["relevant", "pending", "user_relevant"]).gte("published_at", start).lt("published_at", end)
-    .eq("published_at_estimated", false).order("engagement_score", { ascending: false }).limit(200);
+    .in("relevance_status", ["relevant", "pending", "user_relevant"]).eq("published_at_estimated", false)
+    .gte("published_at", start).lt("published_at", end);
   if (subject.platform) q = q.eq("source", subject.platform);
-  const { data } = await q;
-  return { rows: (data ?? []) as MentionRow[], spike: { observed: Number(spike?.observed ?? data?.length ?? 0), expected: Number(spike?.expected ?? 0), start, end } };
+  if (subject.keyword) q = q.contains("matched_terms", [subject.keyword]);
+  const { data } = await q.order("engagement_score", { ascending: false }).limit(300);
+  const rows = (data ?? []) as MentionRow[];
+
+  // Measured facts (not model output): platforms, sentiment shift and issues.
+  const beforeStart = new Date(Date.parse(start) - 7 * 86_400_000).toISOString();
+  let bq = admin.from("mentions").select("source, sentiment, processing_status").eq("product_id", productId)
+    .eq("dedup_kind", "original").in("relevance_status", ["relevant", "pending", "user_relevant"]).eq("published_at_estimated", false)
+    .gte("published_at", beforeStart).lt("published_at", start);
+  if (subject.platform) bq = bq.eq("source", subject.platform);
+  if (subject.keyword) bq = bq.contains("matched_terms", [subject.keyword]);
+  const { data: before } = await bq.limit(5000);
+  const periodDays = (Date.parse(end) - Date.parse(start)) / 86_400_000;
+  const count = (xs: Array<{ source: string }>) => xs.reduce((m, x) => m.set(x.source, (m.get(x.source) ?? 0) + 1), new Map<string, number>());
+  const now = count(rows);
+  const prior = count((before ?? []) as Array<{ source: string }>);
+  const platforms = [...new Set([...now.keys(), ...prior.keys()])]
+    .map((p) => ({ platform: p, mentions: now.get(p) ?? 0, usual_per_day: Math.round(((prior.get(p) ?? 0) / 7) * 10) / 10, usual_per_period: (prior.get(p) ?? 0) / 7 * periodDays }))
+    .sort((a, b) => b.mentions - a.mentions).slice(0, 10)
+    .map(({ platform, mentions, usual_per_day }) => ({ platform, mentions, usual_per_day }));
+  const negShare = (xs: Array<{ sentiment: string | null; processing_status?: string; ai_about_product?: string | null }>) => {
+    const c = xs.filter((x) => x.sentiment && x.sentiment !== "uncertain" && (x.processing_status ?? "classified") === "classified");
+    return c.length >= 5 ? Math.round((c.filter((x) => x.sentiment === "negative").length / c.length) * 100) / 100 : null;
+  };
+  const ids = rows.map((r) => r.id);
+  const { data: memberRows } = ids.length
+    ? await admin.from("feedback_cluster_members").select("cluster_id, mention_id").in("mention_id", ids.slice(0, 300))
+    : { data: [] };
+  const perCluster = new Map<string, number>();
+  for (const m of memberRows ?? []) perCluster.set(m.cluster_id as string, (perCluster.get(m.cluster_id as string) ?? 0) + 1);
+  const { data: clusters } = perCluster.size
+    ? await admin.from("feedback_clusters").select("id, title").in("id", [...perCluster.keys()])
+    : { data: [] };
+  const issues = (clusters ?? []).map((c) => ({ title: c.title as string, posts_in_period: perCluster.get(c.id as string) ?? 0 }))
+    .sort((a, b) => b.posts_in_period - a.posts_in_period).slice(0, 8);
+
+  return {
+    rows,
+    spike: { observed: Number(spike?.observed ?? rows.length), expected: Number(spike?.expected ?? 0), start, end },
+    facts: {
+      platforms,
+      negative_share: { period: negShare(rows as unknown as Array<{ sentiment: string | null }>), before: negShare((before ?? []) as Array<{ sentiment: string | null; processing_status: string }>) },
+      issues,
+    },
+  };
 }
 
 async function clusterEvidence(admin: SupabaseClient, clusterId: string) {
@@ -115,6 +167,7 @@ export async function runInvestigation(admin: SupabaseClient, investigationId: s
   let rows: MentionRow[] = [];
   let build: (evidence: EvidenceInput[]) => { system: string; user: string };
   let kind: InvestigationKind;
+  let facts: Record<string, unknown> | null = null;
   if (inv.kind === "spike_explanation") {
     kind = "spike_explanation";
     const subject = parseSpikeSubject(inv.subject_key as string);
@@ -125,7 +178,10 @@ export async function runInvestigation(admin: SupabaseClient, investigationId: s
     const s = await spikeEvidence(admin, inv.product_id as string, subject);
     rows = s.rows;
     const label = subject.granularity === "day" ? `${s.spike.start.slice(0, 10)} (UTC day)` : `${s.spike.start.slice(0, 13).replace("T", " ")}:00 UTC hour`;
-    build = (ev) => spikeExplanationPrompt(product, { periodLabel: label, platform: subject.platform, observed: s.spike.observed, expected: s.spike.expected }, ev);
+    facts = { ...s.facts, keyword: subject.keyword };
+    build = (ev) => spikeExplanationPrompt(product, {
+      periodLabel: label, platform: subject.platform, keyword: subject.keyword, observed: s.spike.observed, expected: s.spike.expected, ...s.facts,
+    }, ev);
   } else {
     kind = "cluster_summary";
     const c = await clusterEvidence(admin, (inv.cluster_id ?? inv.subject_key) as string);
@@ -141,7 +197,7 @@ export async function runInvestigation(admin: SupabaseClient, investigationId: s
   if (!sel) {
     await finish(admin, inv.id, {
       status: "insufficient_data",
-      report: { reason: `Fewer than ${MIN_EVIDENCE} collected posts about the product are available for this ${kind === "spike_explanation" ? "period" : "issue"}.`, evidence_count: rows.length },
+      report: { reason: `Fewer than ${MIN_EVIDENCE} collected posts about the product are available for this ${kind === "spike_explanation" ? "period" : "issue"}.`, evidence_count: rows.length, facts },
     });
     await emitEvent(admin, inv.workspace_id as string, inv.product_id as string, "ai", { investigation: inv.id });
     return { status: "insufficient_data" };
@@ -192,6 +248,7 @@ export async function runInvestigation(admin: SupabaseClient, investigationId: s
     const report: InvestigationReport = {
       summary: valid.summary, findings: valid.findings, ...(o.confidence ? { confidence: o.confidence } : {}),
       evidence: evidenceList, dropped_findings: valid.dropped, test_classifier: ai.test, prompt_version: PROMPT_VERSION,
+      facts,
     };
     await finish(admin, inv.id, { ...base, status: "completed", report, error: null });
   }

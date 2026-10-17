@@ -212,15 +212,15 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
                       <span className="text-muted-foreground">{s.keyword ? `Keyword “${s.keyword}”` : s.platform ? nameOf(s.platform) : "All platforms"}</span>
                       <span className="ml-auto tabular">{s.observed} mentions vs ~{Number(s.expected).toFixed(Number(s.expected) < 10 ? 1 : 0)} usual</span>
                       {s.note && <span className="w-full text-xs text-muted-foreground">{s.note}</span>}
-                      {!s.keyword && (() => {
-                        const key = spikeSubject({ granularity: s.granularity, platform: s.platform, periodStart: s.period_start });
+                      {(() => {
+                        const key = spikeSubject({ granularity: s.granularity, platform: s.keyword ? null : s.platform, periodStart: s.period_start, keyword: s.keyword ?? null });
                         const inv = explanations.get(key);
                         return (
                           <div className="grid w-full gap-1.5">
                             {inv && <InvestigationResult inv={inv} />}
                             {canExplain && (!inv || inv.status === "failed") && (
                               <ActionForm action={explainSpikeAction} label={inv ? "Try again" : "Explain this spike"} pendingLabel="Requesting…" variant="ghost"
-                                fields={{ workspaceId: workspace.id, productId: product.id, granularity: s.granularity, platform: s.platform ?? "", periodStart: new Date(s.period_start).toISOString(), force: inv ? "true" : "false" }} />
+                                fields={{ workspaceId: workspace.id, productId: product.id, granularity: s.granularity, platform: s.keyword ? "" : s.platform ?? "", keyword: s.keyword ?? "", periodStart: new Date(s.period_start).toISOString(), force: inv ? "true" : "false" }} />
                             )}
                           </div>
                         );

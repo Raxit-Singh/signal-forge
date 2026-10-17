@@ -16,7 +16,83 @@ Legend: ✅ verified by an automated check that ran · 🟡 written, not yet exe
 
 Test users created for the walk-through were removed afterwards via the app's own deletion path.
 
-## Milestone 4 — AI intelligence (2026-10-17)
+## Milestone 4A/4B — two AI systems: SignalForge Intelligence (Gemini) and Claude developer agent (2026-10-17)
+
+This corrects the first Milestone 4 architecture (section below).
+- **SignalForge Intelligence** is SignalForge's own Gemini-based AI. Customers no longer connect an AI provider. Previously saved customer keys stay encrypted and can be removed in settings.
+- **Developer agent** is a separate system that uses the customer's own Claude.
+
+**What has not run live:** no paid model, Claude routine or GitHub App call was made. Gemini is not enabled (`SIGNALFORGE_AI_ENABLED=false`, no key, no `ai_global_budget` row). Anthropic and Google capabilities were checked against their official documentation on 2026-10-17 (API_LIMITATIONS.md).
+
+**Migrations** (both on dev project `qwcsglwwxljyyjqsppiz`, verified against `.env.local`; each applied after a dry run via `scripts/supabase-cli.sh`):
+- `20261017000002_intelligence_and_developer_agent` (additive);
+- `20261017000003_dev_routine_url` (additive; lets the dev routine stand-in URL be stored).
+
+### 4A — SignalForge Intelligence
+- **Gemini adapter:** official `@google/genai` SDK. Models are configurable; a model without a known price is refused. Answers are JSON-schema requests, validated again with Zod. The key is sent in a header, never in the URL.
+- **Classification:**
+  - relevance (shadow mode), sentiment toward the product, 8 categories, feedback signals, severity, affected area and confidence;
+  - product context: website, category, aliases, competitors, keywords;
+  - batched and cached, and non-blocking (queued jobs).
+- **Semantic grouping:**
+  - 256-dimension Gemini embeddings, joined at cosine ≥ 0.86;
+  - borderline groups (0.74–0.86) merge only on a cheap-model "yes";
+  - merge checks are cached, at most 40 pairs and at most one round per product every 6 hours;
+  - word-based fallback when embeddings aren't available.
+- **Priority:** combines severity, independent reporters (log scale), trend, recurrence and confidence. Each issue shows its observed and inferred evidence.
+- **Feedback page:**
+  - numbers: actionable issues, bug reports, feature requests, complaints and positive feedback;
+  - charts: sentiment over time and bugs/features/complaints over time, with colors checked for colour-vision deficiency and table views;
+  - breakdowns: category, platform and priority distributions;
+  - trending and newly emerging issues.
+  - Unclassified mentions are shown separately.
+- **Spike explanations:** product, platform and keyword spikes, with measured platform, sentiment and issue facts shown next to the cited AI text.
+- **Shadow-mode evaluation:** precision, recall, false positives and negatives, and unsure answers, compared with manual labels (Settings → SignalForge Intelligence). Billing is unchanged.
+- **Spending controls:** reserve → settle for every call, embeddings included. Calls need the plan allowance and the operator's global limit. Test-classifier calls are tagged `test` and never count against either.
+
+### 4B — Claude developer agent
+- **Remote MCP server** (`/api/mcp`, stateless): 7 read tools and 3 agent tools. Every query is filtered by the token's workspace, results are bounded and paginated, and public posts are labelled untrusted.
+- **OAuth 2.1:**
+  - client registration, S256 PKCE and single-use codes (reuse revokes the grant);
+  - rotating refresh tokens (reuse revokes the grant), RFC 7009 revocation and in-app revocation;
+  - workspace membership is re-checked on every request; only token hashes are stored;
+  - Claude-only callbacks; consent page with a workspace choice.
+- **Settings → Developer agent:**
+  - accurate status: Not connected / Setup required / Repository access required / Coding-agent execution unavailable / Ready / Error;
+  - connector URL, revocation, GitHub App install and repository choice, routine setup (prompt plus encrypted token), task history.
+- **GitHub App:** read-only; installation ownership verified with the install-time user token. Implemented and unit-tested; no App is registered yet.
+- **Workflow:**
+  - "Investigate with Claude": a routine run needs an explicit acknowledgement; without a routine you get a manual handoff to paste into Claude Code.
+  - The agent fetches its task over MCP and submits a structured report.
+  - An admin approves the exact plan hash (single use; bound to workspace, issue, repository and environment), then implementation starts.
+  - The PR is reported over MCP and checked with the GitHub App when configured; otherwise it shows "unverified".
+  - Cancellation, a 6-hour timeout, and pull requests opened during an investigation flagged.
+- **Investigation is not technically read-only.** Routines run with the customer's full Claude Code permissions, so "no code changes" is an instruction. The product, the docs and the MCP output say so (`code_changes_allowed: false` is an instruction, not enforcement).
+
+### Checks
+| Check | Result |
+|---|---|
+| `npm run test:unit` | ✅ 239/239 (rewritten AI and Gemini adapter tests; new agent tests) |
+| `npm run test:db` | ✅ 337/337 (27 new) |
+| Browser tests | ✅ 25/25 |
+| typecheck, lint, `npm run build` | ✅ |
+
+New unit tests (Gemini over a fake transport, no network):
+- AI: structured requests, invalid output, refusals, HTTP errors, embeddings, classification fixtures, semantic grouping, priority ranking, shadow evaluation, pricing, availability.
+- Agent: OAuth redirect rules, PKCE (RFC 7636 vector), registration validation, discovery metadata, signed state, task states, approval scope and single use, report and PR validation, context bounds, routine trigger and errors, GitHub App JWT, installation verification, PR state and PRs opened during an investigation.
+
+New database tests: test billing tag, plan-budget refusal, settle v2, the feedback series under row-level security, token hashes only, OAuth tables hidden, grants admin-only, agent tables read-only for users, routine URL and secret columns hidden, a single active approval, and cross-workspace isolation.
+
+Browser tests:
+- `e2e/ai.spec.ts`: classification, semantic issue, priority evidence, analytics, shadow evaluation, summary, and product plus keyword spike explanations.
+- `e2e/agent.spec.ts`:
+  - main flow: client registration → consent → PKCE token → MCP tools; workspace isolation; repository; routine through the dev stand-in; acknowledgement; investigation → report → approval → implementation → PR;
+  - also covers wrong-repository PR refused, cancellation, refresh rotation, revocation, and code reuse revoking the grant;
+  - plus OAuth denial and refused foreign redirects.
+
+The first full browser run had 23/25. Two tests hit the Supabase Auth rate limit (`link_expired`): one passed on re-run, the other then exposed a locator bug in my test, which I fixed before it passed.
+
+## Milestone 4 — AI intelligence (2026-10-17) — superseded by 4A/4B above
 
 Built and tested against fake providers and the development-only test classifier. **No model was called** (no AI key is configured; SignalForge AI credits need the founder's approval, a global budget row and `AI_SIGNALFORGE_ENABLED=true`). Migration `20261017000001_ai_intelligence` (additive) applied to the dev project (`qwcsglwwxljyyjqsppiz`, checked against `.env.local`) after a dry run that listed only this file, via `scripts/supabase-cli.sh` (token-based CLI auth without the macOS Keychain; credentials in `~/.config/signalforge/supabase.env`, mode 600, outside the repo).
 

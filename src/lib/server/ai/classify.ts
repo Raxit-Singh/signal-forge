@@ -25,14 +25,22 @@ export interface ClassifySummary {
 }
 
 export async function productContext(admin: SupabaseClient, productId: string): Promise<(ProductContext & { workspaceId: string }) | null> {
-  const { data: p } = await admin.from("products").select("id, workspace_id, name, description").eq("id", productId).maybeSingle();
+  const { data: p } = await admin.from("products").select("id, workspace_id, name, description, website_url, category").eq("id", productId).maybeSingle();
   if (!p) return null;
-  const { data: aliases } = await admin.from("product_aliases").select("term").eq("product_id", productId).eq("enabled", true).limit(50);
+  const [{ data: aliases }, { data: competitors }] = await Promise.all([
+    admin.from("product_aliases").select("term, kind").eq("product_id", productId).eq("enabled", true).limit(50),
+    admin.from("competitors").select("name").eq("product_id", productId).eq("enabled", true).limit(20),
+  ]);
+  const terms = (aliases ?? []).map((a) => ({ term: a.term as string, kind: a.kind as string }));
   return {
     workspaceId: p.workspace_id as string,
     name: p.name as string,
     description: (p.description as string | null) ?? null,
-    keywords: [...new Set((aliases ?? []).map((a) => a.term as string))],
+    website: (p.website_url as string | null) ?? null,
+    category: (p.category as string | null) ?? null,
+    aliases: [...new Set(terms.filter((t) => t.kind !== "custom").map((t) => t.term))],
+    keywords: [...new Set(terms.map((t) => t.term))],
+    competitors: (competitors ?? []).map((c) => c.name as string),
   };
 }
 
@@ -46,10 +54,11 @@ interface Row {
 }
 
 /**
- * Classifies a product's unclassified mentions (relevance hint, product-targeted
- * sentiment, feedback category). Writes only AI columns and classification
- * history; relevance_status (and so the mention allowance) and every analytics
- * table are untouched, so a failure here never changes analytics. Manual
+ * SignalForge Intelligence classification of a product's unclassified mentions:
+ * relevance recommendation (SHADOW MODE — never changes relevance_status or the
+ * mention allowance), product-targeted sentiment, category, feedback signals,
+ * severity, affected area and confidence. Writes only AI columns and history, so
+ * a failure never changes collection, billing or analytics tables. Manual
  * corrections are never overwritten.
  */
 export async function classifyProduct(admin: SupabaseClient, productId: string, limit = JOB_LIMIT): Promise<ClassifySummary> {
@@ -105,7 +114,7 @@ export async function classifyProduct(admin: SupabaseClient, productId: string, 
     try {
       const out = await budgetedCall(admin, ai, { workspaceId: product.workspaceId, productId }, {
         purpose: "classify", tier: "cheap", system, user, schema: classificationSchema, schemaName: "classification",
-        maxTokens: 120 + posts.length * 120, mockInput: { posts },
+        maxTokens: 200 + posts.length * 160, mockInput: { posts },
       });
       summary.calls++;
       const v = validateClassification(out.output, posts.map((p) => p.id));
@@ -161,6 +170,7 @@ async function applyResults(admin: SupabaseClient, ai: ResolvedAi, workspaceId: 
     const keep = manual.get(r.id) ?? new Set<string>();
     const patch: Record<string, unknown> = {
       ai_about_product: r.aboutProduct, ai_reason: r.reason || null, ai_model: classifier, ai_classified_at: now, processing_status: "classified",
+      ai_signals: r.signals, ai_severity: r.severity, ai_area: r.area || null, ai_confidence: r.confidence,
     };
     if (!keep.has("sentiment")) Object.assign(patch, { sentiment: l.sentiment, sentiment_confidence: l.sentimentConfidence });
     if (!keep.has("category")) Object.assign(patch, { feedback_category: l.category, category_confidence: l.categoryConfidence });
@@ -170,7 +180,7 @@ async function applyResults(admin: SupabaseClient, ai: ResolvedAi, workspaceId: 
     history.push(
       { ...base, dimension: "relevance", label: r.aboutProduct, confidence: null },
       { ...base, dimension: "sentiment", label: r.sentiment, confidence: r.sentimentConfidence },
-      { ...base, dimension: "category", label: r.category, confidence: r.categoryConfidence },
+      { ...base, dimension: "category", label: r.intelCategory, confidence: r.categoryConfidence },
     );
   }));
   const { error } = await admin.from("mention_classifications").insert(history);

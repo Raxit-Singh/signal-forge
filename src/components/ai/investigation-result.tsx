@@ -43,6 +43,7 @@ export function InvestigationResult({ inv }: { inv: InvestigationView }) {
         {inv.completed_at && <span>{formatUtc(inv.completed_at)}</span>}
       </div>
       {r.summary && <p>{r.summary}</p>}
+      {r.facts && <MeasuredFacts facts={r.facts as Facts} />}
       <ul className="grid gap-1.5">
         {(r.findings ?? []).map((f, i) => (
           <li key={i} className="grid gap-0.5">
@@ -77,6 +78,33 @@ export function InvestigationResult({ inv }: { inv: InvestigationView }) {
         </ol>
       </details>
       {(r.dropped_findings ?? 0) > 0 && <p className="text-xs text-muted-foreground">{r.dropped_findings} statement{r.dropped_findings === 1 ? "" : "s"} without supporting posts {r.dropped_findings === 1 ? "was" : "were"} discarded.</p>}
+    </div>
+  );
+}
+
+type Facts = {
+  keyword?: string | null;
+  platforms?: Array<{ platform: string; mentions: number; usual_per_day: number }>;
+  negative_share?: { period: number | null; before: number | null };
+  issues?: Array<{ title: string; posts_in_period: number }>;
+};
+
+/** Measured from stored data (not model output), shown next to the AI text. */
+function MeasuredFacts({ facts }: { facts: Facts }) {
+  const pct = (x: number | null | undefined) => (x === null || x === undefined ? "not enough classified posts" : `${Math.round(x * 100)}%`);
+  return (
+    <div className="grid gap-1 rounded border bg-surface p-2 text-xs" data-testid="spike-facts">
+      <p className="font-medium">Measured in collected posts</p>
+      {facts.keyword && <p className="text-muted-foreground">Keyword: “{facts.keyword}”</p>}
+      {facts.platforms && facts.platforms.length > 0 && (
+        <p className="text-muted-foreground">By platform: {facts.platforms.map((p) => `${sourceName(p.platform)} ${p.mentions} (usually ~${p.usual_per_day}/day)`).join(" · ")}</p>
+      )}
+      {facts.negative_share && (
+        <p className="text-muted-foreground">Negative share: {pct(facts.negative_share.period)} in the period vs {pct(facts.negative_share.before)} the 7 days before</p>
+      )}
+      {facts.issues && facts.issues.length > 0 && (
+        <p className="text-muted-foreground">Issues with posts in the period: {facts.issues.map((i) => `${i.title} (${i.posts_in_period})`).join(" · ")}</p>
+      )}
     </div>
   );
 }

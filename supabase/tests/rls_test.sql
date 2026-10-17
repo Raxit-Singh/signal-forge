@@ -1192,6 +1192,90 @@ select t.ok((select count(*) from public.ai_settings where workspace_id = (selec
 reset role;
 delete from public.ai_global_budget;
 
+-- ===================================================================== SignalForge Intelligence + developer agent
+-- Test-classifier calls are tagged 'test' and never count against plan or global limits.
+update public.subscriptions set plan_id = 'free' where workspace_id = (select v from ids where k = 'ws_d');
+select t.ok((public.svc_ai_reserve((select v from ids where k = 'ws_d'), null, 'signalforge', 'mock-classifier', 'classify', 'test', 1000, 0) ->> 'ok')::boolean,
+  'test-classifier calls need no SignalForge budget (Free plan, no global limit)');
+select t.ok(public.svc_ai_reserve((select v from ids where k = 'ws_d'), null, 'gemini', 'gemini-3.1-flash-lite', 'classify', 'signalforge', 1000, 500) ->> 'reason' = 'plan_budget',
+  'Gemini calls billed to SignalForge still need a plan allowance');
+select t.throws($$select public.svc_ai_reserve(gen_random_uuid(), null, 'gemini', 'm', 'classify', 'customer', 1, 1)$$, 'unknown billing tags are refused', 'invalid reservation');
+insert into ai_res select 'r3', (public.svc_ai_reserve((select v from ids where k = 'ws_d'), null, 'signalforge', 'mock-classifier', 'embed', 'test', 10, 0) ->> 'id')::bigint;
+select public.svc_ai_settle_v2((select id from ai_res where k = 'r3'), 10, 0, 0, 0, true, null, null, 1, null);
+select t.ok((select status = 'settled' and requests = 1 and provider_cost_microusd is null from public.ai_usage_records where id = (select id from ai_res where k = 'r3')),
+  'settlement records request count; provider cost stays null when the provider reports none');
+
+-- Feedback series (security invoker): classified vs unclassified kept apart.
+insert into public.mentions (workspace_id, product_id, source, external_id, source_url, title, published_at, relevance_status, processing_status, sentiment, feedback_category, ai_about_product)
+values
+  ((select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d'), 'hackernews', 'fb-1', 'https://example.com/fb1', 'a', now() - interval '1 day', 'relevant', 'classified', 'negative', 'bug_report', 'yes'),
+  ((select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d'), 'hackernews', 'fb-2', 'https://example.com/fb2', 'b', now() - interval '1 day', 'relevant', 'filtered', null, null, null),
+  ((select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d'), 'hackernews', 'fb-3', 'https://example.com/fb3', 'c', now() - interval '1 day', 'relevant', 'classified', 'positive', 'positive_review', 'no');
+insert into public.credential_secrets (workspace_id, purpose, ciphertext) values ((select v from ids where k = 'ws_d'), 'agent', 'x');
+select t.ok(true, 'credential_secrets accepts the agent purpose');
+
+-- Developer agent rows (written by the service role).
+insert into public.oauth_clients (client_id, client_name, redirect_uris) values ('sfc_' || repeat('a', 24), 'Claude', array['https://claude.ai/api/mcp/auth_callback']);
+with x as (insert into public.oauth_grants (client_id, user_id, workspace_id, scopes, resource)
+  values ('sfc_' || repeat('a', 24), '00000000-0000-0000-0000-00000000000d', (select v from ids where k = 'ws_d'), array['signalforge:read'], 'https://x/api/mcp') returning id) insert into ids select 'grant_d', id from x;
+insert into public.oauth_tokens (token_hash, grant_id, kind, expires_at) values (repeat('b', 64), (select v from ids where k = 'grant_d'), 'access', now() + interval '1 hour');
+select t.throws($$insert into public.oauth_tokens (token_hash, grant_id, kind, expires_at) values ('plaintext-token', gen_random_uuid(), 'access', now())$$,
+  'only SHA-256 hashes can be stored as tokens', 'check');
+insert into public.github_installations (workspace_id, installation_id, account_login) values ((select v from ids where k = 'ws_d'), 7, 'dave-co');
+with x as (insert into public.agent_repositories (workspace_id, product_id, installation_id, repo_id, full_name, default_branch, private)
+  values ((select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d'), 7, 1, 'dave-co/app', 'main', true) returning id) insert into ids select 'repo_d', id from x;
+insert into public.agent_connections (workspace_id, routine_id, fire_url) values ((select v from ids where k = 'ws_d'), 'trig_ABCDEFGH12', 'https://api.anthropic.com/v1/claude_code/routines/trig_ABCDEFGH12/fire');
+select t.throws(format($$update public.agent_connections set fire_url = 'http://evil.example' where workspace_id = %L$$, (select v from ids where k = 'ws_d')),
+  'routine URLs must be https', 'check');
+with x as (insert into public.agent_tasks (workspace_id, product_id, repository_id, execution, stage, status, context, context_hash, plan_hash)
+  values ((select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d'), (select v from ids where k = 'repo_d'), 'routine', 'investigation', 'awaiting_approval', '{}', repeat('c', 64), repeat('d', 64)) returning id) insert into ids select 'task_d', id from x;
+select t.throws(format($$update public.agent_tasks set status = 'merged' where id = %L$$, (select v from ids where k = 'task_d')), 'tasks have no merged state', 'check');
+select t.throws(format($$update public.agent_tasks set pr_url = 'https://evil.example/pull/1' where id = %L$$, (select v from ids where k = 'task_d')), 'pull request links must be GitHub', 'check');
+insert into public.agent_approvals (workspace_id, investigation_task_id, repository_full_name, plan_hash, environment, approved_by)
+values ((select v from ids where k = 'ws_d'), (select v from ids where k = 'task_d'), 'dave-co/app', repeat('d', 64), 'claude_code_routine:trig_ABCDEFGH12', '00000000-0000-0000-0000-00000000000d');
+select t.throws(format($$insert into public.agent_approvals (workspace_id, investigation_task_id, repository_full_name, plan_hash, environment, approved_by)
+  values (%L, %L, 'dave-co/app', repeat('d', 64), 'x', '00000000-0000-0000-0000-00000000000d')$$, (select v from ids where k = 'ws_d'), (select v from ids where k = 'task_d')),
+  'one active approval per investigation', 'duplicate');
+insert into public.agent_task_events (workspace_id, task_id, kind, actor) values ((select v from ids where k = 'ws_d'), (select v from ids where k = 'task_d'), 'created', 'user');
+
+select t.as_user('00000000-0000-0000-0000-00000000000d');
+set role authenticated;
+select t.ok((select sum(classified) from public.feedback_daily((select v from ids where k = 'p_d'), now() - interval '7 days', now(), 'UTC')) >= 1
+  and (select sum(unclassified) from public.feedback_daily((select v from ids where k = 'p_d'), now() - interval '7 days', now(), 'UTC')) >= 1,
+  'classified and unclassified mentions are counted separately');
+select t.ok((select coalesce(sum(positive), 0) from public.feedback_daily((select v from ids where k = 'p_d'), now() - interval '7 days', now(), 'UTC')) = 0,
+  'mentions the AI judged off-topic are left out of feedback analytics');
+select t.throws($$select * from public.oauth_tokens$$, 'nobody reads token hashes', 'permission denied');
+select t.throws($$select * from public.oauth_codes$$, 'nobody reads authorization codes', 'permission denied');
+select t.throws($$select * from public.oauth_clients$$, 'OAuth clients are server-side only', 'permission denied');
+select t.ok((select count(*) from public.oauth_grants) = 1, 'admins see who connected Claude to their workspace');
+select t.throws($$update public.oauth_grants set revoked_at = null$$, 'grants are revoked through the server only', 'permission denied');
+select t.ok((select count(*) from public.agent_tasks) = 1 and (select count(*) from public.agent_approvals) = 1
+  and (select count(*) from public.agent_task_events) = 1 and (select count(*) from public.agent_repositories) = 1 and (select count(*) from public.github_installations) = 1,
+  'members read their tasks, approvals, events, repositories and installations');
+select t.ok((select status from public.agent_connections) = 'unverified', 'admins see the routine status');
+select t.throws($$select fire_url from public.agent_connections$$, 'the routine URL is not readable by users', 'permission denied');
+select t.throws($$select secret_id from public.agent_connections$$, 'the routine secret reference is not readable by users', 'permission denied');
+select t.throws(format($$insert into public.agent_approvals (workspace_id, investigation_task_id, repository_full_name, plan_hash, environment, approved_by)
+  values (%L, %L, 'dave-co/app', repeat('e', 64), 'x', auth.uid())$$, (select v from ids where k = 'ws_d'), (select v from ids where k = 'task_d')),
+  'users cannot write approvals directly (only the server action can)', 'permission denied');
+select t.throws($$update public.agent_tasks set status = 'approved'$$, 'users cannot change task status directly', 'permission denied');
+select t.throws($$update public.mentions set embedding = '{1}'$$, 'users cannot write embeddings', 'permission denied');
+select t.throws($$select public.svc_ai_settle_v2(1, 0, 0, 0, 0, true, null, null, 1, null)$$, 'members cannot settle AI usage', 'permission denied');
+reset role;
+select t.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+select t.ok((select count(*) from public.feedback_daily((select v from ids where k = 'p_d'), now() - interval '7 days', now(), 'UTC')) = 0,
+  'another workspace gets no feedback series (security invoker)');
+select t.ok((select count(*) from public.oauth_grants where workspace_id = (select v from ids where k = 'ws_d')) = 0
+  and (select count(*) from public.agent_tasks where workspace_id = (select v from ids where k = 'ws_d')) = 0
+  and (select count(*) from public.agent_approvals where workspace_id = (select v from ids where k = 'ws_d')) = 0
+  and (select count(*) from public.agent_repositories where workspace_id = (select v from ids where k = 'ws_d')) = 0
+  and (select count(*) from public.github_installations where workspace_id = (select v from ids where k = 'ws_d')) = 0
+  and (select count(*) from public.agent_connections where workspace_id = (select v from ids where k = 'ws_d')) = 0,
+  'other workspaces see none of the developer-agent data');
+reset role;
+
 -- ===================================================================== summary
 do $$
 declare passed int; failed int;

@@ -133,21 +133,23 @@ What changed in the model (all as implemented): intervals from arrival rates (`d
 
 **Controls (enforced in Postgres before every paid call):** global monthly budget (no row ⇒ no paid calls), optional provider and platform budgets, each workspace's plan allowance (`plan_paid_allowances`: Free $0, Pro $25, Scale $75 — internal operating targets, not customer credits; retired Starter $1 / Business $20 rows kept), optional workspace/product budgets, and per-boost paid-check caps. Shared fetches split one request's cost across every product with the same query. API Direct's own account-level daily/monthly spending limits are a second line of defence (set them in its dashboard). Reconcile monthly: compare the API Direct invoice with `select sum(coalesce(charged_usd, estimated_usd)) from api_cost_ledger where period_start = '<month>' and status <> 'released'` and record it in `billing_reconciliations`.
 
-## AI (Milestone 4; estimates from assumptions, no live calls yet)
+## SignalForge Intelligence — Gemini (estimates from assumptions; no live calls yet)
 
-Prices: Anthropic first-party, per million tokens. Haiku 5.5: $0.10 input / $0.50 output. Opus 5.5: $4 / $20.
+Prices: Gemini API paid tier, ai.google.dev pricing page dated 2026-10-16. `gemini-3.1-flash-lite` $0.25 in / $1.50 out; `gemini-embedding-2` $0.20 in; `gemini-3.8-flash` $0.75 / $3.75 (doubling on 2027-01-01).
 
 | Work | Assumptions | Estimate |
 |---|---|---|
-| Classification (Haiku 5.5, batches of 20) | ~3,200 input + ~1,600 output tokens per batch | ≈ $0.056 per 1,000 mentions; ≈ 220k tokens |
-| Pro at its full 15,000 mentions | as above | ≈ $0.85 / month; ≈ 3.3M of the plan's 8M tokens |
-| Scale at its full 50,000 mentions | as above | ≈ $2.80 / month; ≈ 11M of the plan's 30M tokens |
-| Spike explanation / issue summary (Opus 5.5) | up to 40 posts ≈ 16k input + ≈ 5k output incl. thinking | ≈ $0.16 each (reserved up to $0.38 before the call) |
+| Classification (flash-lite, batches of 20) | ~3,500 input + ~2,200 output tokens per batch (thinking tokens, if any, add to output) | ≈ $0.21 per 1,000 mentions; ≈ 285k tokens |
+| Embeddings (feedback only) | ~100 tokens per post | ≈ $0.02 per 1,000 posts |
+| Merge checks | ≤ 40 pairs, ≤ 1 round per product per 6 h, cached | ≤ ≈ $0.008 per round; ≤ ≈ $1/month per active product |
+| Pro at its full 15,000 mentions | as above | ≈ $4–5 / month; ≈ 6M of the plan's 8M tokens |
+| Scale at its full 50,000 mentions | as above | ≈ $13–15 / month; ≈ 20M of the plan's 30M tokens |
+| Spike explanation / issue summary | ≤ 40 posts ≈ 16k input + ~2k output | ≈ $0.007 on flash-lite, ≈ $0.02 on 3.8 flash |
 
-- Every call is reserved at its upper bound (estimated input at 3 characters per token, plus the full output allowance) and settled at actual usage.
-- Cached results (same text, context, model and prompt version) cost nothing.
-- Invalid answers and refusals are still billed for the tokens the provider reports.
-- Before enabling SignalForge credits, the founder sets `ai_global_budget` and `AI_SIGNALFORGE_ENABLED=true`. Neither has been done.
+- Every call is reserved at its upper bound and settled at reported usage; embeddings are settled at an estimate (Gemini returns no token count for them).
+- Cached results cost nothing. Invalid answers and refusals still bill the tokens the provider reports.
+- Neither the operator global limit (`ai_global_budget`) nor `SIGNALFORGE_AI_ENABLED=true` has been set: nothing has been spent.
+- The developer agent costs SignalForge nothing in model usage: routines bill the customer's Claude subscription.
 
 ## Variable costs (assumptions to validate in M2–M4)
 

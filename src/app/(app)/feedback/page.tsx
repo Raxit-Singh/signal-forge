@@ -1,12 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { BarChart3, ExternalLink, PackagePlus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getActiveProduct, hasRole, requireWorkspace } from "@/lib/server/session";
 import { workspaceAvailability } from "@/lib/server/ai/gateway";
 import { categoryLabel } from "@/lib/ai/cluster";
+import type { PriorityResult } from "@/lib/ai/priority";
 import type { FeedbackCategory } from "@/lib/ai/types";
+import { isValidTimeZone } from "@/lib/analytics/buzz";
 import { integrationInfo } from "@/lib/domain/integrations";
 import { formatCount } from "@/lib/format";
 import { EmptyState, PageHeader } from "@/components/page";
@@ -15,23 +18,40 @@ import { ActionForm } from "@/components/ai/action-form";
 import { InvestigationResult, type InvestigationView } from "@/components/ai/investigation-result";
 import { classifyNowAction, summarizeClusterAction } from "@/app/actions/ai";
 import { setClusterStatusAction } from "@/app/actions/feedback";
+import { AgentIssueControls } from "@/components/agent/issue-controls";
+import { FeedbackTrendChart, SentimentChart, type FeedbackDay } from "./feedback-charts";
 
 export const metadata: Metadata = { title: "Feedback Intelligence" };
 
 const nameOf = (id: string) => integrationInfo(id as never)?.name.replace(/ \/ Stack Exchange$/, "") ?? id;
-const SENTIMENT_ORDER = ["negative", "mixed", "neutral", "positive", "uncertain"] as const;
-const SENTIMENT_COLOR: Record<string, string> = {
-  negative: "var(--negative)", mixed: "var(--warning)", neutral: "var(--muted-foreground)", positive: "var(--positive)", uncertain: "var(--border)",
-};
 const PRIORITY_TONE = { critical: "negative", high: "negative", medium: "warning", low: "neutral" } as const;
+const PRIORITIES = ["critical", "high", "medium", "low"] as const;
 const STATUS_LABEL: Record<string, string> = { open: "Open", acknowledged: "Acknowledged", resolved: "Resolved", dismissed: "Dismissed" };
+const TREND_LABEL: Record<string, string> = { new: "New this week", worsening: "Worsening", growing: "Growing", steady: "Steady", declining: "Declining" };
+const AGENT_CATEGORIES = ["bug_report", "feature_request", "complaint", "usability_complaint", "performance_issue", "security_concern"];
 
 type Cluster = {
   id: string; category: FeedbackCategory; title: string; report_count: number; unique_reporters: number | null;
-  platforms: string[]; sentiment: string | null; suggested_priority: keyof typeof PRIORITY_TONE | null; confidence: number | null;
-  first_detected_at: string | null; last_detected_at: string | null; status: string;
+  platforms: string[]; sentiment: string | null; suggested_priority: (typeof PRIORITIES)[number] | null; confidence: number | null;
+  first_detected_at: string | null; last_detected_at: string | null; status: string; priority_score: number | null;
+  priority_evidence: PriorityResult["evidence"] | null; algorithm: string;
 };
 type Member = { id: string; title: string | null; content: string | null; source: string; source_url: string; published_at: string; author_display: string | null };
+
+function Bars({ items, label }: { items: Array<{ label: string; value: number }>; label: string }) {
+  const max = Math.max(1, ...items.map((i) => i.value));
+  if (items.every((i) => i.value === 0)) return <p className="text-[13px] text-muted-foreground">Nothing classified in this period.</p>;
+  return (
+    <ul className="grid gap-2" aria-label={label}>
+      {items.map((i) => (
+        <li key={i.label} className="grid gap-1">
+          <div className="flex justify-between gap-2 text-xs"><span className="truncate">{i.label}</span><span className="tabular text-muted-foreground">{formatCount(i.value)}</span></div>
+          <div className="h-1.5 rounded bg-muted" aria-hidden><div className="h-1.5 rounded bg-[var(--feedback-feature)]" style={{ width: `${(i.value / max) * 100}%` }} /></div>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export default async function FeedbackPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
   const { workspace } = await requireWorkspace();
@@ -47,32 +67,49 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
     );
   }
   const showClosed = (await searchParams).status === "all";
+  const cookieTz = (await cookies()).get("sf_tz")?.value;
+  const tz = cookieTz && isValidTimeZone(cookieTz) ? cookieTz : "UTC";
   const supabase = await createClient();
   const now = new Date();
   const since = new Date(now.getTime() - 30 * 86_400_000).toISOString();
-  const base = () => supabase.from("mentions").select("id", { count: "exact", head: true }).eq("product_id", product.id).eq("dedup_kind", "original");
+  const head = () => supabase.from("mentions").select("id", { count: "exact", head: true }).eq("product_id", product.id).eq("dedup_kind", "original");
 
-  const [ai, classifiedRes, waitingRes, testRes, clustersRes, invRes, ...sentimentRes] = await Promise.all([
+  const [ai, daysRes, waitingRes, testRes, clustersRes, invRes, sourcesRes, compRes, generalRes] = await Promise.all([
     workspaceAvailability(createAdminClient(), workspace.id),
-    base().eq("processing_status", "classified").gte("published_at", since),
-    base().eq("processing_status", "filtered").in("relevance_status", ["relevant", "pending", "user_relevant"]),
-    base().eq("processing_status", "classified").like("ai_model", "test:%"),
+    supabase.rpc("feedback_daily", { p_product_id: product.id, p_from: since, p_to: now.toISOString(), p_tz: tz }),
+    head().eq("processing_status", "filtered").in("relevance_status", ["relevant", "pending", "user_relevant"]),
+    head().eq("processing_status", "classified").like("ai_model", "test:%"),
     supabase.from("feedback_clusters")
-      .select("id, category, title, report_count, unique_reporters, platforms, sentiment, suggested_priority, confidence, first_detected_at, last_detected_at, status")
+      .select("id, category, title, report_count, unique_reporters, platforms, sentiment, suggested_priority, confidence, first_detected_at, last_detected_at, status, priority_score, priority_evidence, algorithm")
       .eq("product_id", product.id).in("status", showClosed ? ["open", "acknowledged", "resolved", "dismissed"] : ["open", "acknowledged"])
-      .order("report_count", { ascending: false }).order("last_detected_at", { ascending: false }).limit(50),
+      .order("priority_score", { ascending: false, nullsFirst: false }).order("report_count", { ascending: false }).limit(50),
     supabase.from("ai_investigations").select("subject_key, status, report, error, model, completed_at").eq("product_id", product.id).eq("kind", "cluster_summary"),
-    ...SENTIMENT_ORDER.map((s) => base().eq("processing_status", "classified").gte("published_at", since).eq("sentiment", s).neq("ai_about_product", "no")),
+    supabase.from("mentions").select("source").eq("product_id", product.id).eq("dedup_kind", "original").eq("processing_status", "classified")
+      .neq("ai_about_product", "no").in("feedback_category", AGENT_CATEGORIES.concat(["pricing_complaint"]))
+      .gte("published_at", since).limit(5000),
+    head().eq("processing_status", "classified").eq("feedback_category", "competitor_comparison").gte("published_at", since),
+    head().eq("processing_status", "classified").in("feedback_category", ["general_discussion", "other"]).gte("published_at", since),
   ]);
+  const days = ((daysRes.data ?? []) as Array<Record<string, number | string>>).map((d) => ({
+    day: String(d.day), classified: Number(d.classified), unclassified: Number(d.unclassified), positive: Number(d.positive),
+    negative: Number(d.negative), neutral: Number(d.neutral), mixed: Number(d.mixed), uncertain: Number(d.uncertain),
+    bugs: Number(d.bugs), features: Number(d.features), complaints: Number(d.complaints), praise: Number(d.praise), questions: Number(d.questions),
+  }));
+  const sum = (k: keyof (typeof days)[number]) => days.reduce((a, d) => a + Number(d[k]), 0);
   const clusters = (clustersRes.data ?? []) as Cluster[];
+  const open = clusters.filter((c) => c.status === "open" || c.status === "acknowledged");
   const summaries = new Map((invRes.data ?? []).map((i) => [i.subject_key as string, i as unknown as InvestigationView]));
   const testLabels = (testRes.count ?? 0) > 0;
   const canAct = hasRole(workspace.role, "member");
+  const platformCounts = new Map<string, number>();
+  for (const r of sourcesRes.data ?? []) platformCounts.set(r.source as string, (platformCounts.get(r.source as string) ?? 0) + 1);
+  const trending = open.filter((c) => ["worsening", "growing"].includes(c.priority_evidence?.observed.trend ?? "")).slice(0, 5);
+  const emerging = open.filter((c) => c.priority_evidence?.observed.trend === "new").slice(0, 5);
 
   // Evidence for each issue (members, newest first).
   const ids = clusters.map((c) => c.id);
   const { data: memberRows } = ids.length
-    ? await supabase.from("feedback_cluster_members").select("cluster_id, mention_id, similarity").in("cluster_id", ids).limit(2000)
+    ? await supabase.from("feedback_cluster_members").select("cluster_id, mention_id").in("cluster_id", ids).limit(2000)
     : { data: [] };
   const mentionIds = [...new Set((memberRows ?? []).map((m) => m.mention_id as string))];
   const { data: mentionRows } = mentionIds.length
@@ -83,52 +120,120 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
     .map((m) => mentionById.get(m.mention_id as string)).filter((m): m is Member => !!m)
     .sort((a, b) => b.published_at.localeCompare(a.published_at));
 
-  const sentiments = SENTIMENT_ORDER.map((s, i) => ({ label: s, value: sentimentRes[i]?.count ?? 0 }));
-  const sentimentTotal = sentiments.reduce((a, s) => a + s.value, 0);
+  const classifiedTotal = sum("classified");
+  const unclassifiedTotal = sum("unclassified");
 
   return (
     <>
       <PageHeader
         title="Feedback Intelligence"
-        description={<>Bug reports, feature requests and complaints about {product.name}, grouped into issues with the posts behind them.</>}
+        description={<>Bug reports, feature requests and complaints about {product.name}, grouped into prioritised issues with the posts behind them · last 30 days · days in {tz}</>}
       />
       <div className="grid gap-6">
         <Card>
           <CardContent className="flex flex-wrap items-center gap-x-4 gap-y-2 p-4 text-[13px]" data-testid="classification-status">
             {ai.ok
-              ? <Badge tone={ai.kind === "test" ? "warning" : "positive"}>{ai.kind === "test" ? "Test classifier (not AI)" : "AI classification on"}</Badge>
-              : <Badge tone="neutral">AI classification off</Badge>}
-            <span><span className="font-medium tabular">{formatCount(classifiedRes.count ?? 0)}</span> mentions classified (last 30 days)</span>
+              ? <Badge tone={ai.kind === "test" ? "warning" : "positive"}>{ai.kind === "test" ? "Test classifier (not AI)" : "SignalForge Intelligence on"}</Badge>
+              : <Badge tone="neutral">SignalForge Intelligence off</Badge>}
+            <span><span className="font-medium tabular">{formatCount(classifiedTotal)}</span> mentions classified (last 30 days)</span>
             <span><span className="font-medium tabular">{formatCount(waitingRes.count ?? 0)}</span> waiting</span>
-            {!ai.ok && <span className="text-muted-foreground">{ai.message} <Link href="/settings/ai" className="underline underline-offset-2">AI settings</Link></span>}
+            {!ai.ok && <span className="text-muted-foreground">{ai.message} <Link href="/settings/ai" className="underline underline-offset-2">Details</Link></span>}
             {ai.ok && hasRole(workspace.role, "admin") && (waitingRes.count ?? 0) > 0 && (
               <ActionForm action={classifyNowAction} fields={{ workspaceId: workspace.id, productId: product.id }} label="Classify now" pendingLabel="Starting…" className="ml-auto" />
             )}
           </CardContent>
         </Card>
 
-        {sentimentTotal > 0 && (
+        <section aria-labelledby="fb-kpis" className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          <h2 id="fb-kpis" className="sr-only">Feedback in numbers</h2>
+          {([
+            ["Actionable issues", open.length],
+            ["Bug reports", sum("bugs")],
+            ["Feature requests", sum("features")],
+            ["Complaints", sum("complaints")],
+            ["Positive feedback", sum("praise")],
+          ] as const).map(([l, v]) => (
+            <Card key={l} className="grid min-w-0 gap-0.5 p-3" data-testid="feedback-kpi">
+              <span className="text-xs text-muted-foreground">{l}</span>
+              <span className="text-xl font-semibold tabular">{formatCount(v)}</span>
+            </Card>
+          ))}
+        </section>
+        {(classifiedTotal > 0 || unclassifiedTotal > 0) && (
+          <p className="-mt-3 text-xs text-muted-foreground">
+            Counts are classified mentions only (issues: currently open or acknowledged). {formatCount(unclassifiedTotal)} mention{unclassifiedTotal === 1 ? "" : "s"} in this
+            period {unclassifiedTotal === 1 ? "isn't" : "aren't"} classified yet; the charts show {unclassifiedTotal === 1 ? "it" : "them"} separately.
+            {testLabels && " Includes test-classifier labels (keyword heuristic, not AI)."}
+          </p>
+        )}
+
+        {days.length > 0 && (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Sentiment toward {product.name}</CardTitle>
+                <CardDescription>About the product itself, not a post&apos;s general tone. Posts judged not to be about {product.name} are left out.</CardDescription>
+              </CardHeader>
+              <CardContent><SentimentChart days={days as FeedbackDay[]} /></CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Bugs, feature requests and complaints</CardTitle>
+                <CardDescription>Classified mentions per day.</CardDescription>
+              </CardHeader>
+              <CardContent><FeedbackTrendChart days={days as FeedbackDay[]} /></CardContent>
+            </Card>
+          </div>
+        )}
+
+        <div className="grid gap-4 md:grid-cols-3">
           <Card>
-            <CardHeader>
-              <CardTitle>Sentiment toward {product.name} · last 30 days</CardTitle>
-              <CardDescription>
-                Sentiment about the product itself, not the general tone of a post. Low-confidence labels count as uncertain; posts the
-                classifier judged not to be about {product.name} are left out.{testLabels && " Includes test-classifier labels (keyword heuristic, not AI)."}
-              </CardDescription>
-            </CardHeader>
+            <CardHeader><CardTitle>Feedback categories</CardTitle></CardHeader>
             <CardContent>
-              <div className="flex h-2 overflow-hidden rounded" aria-hidden>
-                {sentiments.filter((s) => s.value > 0).map((s) => (
-                  <div key={s.label} style={{ width: `${(s.value / sentimentTotal) * 100}%`, background: SENTIMENT_COLOR[s.label] }} />
-                ))}
-              </div>
-              <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs" aria-label="Sentiment breakdown">
-                {sentiments.map((s) => (
-                  <li key={s.label}><span className="capitalize">{s.label}</span> <span className="tabular text-muted-foreground">{formatCount(s.value)} · {Math.round((s.value / sentimentTotal) * 100)}%</span></li>
-                ))}
-              </ul>
+              <Bars label="Feedback categories" items={[
+                { label: "Bug reports", value: sum("bugs") }, { label: "Feature requests", value: sum("features") },
+                { label: "Complaints", value: sum("complaints") }, { label: "Praise", value: sum("praise") },
+                { label: "Questions", value: sum("questions") }, { label: "Competitor comparisons", value: compRes.count ?? 0 },
+                { label: "General discussion / other", value: generalRes.count ?? 0 },
+              ]} />
             </CardContent>
           </Card>
+          <Card>
+            <CardHeader><CardTitle>Where feedback comes from</CardTitle><CardDescription>Bugs, requests and complaints by platform.</CardDescription></CardHeader>
+            <CardContent>
+              <Bars label="Platform distribution" items={[...platformCounts.entries()].sort((a, b) => b[1] - a[1]).map(([p, n]) => ({ label: nameOf(p), value: n }))} />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle>Issue priority</CardTitle><CardDescription>Open and acknowledged issues.</CardDescription></CardHeader>
+            <CardContent>
+              <Bars label="Priority distribution" items={PRIORITIES.map((p) => ({ label: p[0]!.toUpperCase() + p.slice(1), value: open.filter((c) => c.suggested_priority === p).length }))} />
+            </CardContent>
+          </Card>
+        </div>
+
+        {(trending.length > 0 || emerging.length > 0) && (
+          <div className="grid gap-4 md:grid-cols-2">
+            {([["Trending issues", trending, "trending"], ["Recently emerging", emerging, "emerging"]] as const).map(([t, list, id]) => (
+              <Card key={id}>
+                <CardHeader><CardTitle>{t}</CardTitle></CardHeader>
+                <CardContent>
+                  {list.length === 0 ? <p className="text-[13px] text-muted-foreground">None right now.</p> : (
+                    <ul className="grid gap-1.5 text-[13px]" data-testid={`issues-${id}`}>
+                      {list.map((c) => (
+                        <li key={c.id} className="flex flex-wrap items-center gap-2">
+                          <a href={`#issue-${c.id}`} className="underline-offset-2 hover:underline">{c.title}</a>
+                          <span className="text-xs text-muted-foreground">
+                            {c.priority_evidence?.observed.last_7_days ?? 0} posts this week vs {c.priority_evidence?.observed.previous_7_days ?? 0} the week before
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         )}
 
         <section aria-labelledby="issues" className="grid gap-3">
@@ -139,29 +244,34 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
             </Link>
           </div>
           <p className="text-xs text-muted-foreground">
-            Related posts grouped by category and wording (not by a model). An issue needs at least two independent reports: reposts,
-            duplicates and repeat posts by the same author count once. Priority is a suggestion from report count, category and sentiment.
+            Posts describing the same problem or request are grouped, even when worded differently. An issue needs at least two
+            independent reports: reposts, duplicates and repeat posts by the same author count once. Priority weighs severity,
+            independent reporters (not raw mention count), trend, recurrence and confidence; each issue shows what was measured
+            and what the AI inferred.
           </p>
           {clusters.length === 0 ? (
             <EmptyState icon={BarChart3} title="No grouped issues yet">
               {ai.ok
                 ? "Issues appear once at least two people report the same thing. New mentions are classified every few minutes."
-                : "Issues are built from classified mentions. Turn on AI classification in AI settings to start."}
+                : "Issues are built from classified mentions, which need SignalForge Intelligence."}
             </EmptyState>
           ) : (
             <ul className="grid gap-3" aria-label="Issues">
               {clusters.map((c) => {
                 const members = membersOf(c.id);
                 const summary = summaries.get(c.id);
+                const ev = c.priority_evidence;
                 return (
-                  <li key={c.id}>
+                  <li key={c.id} id={`issue-${c.id}`}>
                     <Card className="grid gap-2 p-4 text-[13px]" data-testid="feedback-issue">
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge tone="info">{categoryLabel(c.category)}</Badge>
-                        {c.suggested_priority && <Badge tone={PRIORITY_TONE[c.suggested_priority]}>Suggested priority: {c.suggested_priority}</Badge>}
+                        {c.suggested_priority && <Badge tone={PRIORITY_TONE[c.suggested_priority]}>Priority: {c.suggested_priority}</Badge>}
+                        {ev && <Badge tone="neutral">{TREND_LABEL[ev.observed.trend]}</Badge>}
                         {c.status !== "open" && <Badge tone="neutral">{STATUS_LABEL[c.status]}</Badge>}
                         <span className="ml-auto text-xs text-muted-foreground">
-                          {c.confidence !== null && `Confidence ${Math.round(c.confidence * 100)}%`}
+                          {c.algorithm === "semantic_v1" ? "Grouped by meaning" : "Grouped by wording"}
+                          {c.confidence !== null && ` · confidence ${Math.round(c.confidence * 100)}%`}
                         </span>
                       </div>
                       <h3 className="font-medium">{c.title}</h3>
@@ -173,6 +283,30 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
                         {c.last_detected_at && `, latest ${c.last_detected_at.slice(0, 10)}`}
                         {c.sentiment && ` · mostly ${c.sentiment}`}
                       </p>
+                      {ev && (
+                        <details className="text-xs" data-testid="priority-evidence">
+                          <summary className="cursor-pointer text-muted-foreground">Why this priority</summary>
+                          <div className="mt-1 grid gap-2 sm:grid-cols-2">
+                            <div>
+                              <p className="font-medium">Observed in collected posts</p>
+                              <ul className="list-disc pl-4 text-muted-foreground">
+                                <li>{ev.observed.independent_reporters} independent reporters, {ev.observed.mentions} posts</li>
+                                <li>{ev.observed.last_7_days} posts in the last 7 days, {ev.observed.previous_7_days} the week before</li>
+                                <li>{ev.observed.recurring ? `Recurring: ${ev.observed.weeks_active} different weeks` : `Active in ${ev.observed.weeks_active} week${ev.observed.weeks_active === 1 ? "" : "s"}`}</li>
+                                <li>{Math.round(ev.observed.negative_share * 100)}% of classified posts negative</li>
+                              </ul>
+                            </div>
+                            <div>
+                              <p className="font-medium">Inferred by AI{testLabels ? " (test classifier)" : ""}</p>
+                              <ul className="list-disc pl-4 text-muted-foreground">
+                                <li>Severity: {ev.inferred.severity}{ev.inferred.severity !== "unknown" && ` (${Object.entries(ev.inferred.severity_votes).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${k}`).join(", ")})`}</li>
+                                {ev.inferred.area && <li>Affected area: {ev.inferred.area}</li>}
+                                <li>Confidence: {Math.round(ev.inferred.confidence * 100)}%</li>
+                              </ul>
+                            </div>
+                          </div>
+                        </details>
+                      )}
                       <ul className="grid gap-1 border-l-2 pl-3" aria-label="Supporting posts">
                         {members.slice(0, 3).map((m) => <Evidence key={m.id} m={m} />)}
                       </ul>
@@ -187,7 +321,7 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
                         <div className="flex flex-wrap items-center gap-1">
                           {(!summary || summary.status === "failed") && (
                             <ActionForm action={summarizeClusterAction} fields={{ workspaceId: workspace.id, clusterId: c.id, force: summary ? "true" : "false" }}
-                              label={summary ? "Try summary again" : "Summarize with AI"} pendingLabel="Requesting…" variant="ghost" />
+                              label={summary ? "Try summary again" : "Summarize"} pendingLabel="Requesting…" variant="ghost" />
                           )}
                           {(["acknowledged", "resolved", "dismissed", "open"] as const).filter((s) => s !== c.status).map((s) => (
                             <ActionForm key={s} action={setClusterStatusAction} fields={{ workspaceId: workspace.id, clusterId: c.id, status: s }}
@@ -195,6 +329,7 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
                           ))}
                         </div>
                       )}
+                      {canAct && AGENT_CATEGORIES.includes(c.category) && <AgentIssueControls workspaceId={workspace.id} clusterId={c.id} />}
                     </Card>
                   </li>
                 );

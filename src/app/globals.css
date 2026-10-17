@@ -37,6 +37,14 @@
   --chart-6: oklch(0.55 0.1 200);
   --chart-7: oklch(0.6 0.17 15);
   --chart-8: oklch(0.5 0.03 260);
+  /* Feedback charts (validated for colour-vision deficiency, light surface):
+     sentiment is diverging (orange ↔ blue, gray midpoint); feedback lines are categorical. */
+  --sentiment-negative: oklch(0.62 0.17 42);
+  --sentiment-neutral: oklch(0.65 0.01 260);
+  --sentiment-positive: oklch(0.56 0.13 250);
+  --feedback-bug: oklch(0.62 0.18 42);
+  --feedback-feature: oklch(0.56 0.12 245);
+  --feedback-complaint: oklch(0.6 0.13 165);
 
   --radius: 0.4rem;
 }
@@ -70,6 +78,12 @@
   --chart-6: oklch(0.7 0.09 200);
   --chart-7: oklch(0.72 0.15 15);
   --chart-8: oklch(0.65 0.02 260);
+  --sentiment-negative: oklch(0.66 0.16 45);
+  --sentiment-neutral: oklch(0.55 0.01 260);
+  --sentiment-positive: oklch(0.64 0.12 250);
+  --feedback-bug: oklch(0.64 0.16 45);
+  --feedback-feature: oklch(0.58 0.12 255);
+  --feedback-complaint: oklch(0.66 0.12 165);
 }
 
 @theme inline {

@@ -1,39 +1,48 @@
-// Whether a workspace's AI provider can run, and why not (pure).
+// Whether SignalForge Intelligence can run, and why not (pure).
+//
+// SignalForge Intelligence is SignalForge's own AI (SYSTEM A): customers don't
+// connect a provider. It runs when the operator has configured it:
+//   SIGNALFORGE_AI_ENABLED=true, SIGNALFORGE_AI_PROVIDER=gemini,
+//   SIGNALFORGE_GEMINI_API_KEY, SIGNALFORGE_AI_MODEL (a model with a known price),
+// plus a global monthly limit row (checked in the database at every reservation)
+// and a plan with an AI allowance. In development a workspace can opt into the
+// test classifier instead.
 
 import { mockAllowed } from "./mock.ts";
+import { PRICES } from "./pricing.ts";
 
-export interface ConnectionRow {
-  provider: "signalforge" | "anthropic" | "openai" | "gemini";
-  status: "unverified" | "valid" | "invalid" | "revoked";
-  default_model: string | null;
-  secret_id: string | null;
-  is_default: boolean;
-}
-
-/** Marker stored as default_model on the SignalForge connection to select the test classifier (development only). */
+/** Marker stored on the workspace's SignalForge connection row to select the test classifier (development only). */
 export const TEST_CLASSIFIER = "test-classifier";
 
-export type Availability =
-  | { ok: true; kind: "test" | "signalforge" | "byok"; provider: ConnectionRow["provider"] }
-  | { ok: false; reason: "no_provider" | "credits_not_enabled" | "not_verified" | "invalid_key" | "model_missing"; message: string };
-
-export function pickConnection(rows: ConnectionRow[]): ConnectionRow | null {
-  return rows.find((r) => r.is_default) ?? rows[0] ?? null;
+export interface IntelEnv {
+  NODE_ENV?: string;
+  VERCEL_ENV?: string;
+  SIGNALFORGE_AI_ENABLED?: string;
+  SIGNALFORGE_AI_PROVIDER?: string;
+  SIGNALFORGE_GEMINI_API_KEY?: string;
+  SIGNALFORGE_AI_MODEL?: string;
+  SIGNALFORGE_AI_DEEP_MODEL?: string;
+  SIGNALFORGE_EMBEDDING_MODEL?: string;
 }
 
-export function availability(conn: ConnectionRow | null, env: Record<string, string | undefined>): Availability {
-  if (!conn) return { ok: false, reason: "no_provider", message: "No AI provider is set up for this workspace." };
-  if (conn.provider === "signalforge") {
-    if (conn.default_model === TEST_CLASSIFIER && mockAllowed(env)) return { ok: true, kind: "test", provider: "signalforge" };
-    if (env.AI_SIGNALFORGE_ENABLED === "true" && env.ANTHROPIC_API_KEY) return { ok: true, kind: "signalforge", provider: "signalforge" };
-    return { ok: false, reason: "credits_not_enabled", message: "SignalForge AI credits aren't switched on yet. Nothing is classified and nothing is charged." };
+export type Availability =
+  | { ok: true; kind: "test" | "gemini"; models: { cheap: string; deep: string; embedding: string | null } }
+  | { ok: false; reason: "disabled" | "not_configured" | "unpriced_model"; message: string };
+
+export function intelligenceAvailability(env: IntelEnv, testClassifierSelected: boolean): Availability {
+  if (testClassifierSelected && mockAllowed(env)) {
+    return { ok: true, kind: "test", models: { cheap: "mock-classifier", deep: "mock-classifier", embedding: "mock-embedding" } };
   }
-  if (conn.status === "invalid" || conn.status === "revoked" || !conn.secret_id) {
-    return { ok: false, reason: "invalid_key", message: "The saved API key was rejected by the provider. Replace it to resume AI analysis." };
+  if (env.SIGNALFORGE_AI_ENABLED !== "true") {
+    return { ok: false, reason: "disabled", message: "SignalForge Intelligence isn't switched on yet. Mentions are collected as usual but not classified, and nothing is charged." };
   }
-  if (conn.status !== "valid") return { ok: false, reason: "not_verified", message: "Verify the API key before it is used." };
-  if ((conn.provider === "openai" || conn.provider === "gemini") && !conn.default_model) {
-    return { ok: false, reason: "model_missing", message: "Choose which model to use with this key." };
+  if ((env.SIGNALFORGE_AI_PROVIDER ?? "gemini") !== "gemini" || !env.SIGNALFORGE_GEMINI_API_KEY || !env.SIGNALFORGE_AI_MODEL) {
+    return { ok: false, reason: "not_configured", message: "SignalForge Intelligence isn't fully configured on this server." };
   }
-  return { ok: true, kind: "byok", provider: conn.provider };
+  const deep = env.SIGNALFORGE_AI_DEEP_MODEL || env.SIGNALFORGE_AI_MODEL;
+  const embedding = env.SIGNALFORGE_EMBEDDING_MODEL || null;
+  for (const m of [env.SIGNALFORGE_AI_MODEL, deep, ...(embedding ? [embedding] : [])]) {
+    if (!PRICES[m]) return { ok: false, reason: "unpriced_model", message: `The configured model "${m}" has no price in SignalForge's price table, so its cost can't be controlled.` };
+  }
+  return { ok: true, kind: "gemini", models: { cheap: env.SIGNALFORGE_AI_MODEL, deep, embedding } };
 }

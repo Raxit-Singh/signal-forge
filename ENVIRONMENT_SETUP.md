@@ -104,14 +104,33 @@ bash scripts/supabase-cli.sh db push
 - Credentials are kept in `~/.config/signalforge/supabase.env` (mode 600, outside the repo). They are passed to the CLI only as environment variables, never printed.
 - To revoke, delete the token in the Supabase dashboard and remove the file.
 
-### 3c. AI (optional; costs money)
+### 3c. SignalForge Intelligence — Gemini (optional; costs money; ask the founder first)
 
-- **SignalForge AI credits:** `ANTHROPIC_API_KEY` (server only) and `AI_SIGNALFORGE_ENABLED=true`, **plus** a monthly limit row:
-  `insert into public.ai_global_budget (monthly_limit_usd, note) values (<usd>, '<who/why>');`. Without the row nothing is spent, whatever the env says.
-  Each workspace is also capped by its plan's `monthly_ai_token_budget` (Free 0, Pro 8M, Scale 30M tokens).
-- **BYOK:** customers add their own Anthropic/OpenAI/Gemini key in Settings → AI. It is verified with a free model-list call; usage is billed to their key, optionally capped in tokens.
-- **Test classifier (development only):** Settings → AI → "Use test classifier". It is a keyword heuristic behind the full pipeline, makes no calls, costs nothing, and its output is labelled as test output. It is unavailable when `NODE_ENV=production` or on Vercel preview/production.
-- Classification runs every 5 minutes from the scheduler tick (only for workspaces whose AI can run), or straight away with "Classify now" on the Feedback page.
+SignalForge pays for this; customers never connect an AI provider for it.
+
+1. Create a Gemini API key in Google AI Studio (paid tier) and set the server-only variables (see `.env.example`):
+   `SIGNALFORGE_AI_ENABLED=true`, `SIGNALFORGE_AI_PROVIDER=gemini`, `SIGNALFORGE_GEMINI_API_KEY`, `SIGNALFORGE_AI_MODEL`
+   (e.g. `gemini-3.1-flash-lite`), optionally `SIGNALFORGE_AI_DEEP_MODEL` and `SIGNALFORGE_EMBEDDING_MODEL` (`gemini-embedding-2`).
+   Model ids must exist in `src/lib/ai/pricing.ts`; a model without a known price is refused.
+2. Set the operator's monthly limit (nothing is spent without it):
+   `insert into public.ai_global_budget (monthly_limit_usd, note) values (<usd>, '<who/why>');`
+3. Each workspace is also capped by its plan's `monthly_ai_token_budget` (Free 0, Pro 8M, Scale 30M tokens). Every call is reserved before it is made and settled after.
+4. AI relevance runs in **shadow mode**: it never changes `relevance_status` or the mention allowance. Review precision/recall in Settings → SignalForge Intelligence before deciding otherwise.
+
+**Test classifier (development only):** Settings → SignalForge Intelligence → "Use test classifier". A keyword heuristic with hashed-word embeddings, no calls, no cost, labelled as test output; unavailable when `NODE_ENV=production` or on Vercel preview/production.
+
+### 3d. Developer agent — Claude connector, GitHub App, routines
+
+**Claude connector (MCP).** Nothing to configure server-side except a public HTTPS `NEXT_PUBLIC_SITE_URL` (Claude can't reach localhost). Customers add `<site>/api/mcp` as a custom connector in Claude and approve in SignalForge. Endpoints: `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`, `/api/oauth/{register,token,revoke}`, `/oauth/authorize`.
+
+**GitHub App** (repository authorization; separate from `GITHUB_TOKEN`):
+1. Create a GitHub App: permissions **Metadata: read, Contents: read, Pull requests: read** only; no webhook needed.
+2. Setup URL: `<site>/api/github/callback`; enable **"Request user authorization (OAuth) during installation"** (SignalForge uses the install-time user token to prove the installer can access the installation); callback URL the same.
+3. Generate a private key; set `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY` (PEM, `\n` for newlines).
+
+**Claude Code routine** (optional, per customer, on their Claude plan): created by the customer at claude.ai/code/routines with the prompt shown in Settings → Developer agent; they paste the API trigger URL and token. The token is encrypted (`credential_secrets`, purpose `agent`).
+
+**Development:** `/api/dev/mock-routine/<trig_id>/fire` stands in for Claude's fire endpoint (404 in production builds); browser tests use it.
 
 ## 4. Local development
 
