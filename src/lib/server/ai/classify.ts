@@ -1,0 +1,201 @@
+import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  batchPosts, classificationCacheKey, productContextHash, toPosts,
+} from "@/lib/ai/pipeline";
+import {
+  classificationPrompt, classificationSchema, labelsToApply, validateClassification, type ProductContext, type ValidClassification,
+} from "@/lib/ai/prompts";
+import { AiError } from "@/lib/ai/types";
+import { emitEvent } from "@/lib/server/collection/monitor";
+import { budgetedCall, cacheGet, cachePut, resolveAi, type ResolvedAi } from "./gateway";
+
+/** Classification attempts per mention before it is marked failed (labels stay empty, nothing else changes). */
+const MAX_ATTEMPTS = 3;
+/** Mentions one job classifies (newest first). */
+const JOB_LIMIT = 200;
+
+export interface ClassifySummary {
+  status: "done" | "unavailable" | "disabled" | "budget";
+  message?: string;
+  classified: number;
+  cached: number;
+  failed: number;
+  calls: number;
+}
+
+export async function productContext(admin: SupabaseClient, productId: string): Promise<(ProductContext & { workspaceId: string }) | null> {
+  const { data: p } = await admin.from("products").select("id, workspace_id, name, description").eq("id", productId).maybeSingle();
+  if (!p) return null;
+  const { data: aliases } = await admin.from("product_aliases").select("term").eq("product_id", productId).eq("enabled", true).limit(50);
+  return {
+    workspaceId: p.workspace_id as string,
+    name: p.name as string,
+    description: (p.description as string | null) ?? null,
+    keywords: [...new Set((aliases ?? []).map((a) => a.term as string))],
+  };
+}
+
+interface Row {
+  id: string;
+  source: string;
+  title: string | null;
+  content: string | null;
+  content_hash: string | null;
+  ai_attempts: number;
+}
+
+/**
+ * Classifies a product's unclassified mentions (relevance hint, product-targeted
+ * sentiment, feedback category). Writes only AI columns and classification
+ * history; relevance_status (and so the mention allowance) and every analytics
+ * table are untouched, so a failure here never changes analytics. Manual
+ * corrections are never overwritten.
+ */
+export async function classifyProduct(admin: SupabaseClient, productId: string, limit = JOB_LIMIT): Promise<ClassifySummary> {
+  const summary: ClassifySummary = { status: "done", classified: 0, cached: 0, failed: 0, calls: 0 };
+  const product = await productContext(admin, productId);
+  if (!product) return { ...summary, status: "unavailable", message: "Product not found." };
+
+  const { data: settings } = await admin.from("ai_settings").select("auto_classify").eq("workspace_id", product.workspaceId).maybeSingle();
+  if (settings && settings.auto_classify === false) return { ...summary, status: "disabled" };
+
+  const ai = await resolveAi(admin, product.workspaceId);
+  if ("ok" in ai) return { ...summary, status: "unavailable", message: ai.message };
+
+  const { data: rows, error } = await admin
+    .from("mentions")
+    .select("id, source, title, content, content_hash, ai_attempts")
+    .eq("product_id", productId)
+    .eq("processing_status", "filtered")
+    .eq("dedup_kind", "original")
+    .in("relevance_status", ["relevant", "pending", "user_relevant"])
+    .lt("ai_attempts", MAX_ATTEMPTS)
+    .order("discovered_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(`load mentions: ${error.message}`);
+  const mentions = ((rows ?? []) as Row[]).filter((m) => `${m.title ?? ""}${m.content ?? ""}`.trim());
+  if (!mentions.length) return summary;
+
+  const ctxHash = productContextHash(product);
+  const model = ai.client.modelFor("cheap");
+  const keyOf = new Map(mentions.map((m) => [m.id, classificationCacheKey({
+    workspaceId: product.workspaceId, productContextHash: ctxHash, model, title: m.title, content: m.content, contentHash: m.content_hash,
+  })]));
+
+  // Cached answers (same text, same context, same model and prompt) cost nothing.
+  const cache = await cacheGet(admin, [...keyOf.values()]);
+  const fromCache: ValidClassification[] = [];
+  const todo: Row[] = [];
+  for (const m of mentions) {
+    const hit = cache.get(keyOf.get(m.id)!) as Omit<ValidClassification, "id"> | undefined;
+    if (hit) fromCache.push({ ...hit, id: m.id });
+    else todo.push(m);
+  }
+  const manual = await manualDimensions(admin, mentions.map((m) => m.id));
+  await applyResults(admin, ai, product.workspaceId, fromCache, manual, model);
+  summary.cached = fromCache.length;
+  summary.classified += fromCache.length;
+
+  for (const batch of batchPosts(todo)) {
+    const { posts, idMap } = toPosts(batch);
+    const { system, user } = classificationPrompt(product, posts);
+    let results: ValidClassification[];
+    let missing: string[];
+    try {
+      const out = await budgetedCall(admin, ai, { workspaceId: product.workspaceId, productId }, {
+        purpose: "classify", tier: "cheap", system, user, schema: classificationSchema, schemaName: "classification",
+        maxTokens: 120 + posts.length * 120, mockInput: { posts },
+      });
+      summary.calls++;
+      const v = validateClassification(out.output, posts.map((p) => p.id));
+      results = v.results.map((r) => ({ ...r, id: idMap.get(r.id)! }));
+      missing = v.missing.map((id) => idMap.get(id)!);
+    } catch (e) {
+      if (e instanceof AiError && e.kind === "budget") {
+        summary.status = "budget";
+        summary.message = e.message;
+        break;
+      }
+      if (e instanceof AiError && (e.kind === "invalid_output" || e.kind === "refused" || e.kind === "bad_request")) {
+        // This batch can't be classified as sent: count an attempt for each mention and move on.
+        await bumpAttempts(admin, batch);
+        summary.failed += batch.length;
+        continue;
+      }
+      throw e; // rate limits / outages: the job is retried or deferred
+    }
+    await applyResults(admin, ai, product.workspaceId, results, manual, model);
+    await cachePut(admin, product.workspaceId, "classify", model, results.map((r) => ({ key: keyOf.get(r.id)!, output: { ...r, id: undefined } })));
+    summary.classified += results.length;
+    const missed = batch.filter((m) => missing.includes(m.id));
+    await bumpAttempts(admin, missed);
+    summary.failed += missed.length;
+  }
+
+  if (summary.classified > 0) await emitEvent(admin, product.workspaceId, productId, "ai", { classified: summary.classified });
+  return summary;
+}
+
+async function manualDimensions(admin: SupabaseClient, ids: string[]): Promise<Map<string, Set<string>>> {
+  const out = new Map<string, Set<string>>();
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data } = await admin.from("mention_classifications").select("mention_id, dimension")
+      .in("mention_id", ids.slice(i, i + 200)).eq("classifier", "manual").in("dimension", ["sentiment", "category"]);
+    for (const r of data ?? []) {
+      const s = out.get(r.mention_id as string) ?? new Set<string>();
+      s.add(r.dimension as string);
+      out.set(r.mention_id as string, s);
+    }
+  }
+  return out;
+}
+
+async function applyResults(admin: SupabaseClient, ai: ResolvedAi, workspaceId: string, results: ValidClassification[], manual: Map<string, Set<string>>, model: string) {
+  if (!results.length) return;
+  const classifier = ai.classifier(model);
+  const now = new Date().toISOString();
+  const history: Array<Record<string, unknown>> = [];
+  await Promise.all(results.map(async (r) => {
+    const l = labelsToApply(r);
+    const keep = manual.get(r.id) ?? new Set<string>();
+    const patch: Record<string, unknown> = {
+      ai_about_product: r.aboutProduct, ai_reason: r.reason || null, ai_model: classifier, ai_classified_at: now, processing_status: "classified",
+    };
+    if (!keep.has("sentiment")) Object.assign(patch, { sentiment: l.sentiment, sentiment_confidence: l.sentimentConfidence });
+    if (!keep.has("category")) Object.assign(patch, { feedback_category: l.category, category_confidence: l.categoryConfidence });
+    const { error } = await admin.from("mentions").update(patch).eq("id", r.id).eq("workspace_id", workspaceId);
+    if (error) console.error(`[ai] mention update failed (${error.code ?? "db"})`);
+    const base = { workspace_id: workspaceId, mention_id: r.id, classifier, rationale: r.reason || null };
+    history.push(
+      { ...base, dimension: "relevance", label: r.aboutProduct, confidence: null },
+      { ...base, dimension: "sentiment", label: r.sentiment, confidence: r.sentimentConfidence },
+      { ...base, dimension: "category", label: r.category, confidence: r.categoryConfidence },
+    );
+  }));
+  const { error } = await admin.from("mention_classifications").insert(history);
+  if (error) console.error(`[ai] classification history not written (${error.code ?? "db"})`);
+}
+
+async function bumpAttempts(admin: SupabaseClient, rows: Row[]) {
+  await Promise.all(rows.map((m) => admin.from("mentions").update({
+    ai_attempts: m.ai_attempts + 1,
+    ...(m.ai_attempts + 1 >= MAX_ATTEMPTS ? { processing_status: "failed" } : {}),
+  }).eq("id", m.id)));
+}
+
+/** Products with mentions waiting for classification, in workspaces whose AI can run. */
+export async function productsAwaitingClassification(admin: SupabaseClient, limit = 50): Promise<Array<{ productId: string; workspaceId: string }>> {
+  const { data } = await admin
+    .from("mentions")
+    .select("product_id, workspace_id")
+    .eq("processing_status", "filtered")
+    .eq("dedup_kind", "original")
+    .in("relevance_status", ["relevant", "pending", "user_relevant"])
+    .lt("ai_attempts", MAX_ATTEMPTS)
+    .order("discovered_at", { ascending: false })
+    .limit(2000);
+  const seen = new Map<string, string>();
+  for (const r of data ?? []) if (!seen.has(r.product_id as string)) seen.set(r.product_id as string, r.workspace_id as string);
+  return [...seen.entries()].slice(0, limit).map(([productId, workspaceId]) => ({ productId, workspaceId }));
+}

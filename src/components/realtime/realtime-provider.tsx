@@ -17,7 +17,7 @@ export interface WorkspaceEvent {
   id: number;
   workspace_id: string;
   product_id: string | null;
-  kind: "mentions" | "monitoring" | "backfill" | "usage" | "spikes" | "resync";
+  kind: "mentions" | "monitoring" | "backfill" | "usage" | "spikes" | "ai" | "resync";
   payload: Record<string, unknown>;
   created_at: string;
 }

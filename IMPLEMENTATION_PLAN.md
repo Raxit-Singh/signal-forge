@@ -103,7 +103,7 @@ Implemented on live SQL over deduplicated mentions (originals only) rather than 
 Daily aggregation job (idempotent recompute per day/product/source), charts (24h/7d/30d/90d/custom, per-platform filter), growth with zero-denominator handling, source distribution, unique authors, engagement, share of voice, experimental virality score with factor breakdown, spike detection (rolling median/MAD baseline + minimum counts), event markers.
 **Acceptance:** every displayed metric reconciles with stored rows (property tests on the aggregation).
 
-### M4 AI intelligence
+### M4 AI intelligence — *implemented 2026-10-17; tested with fake providers and the test classifier, no live model calls; migration not yet applied to dev* (see PROGRESS.md)
 Provider abstraction (Claude, OpenAI, Gemini), BYOK validation call, budget + quota checks before each call, caching by content hash, staged pipeline (rules → dedup → cheap classifier → clustering → deep analysis on demand), product-targeted sentiment, feedback categories, clusters with evidence, spike explanations that cite mentions or say "insufficient data". Prompt-injection hardening: content passed as quoted data, no tool access, outputs validated by schema.
 **Acceptance:** every AI output links to evidence; AI failures leave analytics untouched.
 

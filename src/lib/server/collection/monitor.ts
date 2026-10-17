@@ -607,7 +607,7 @@ async function updateArrival(
 }
 
 /** Workspace-scoped change signal for live dashboards (counts only; coalesced in the database). */
-export async function emitEvent(admin: SupabaseClient, workspaceId: string, productId: string | null, kind: "mentions" | "monitoring" | "backfill" | "usage" | "spikes", payload: Record<string, unknown> = {}) {
+export async function emitEvent(admin: SupabaseClient, workspaceId: string, productId: string | null, kind: "mentions" | "monitoring" | "backfill" | "usage" | "spikes" | "ai", payload: Record<string, unknown> = {}) {
   const { error } = await admin.rpc("svc_emit_workspace_event", { p_workspace_id: workspaceId, p_product_id: productId, p_kind: kind, p_payload: payload });
   if (error) console.error(`[events] not emitted (${error.code ?? "db"})`);
 }

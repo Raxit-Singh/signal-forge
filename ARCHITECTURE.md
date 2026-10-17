@@ -116,6 +116,16 @@ Chosen per product at onboarding (Since launch — launch date required —, 7 /
 
 `workspace_events` is in the `supabase_realtime` publication; postgres_changes applies each subscriber's RLS (`has_workspace_role(workspace_id, 'viewer')`), so a member only ever receives their own workspace's events, and events carry counts only (no mention text, credentials or prices). `RealtimeProvider` (in the app layout, keyed by workspace) subscribes with the user's token (re-set on token refresh, dropped on sign-out), ignores other products' events, and refreshes server components debounced (1.5 s, ≥ 4 s apart) — pages re-read authoritative data through RLS. Recovery: a catch-up refresh 2.5 s after first connect (events between render and subscription), one refresh after any reconnect, after a tab was hidden > 30 s and on `online`; while disconnected, a refresh every 60 s (visible tabs only). The Mentions page holds refreshes on older pages and shows "X new mentions found — View latest" (counted through RLS), keeping filters.
 
+### AI intelligence (Milestone 4)
+- **Pure modules (`src/lib/ai`):** prompts and schemas, the pipeline (stage gates, batching, cache keys, evidence selection), clustering, pricing, provider adapters, and the test classifier.
+- **Server (`src/lib/server/ai`):**
+  - `gateway`: resolves the workspace's provider, decrypts BYOK keys, and wraps each call in reserve → call → settle/release.
+  - `classify`: writes AI columns and classification history only.
+  - `clusters`: reconciles issues with stored decisions.
+  - `investigate`: evidence-cited analyses.
+- **Jobs:** `ai.classify` is scheduled every 5 minutes by the tick and also runs after "Classify now". `ai.investigate` runs right after a request, through the queue.
+- **Failure isolation:** AI never writes `relevance_status`, the mention allowance or analytics tables. A failed model call leaves those untouched and marks only the affected mentions or analysis.
+
 ## Data model
 
 Migrations: `supabase/migrations/2026101400000{1..7}_*.sql` (7 = collection: scans, rate-limit buckets, source health, scheduler, ingest) `202610150000{01..03}` (M2.5 platforms; monitoring v2 + cost control; M3 analytics functions) and `202610160000{01..06}` (automatic monitoring: rankings, interval changes, plan search cap, mention pagination index; engagement fix; keyword coverage — SQL first-5 sync retired, `apply_query_groups` disables every unplanned row; retry key includes the failure count so a failed check's quicker retry isn't swallowed by the interval bucket; 05 = Free/Pro/Scale plans, keyword allowance trigger, billing periods, mention usage periods, billable metering, overflow queue, usage RPCs, scheduler priority and allowance pause, paid budget context, keyword conflict columns; 06 = internal plan grants; 07 = Discovery Engine V2: arrival estimates, execution span/continuation columns, V2 activity columns, product history preference, backfill runs/tasks + scheduler, spike confidence + keyword spikes + spike evaluations + `keyword_series`, `workspace_events` + Realtime publication, `svc_enqueue_job`; 08 = coverage: partial wins over complete). All additive (08 replaces one function; no data changes).

@@ -14,6 +14,11 @@ import { CoverageNotice, EmptyState, PageHeader } from "@/components/page";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
 import { BuzzChart, PlatformFilter, TimeZoneSync } from "./buzz-client";
+import { ActionForm } from "@/components/ai/action-form";
+import { InvestigationResult, type InvestigationView } from "@/components/ai/investigation-result";
+import { explainSpikeAction } from "@/app/actions/ai";
+import { spikeSubject } from "@/lib/server/ai/investigate";
+import { hasRole } from "@/lib/server/session";
 
 export const metadata: Metadata = { title: "Buzz Analytics" };
 
@@ -48,6 +53,11 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
     console.error(`[buzz] ${e instanceof Error ? e.message : e}`);
     throw new Error("Buzz Analytics couldn't be loaded. Try again in a moment.");
   }
+
+  const { data: invs } = await supabase.from("ai_investigations").select("subject_key, status, report, error, model, completed_at")
+    .eq("product_id", product.id).eq("kind", "spike_explanation");
+  const explanations = new Map((invs ?? []).map((i) => [i.subject_key as string, i as unknown as InvestigationView]));
+  const canExplain = hasRole(workspace.role, "member");
 
   const sources = d.sources.map((id) => ({ id, name: nameOf(id) }));
   const nothingMonitored = d.sources.length === 0;
@@ -202,6 +212,19 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
                       <span className="text-muted-foreground">{s.keyword ? `Keyword “${s.keyword}”` : s.platform ? nameOf(s.platform) : "All platforms"}</span>
                       <span className="ml-auto tabular">{s.observed} mentions vs ~{Number(s.expected).toFixed(Number(s.expected) < 10 ? 1 : 0)} usual</span>
                       {s.note && <span className="w-full text-xs text-muted-foreground">{s.note}</span>}
+                      {!s.keyword && (() => {
+                        const key = spikeSubject({ granularity: s.granularity, platform: s.platform, periodStart: s.period_start });
+                        const inv = explanations.get(key);
+                        return (
+                          <div className="grid w-full gap-1.5">
+                            {inv && <InvestigationResult inv={inv} />}
+                            {canExplain && (!inv || inv.status === "failed") && (
+                              <ActionForm action={explainSpikeAction} label={inv ? "Try again" : "Explain this spike"} pendingLabel="Requesting…" variant="ghost"
+                                fields={{ workspaceId: workspace.id, productId: product.id, granularity: s.granularity, platform: s.platform ?? "", periodStart: new Date(s.period_start).toISOString(), force: inv ? "true" : "false" }} />
+                            )}
+                          </div>
+                        );
+                      })()}
                     </li>
                   ))}
                 </ul>

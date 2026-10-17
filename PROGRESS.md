@@ -16,6 +16,45 @@ Legend: ✅ verified by an automated check that ran · 🟡 written, not yet exe
 
 Test users created for the walk-through were removed afterwards via the app's own deletion path.
 
+## Milestone 4 — AI intelligence (2026-10-17)
+
+Built and tested against fake providers and the development-only test classifier. **No model was called** (no AI key is configured; SignalForge AI credits need the founder's approval, a global budget row and `AI_SIGNALFORGE_ENABLED=true`). Migration `20261017000001_ai_intelligence` (additive) passes the local database suite but is **not yet applied to the dev project**: `supabase db push` needs the database password, which only the founder can enter. The new browser tests (`e2e/ai.spec.ts`) need that migration and have not run yet.
+
+### What was built
+- **Providers:** Anthropic via the official SDK (`@anthropic-ai/sdk`): classification on `claude-haiku-5-5` (low effort, thinking off), on-demand analysis on `claude-opus-5-5` (medium effort, server-side refusal fallback). OpenAI and Gemini are BYOK only, over HTTPS, using the model the customer names. Every output is validated with the same Zod schema.
+- **BYOK validation:** a token-free model-list call on save and via "Verify". A rejected key is marked invalid; a network failure leaves it unverified. For OpenAI/Gemini the chosen model must be available to the key. A key rejected later during use stops AI work for the workspace.
+- **Budgets:** every call is reserved before it is made (`svc_ai_reserve`) and settled with actual usage (`svc_ai_settle`), or released if the provider was never reached.
+  - SignalForge credits need the plan's monthly token budget **and** an operator global USD budget (`ai_global_budget`; no row = nothing spent).
+  - BYOK has an optional monthly token cap.
+  - Abandoned reservations expire after an hour.
+- **Cache:** outputs keyed by content hash, product context, model and prompt version, per workspace (never shared).
+- **Staged pipeline:** rules → dedup (only originals) → cheap classifier (batched ≤20 posts) → deterministic clustering → deep analysis only when a user asks.
+- **Classification:**
+  - sentiment toward the product, not the post's mood;
+  - one of the 10 feedback categories;
+  - an advisory "about the product?" hint with a reason.
+  - Labels below 0.5 confidence show as uncertain or uncategorised.
+  - Manual corrections are never overwritten.
+  - AI never changes `relevance_status`, the mention allowance or analytics tables.
+- **Issues (Feedback page):** TF-IDF grouping per category, with product names excluded. An issue needs two or more independent reports (reposts, duplicates and repeat authors count once). Each issue shows its supporting posts, platforms, first/last dates, suggested priority and confidence. Team status (acknowledged/resolved/dismissed) survives re-clustering.
+- **Explanations:** spike explanations (Buzz) and issue summaries (Feedback) cite posts. Statements without valid citations are discarded. With fewer than 3 usable posts, the result is "insufficient data" and no model call is made. A failure marks only that analysis as failed.
+- **Prompt-injection hardening:** posts are passed as escaped JSON inside data blocks, with local ids (m1…/e1…) and no tools. Labels come from fixed lists, links are removed from model text, and output is rendered as plain text.
+- **UI:**
+  - AI settings: status, verify, provider choice, model field, usage by purpose, auto-classify, BYOK cap, dev-only test classifier.
+  - Feedback page: classification status, "Classify now", sentiment toward the product, issues with evidence, "Summarize with AI".
+  - Mentions: AI or test labels.
+  - Buzz: "Explain this spike".
+  - Realtime `ai` events refresh open pages.
+
+### Checks
+| Check | Result |
+|---|---|
+| `npm run test:unit` | ✅ 216/216 (adds 12 AI pipeline + 5 provider-adapter tests with a fake fetch) |
+| `npm run test:db` | ✅ 310/310 (adds 26: budget reservation and settlement, global and plan limits, unknown price, BYOK cap, stale reservations, RLS on settings/cache/budget/usage/analyses, no forged classifications or AI fields) |
+| typecheck, lint, `npm run build` | ✅ |
+| `e2e/ai.spec.ts` (2 tests) | 🟡 written; needs migration `20261017000001` on the dev project |
+| Live model calls | ⬜ none made (no key; needs authorization) |
+
 ## Discovery Engine V2 — pagination, adaptive monitoring, historical search, spikes, realtime (2026-10-16)
 
 Follow-up work committed first as `a12e21c` ("feat: internal testing grants and keyword cost simulations"; no secrets staged — none of the `.env.local` values occur in the diff). Migrations `20261016000007_discovery_engine_v2` and `20261016000008_coverage_partial_wins` (both additive / function replacements; no data changed) applied to the dev project after dry runs. No paid API calls (`PAID_SOURCES_ENABLED=false`); no budgets, prices or allowances changed.

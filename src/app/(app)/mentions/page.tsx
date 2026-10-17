@@ -15,6 +15,8 @@ import { Badge, Card } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
 import { StartScanButton } from "@/components/scan/scan-controls";
 import { cn } from "@/lib/utils";
+import { categoryLabel } from "@/lib/ai/cluster";
+import type { FeedbackCategory } from "@/lib/ai/types";
 import { ExpandableText, MentionFilters, NewMentionsNotice, RelevanceButtons } from "./mention-client";
 
 export const metadata: Metadata = { title: "Mentions" };
@@ -43,7 +45,16 @@ interface MentionRow {
   mention_type: string;
   link_target: string;
   community: string | null;
+  sentiment: string | null;
+  feedback_category: string | null;
+  ai_about_product: string | null;
+  ai_reason: string | null;
+  ai_model: string | null;
 }
+
+const SENTIMENT_TONE: Record<string, "positive" | "negative" | "warning" | "neutral"> = {
+  positive: "positive", negative: "negative", mixed: "warning", neutral: "neutral",
+};
 
 const STATUS_FILTER: Record<string, string[] | null> = {
   "": ["relevant", "pending", "user_relevant"],
@@ -129,7 +140,7 @@ export default async function MentionsPage({ searchParams }: { searchParams: Pro
   };
   const offset = (page - 1) * PAGE_SIZE;
   const { data, count, error } = await filteredQuery(
-    "id, source, source_url, title, content, language, author_display, published_at, published_at_estimated, discovered_at, engagement, matched_terms, relevance_status, dedup_kind, mention_type, link_target, community",
+    "id, source, source_url, title, content, language, author_display, published_at, published_at_estimated, discovered_at, engagement, matched_terms, relevance_status, dedup_kind, mention_type, link_target, community, sentiment, feedback_category, ai_about_product, ai_reason, ai_model",
   )
     .order("published_at", { ascending: false })
     .order("id", { ascending: false })
@@ -272,6 +283,17 @@ function MentionItem({ m, canEdit }: { m: MentionRow; canEdit: boolean }) {
           {m.dedup_kind === "repost" && <Badge title="Shares the same link as an earlier post">Repost</Badge>}
         </span>
       </div>
+      {m.ai_model && (
+        <div className="flex flex-wrap items-center gap-1 text-xs" data-testid="mention-ai-labels">
+          <span className="text-muted-foreground" title={m.ai_reason ?? undefined}>{m.ai_model.startsWith("test:") ? "Test labels:" : "AI labels:"}</span>
+          {m.sentiment && m.sentiment !== "uncertain" && <Badge tone={SENTIMENT_TONE[m.sentiment] ?? "neutral"}>{m.sentiment} toward product</Badge>}
+          {m.sentiment === "uncertain" && <Badge>sentiment unclear</Badge>}
+          {m.feedback_category && m.feedback_category !== "general_discussion" && <Badge tone="info">{categoryLabel(m.feedback_category as FeedbackCategory).replace(/s$/, "")}</Badge>}
+          {m.ai_about_product === "no" && (
+            <Badge tone="warning" title={m.ai_reason ?? undefined}>Possibly not about this product — review</Badge>
+          )}
+        </div>
+      )}
 
       {title && <h3 className="line-clamp-2 text-sm font-medium leading-snug" dir="auto" lang={m.language ?? undefined}>{title}</h3>}
       {body && <ExpandableText text={body} lang={m.language} />}

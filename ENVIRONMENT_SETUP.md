@@ -93,6 +93,15 @@ Paid collection needs **all three**: `API_DIRECT_API_KEY`, `PAID_SOURCES_ENABLED
 
 Prices change in one place: insert a row into `provider_pricing` with a new `effective_from`.
 
+### 3c. AI (optional; costs money)
+
+- **SignalForge AI credits:** `ANTHROPIC_API_KEY` (server only) and `AI_SIGNALFORGE_ENABLED=true`, **plus** a monthly limit row:
+  `insert into public.ai_global_budget (monthly_limit_usd, note) values (<usd>, '<who/why>');`. Without the row nothing is spent, whatever the env says.
+  Each workspace is also capped by its plan's `monthly_ai_token_budget` (Free 0, Pro 8M, Scale 30M tokens).
+- **BYOK:** customers add their own Anthropic/OpenAI/Gemini key in Settings → AI. It is verified with a free model-list call; usage is billed to their key, optionally capped in tokens.
+- **Test classifier (development only):** Settings → AI → "Use test classifier". It is a keyword heuristic behind the full pipeline, makes no calls, costs nothing, and its output is labelled as test output. It is unavailable when `NODE_ENV=production` or on Vercel preview/production.
+- Classification runs every 5 minutes from the scheduler tick (only for workspaces whose AI can run), or straight away with "Classify now" on the Feedback page.
+
 ## 4. Local development
 
 ```bash

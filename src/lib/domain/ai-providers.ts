@@ -1,5 +1,5 @@
 // AI provider catalog and key-shape checks. Shape checks only catch typos;
-// real validation (a minimal API call) happens server-side in Milestone 4.
+// real validation (a token-free model listing) happens server-side on save.
 
 export type AiProvider = "signalforge" | "anthropic" | "openai" | "gemini";
 export type ByokProvider = Exclude<AiProvider, "signalforge">;

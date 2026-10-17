@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
 import { Field, FormMessage, SubmitButton, useFormAction } from "@/components/ui/form";
 import { idle } from "@/lib/action-state";
-import { deleteAiKeyAction, saveAiKeyAction } from "@/app/actions/ai";
+import { deleteAiKeyAction, saveAiKeyAction, setDefaultAiProviderAction, verifyAiKeyAction } from "@/app/actions/ai";
+import { ActionForm } from "@/components/ai/action-form";
 import { cn } from "@/lib/utils";
 
 export interface ConnectionView {
@@ -15,6 +16,8 @@ export interface ConnectionView {
   keyHint: string | null;
   status: string;
   isDefault: boolean;
+  model?: string | null;
+  lastError?: string | null;
 }
 
 const BYOK = AI_PROVIDERS.filter((p) => p.provider !== "signalforge");
@@ -39,9 +42,18 @@ export function AiProviderPanel({
               <Badge tone={c.status === "valid" ? "positive" : c.status === "invalid" ? "negative" : "neutral"}>
                 {c.status === "unverified" ? "Not yet verified" : c.status}
               </Badge>
-              {c.isDefault && <Badge tone="accent">Default</Badge>}
+              {c.model && c.model !== "test-classifier" && <span className="font-mono text-xs text-muted-foreground">{c.model}</span>}
+              {c.model === "test-classifier" && <Badge tone="warning">Test classifier</Badge>}
+              {c.isDefault && <Badge tone="accent">In use</Badge>}
+              {c.lastError && c.status !== "valid" && <span className="basis-full text-xs text-negative">{c.lastError}</span>}
+              {canManage && c.provider !== "signalforge" && (
+                <ActionForm action={verifyAiKeyAction} fields={{ workspaceId, provider: c.provider }} label="Verify" pendingLabel="Checking…" variant="ghost" className="ml-auto" />
+              )}
+              {canManage && !c.isDefault && (
+                <ActionForm action={setDefaultAiProviderAction} fields={{ workspaceId, provider: c.provider }} label="Use this" variant="ghost" className={c.provider === "signalforge" ? "ml-auto" : undefined} />
+              )}
               {canManage && (
-                <form action={delAction} className="ml-auto">
+                <form action={delAction} className={c.provider === "signalforge" && c.isDefault ? "ml-auto" : undefined}>
                   <input type="hidden" name="workspaceId" value={workspaceId} />
                   <input type="hidden" name="provider" value={c.provider} />
                   <SubmitButton variant="ghost" size="sm" pendingLabel="Removing…">Remove</SubmitButton>
@@ -97,6 +109,19 @@ export function AiProviderPanel({
               </>
             }
           />
+          {provider !== "anthropic" && (
+            <Field
+              key={`${provider}-model`}
+              name="model"
+              label="Model"
+              autoComplete="off"
+              spellCheck={false}
+              defaultValue={existing?.model ?? ""}
+              placeholder={provider === "openai" ? "model id from your OpenAI account" : "model id from Google AI Studio"}
+              state={state}
+              hint="Used for classification and analyses. SignalForge checks that your key can use it; usage is billed by your provider at its prices (we can't estimate them, so usage is shown in tokens)."
+            />
+          )}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <ShieldCheck className="size-3.5" aria-hidden />

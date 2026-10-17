@@ -15,6 +15,11 @@ const serverSchema = z.object({
   // and an operator-set global budget row (api_budgets, scope 'global').
   API_DIRECT_API_KEY: z.string().optional(),
   PAID_SOURCES_ENABLED: z.enum(["true", "false"]).default("false"),
+  // SignalForge AI credits (Milestone 4). SERVER ONLY. Calls also need
+  // AI_SIGNALFORGE_ENABLED=true and an operator-set row in ai_global_budget.
+  // Customers' own keys (BYOK) don't use these.
+  ANTHROPIC_API_KEY: z.string().optional(),
+  AI_SIGNALFORGE_ENABLED: z.enum(["true", "false"]).default("false"),
 });
 
 let cached: z.output<typeof serverSchema> | null = null;

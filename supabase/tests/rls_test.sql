@@ -1123,6 +1123,75 @@ update public.mention_usage_periods set mentions_consumed = 0, exhausted_at = nu
 select t.ok((select cursor ->> 'since' from public.backfill_tasks where id = (select v from ids where k = 'bf_task')) is not null,
   'a paused task keeps its cursor');
 
+-- ===================================================================== AI (Milestone 4)
+-- Budgets are reserved before every model call: plan tokens + operator global USD budget for
+-- SignalForge credits, optional token cap for BYOK. Users can't touch any of it.
+create function t.ai_reserve(billed text, tokens bigint, micro bigint, ws_key text default 'ws_d') returns jsonb language sql as $$
+  select public.svc_ai_reserve((select v from ids where k = ws_key), null, case when billed = 'byok' then 'anthropic' else 'signalforge' end::public.ai_provider,
+    'claude-haiku-5-5', 'classify', billed, tokens, micro);
+$$;
+select t.ok(t.ai_reserve('signalforge', 100, 10) ->> 'reason' = 'plan_budget', 'Free plan has no SignalForge AI tokens');
+update public.subscriptions set plan_id = 'pro', status = 'active' where workspace_id = (select v from ids where k = 'ws_d');
+select t.ok(t.ai_reserve('signalforge', 100, 10) ->> 'reason' = 'global_budget_missing', 'no operator global AI budget → nothing is spent');
+insert into public.ai_global_budget (monthly_limit_usd, note) values (0.01, 'test');
+select t.ok(t.ai_reserve('signalforge', 100, null) ->> 'reason' = 'unknown_price', 'a call with an unknown price is refused for SignalForge credits');
+create temp table ai_res (k text primary key, id bigint);
+grant all on ai_res to service_role;
+insert into ai_res select 'r1', (t.ai_reserve('signalforge', 1000, 6000) ->> 'id')::bigint;
+select t.ok((select id from ai_res where k = 'r1') is not null, 'a call within plan and global budget is reserved');
+select t.ok(t.ai_reserve('signalforge', 1000, 6000) ->> 'reason' = 'global_budget', 'reservations count against the global budget before settlement');
+select public.svc_ai_release((select id from ai_res where k = 'r1'), 'network');
+insert into ai_res select 'r2', (t.ai_reserve('signalforge', 1000, 6000) ->> 'id')::bigint;
+select t.ok((select id from ai_res where k = 'r2') is not null, 'a released reservation frees the budget');
+select public.svc_ai_settle((select id from ai_res where k = 'r2'), 400, 100, 0, 90, true, null, null);
+select t.ok((select status = 'settled' and input_tokens = 400 and cost_microusd = 90 and success from public.ai_usage_records where id = (select id from ai_res where k = 'r2')),
+  'settlement records actual tokens and cost');
+select t.ok(private.ai_tokens_used((select v from ids where k = 'ws_d'), (select period_start from private.billing_period((select v from ids where k = 'ws_d'), now())), 'signalforge') = 500,
+  'settled usage counts actual tokens, not the reservation');
+select t.ok(t.ai_reserve('signalforge', 8000000, 10) ->> 'reason' = 'plan_budget', 'the plan''s monthly token budget is enforced');
+select public.svc_ai_settle((select id from ai_res where k = 'r2'), 1, 1, 0, 1, true, null, null);
+select t.ok((select input_tokens from public.ai_usage_records where id = (select id from ai_res where k = 'r2')) = 400, 'a settled record cannot be settled twice');
+-- BYOK
+select t.ok(t.ai_reserve('byok', 5000, null) ->> 'ok' = 'true', 'BYOK calls need no SignalForge budget (billed to the customer''s key)');
+insert into public.ai_settings (workspace_id, byok_monthly_token_cap) values ((select v from ids where k = 'ws_d'), 6000);
+select t.ok(t.ai_reserve('byok', 5000, null) ->> 'reason' = 'byok_cap', 'an optional BYOK token cap stops further calls');
+-- Abandoned reservations are released after an hour.
+update public.ai_usage_records set created_at = now() - interval '2 hours' where workspace_id = (select v from ids where k = 'ws_d') and status = 'reserved';
+select t.ok(t.ai_reserve('byok', 5000, null) ->> 'ok' = 'true', 'abandoned reservations stop counting after an hour');
+-- Investigations are unique per subject.
+insert into public.ai_investigations (workspace_id, product_id, kind, subject_key, status)
+values ((select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d'), 'spike_explanation', 'day|all|2026-09-05', 'insufficient_data');
+select t.throws(format($$insert into public.ai_investigations (workspace_id, product_id, kind, subject_key) values (%L, %L, 'spike_explanation', 'day|all|2026-09-05')$$,
+  (select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d')), 'one analysis per spike', 'duplicate');
+insert into public.ai_cache (cache_key, workspace_id, purpose, model, output)
+values (repeat('a', 64), (select v from ids where k = 'ws_d'), 'classify', 'claude-haiku-5-5', '{}');
+
+select t.as_user('00000000-0000-0000-0000-00000000000d');
+set role authenticated;
+select t.ok((select count(*) from public.ai_settings) = 1, 'members read their workspace''s AI settings');
+select t.ok((select count(*) from public.ai_investigations) = 1, 'members read analyses');
+select t.ok((select count(*) from public.ai_usage_records) >= 3, 'admins read AI usage');
+select t.throws($$select * from public.ai_cache$$, 'nobody reads the AI cache directly', 'permission denied');
+select t.throws($$select * from public.ai_global_budget$$, 'the global AI budget is not visible to customers', 'permission denied');
+select t.throws($$update public.ai_settings set byok_monthly_token_cap = null$$, 'AI settings are changed through the server only', 'permission denied');
+select t.throws(format($$select public.svc_ai_reserve(%L, null, 'signalforge', 'm', 'classify', 'signalforge', 1, 1)$$, (select v from ids where k = 'ws_d')),
+  'members cannot reserve AI budget', 'permission denied');
+select t.throws($$select public.svc_ai_settle(1, 0, 0, 0, 0, true, null, null)$$, 'members cannot settle AI usage', 'permission denied');
+select t.throws(format($$insert into public.mention_classifications (workspace_id, mention_id, dimension, label, classifier, created_by)
+  select workspace_id, id, 'sentiment', 'positive', 'anthropic:claude-haiku-5-5', auth.uid() from public.mentions where workspace_id = %L limit 1$$, (select v from ids where k = 'ws_d')),
+  'members cannot forge AI classifications', 'row-level security');
+select t.throws($$update public.mentions set ai_about_product = 'yes'$$, 'members cannot set AI fields on mentions', 'permission denied');
+select t.throws($$update public.ai_investigations set status = 'completed'$$, 'members cannot alter analyses', 'permission denied');
+reset role;
+select t.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+select t.ok((select count(*) from public.ai_settings where workspace_id = (select v from ids where k = 'ws_d')) = 0
+  and (select count(*) from public.ai_investigations where workspace_id = (select v from ids where k = 'ws_d')) = 0
+  and (select count(*) from public.ai_usage_records where workspace_id = (select v from ids where k = 'ws_d')) = 0,
+  'other workspaces see none of it');
+reset role;
+delete from public.ai_global_budget;
+
 -- ===================================================================== summary
 do $$
 declare passed int; failed int;

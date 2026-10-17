@@ -1,7 +1,8 @@
 // Stage 1–3 of the relevance pipeline (deterministic, no AI):
 //   keyword match → alias match → context filtering.
 // Every stored mention records which keywords matched and a confidence score.
-// AI relevance (Milestone 4) only refines items this stage lets through.
+// AI classification (lib/ai) only adds an advisory "about the product?" hint to
+// items this stage lets through; it never changes relevance_status.
 
 import type { AliasKind } from "../domain/aliases.ts";
 

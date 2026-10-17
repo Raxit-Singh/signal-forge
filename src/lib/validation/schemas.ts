@@ -106,6 +106,9 @@ export const aliasListSchema = z
 export const aiKeySchema = z.object({
   provider: z.enum(["anthropic", "openai", "gemini"]),
   apiKey: z.string().min(1, { error: "Paste your API key." }).max(400),
+  // OpenAI / Gemini: the model the key should use (as listed by the provider).
+  model: z.string().trim().max(100).regex(/^[A-Za-z0-9._:/-]*$/, { error: "Use the model id exactly as your provider lists it." }).optional()
+    .transform((v) => (v ? v : null)),
 });
 
 export const uuidSchema = z.uuid();

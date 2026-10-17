@@ -38,8 +38,8 @@ export default async function AiStep({ params }: { params: Promise<{ productId: 
           <CardHeader>
             <CardTitle className="flex items-center gap-1.5"><Sparkles className="size-4 text-primary" aria-hidden />SignalForge AI credits</CardTitle>
             <CardDescription>
-              Included in paid plans, with a monthly budget per plan. AI features arrive in a later release; nothing is
-              charged or processed yet.
+              Included in paid plans, with a monthly token budget per plan. Until SignalForge AI credits are switched on for
+              your workspace nothing is processed or charged; you can use your own API key instead at any time.
             </CardDescription>
           </CardHeader>
           <CardContent>
