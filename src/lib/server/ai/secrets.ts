@@ -14,7 +14,7 @@ export async function decryptKey(admin: SupabaseClient, workspaceId: string, sec
 }
 
 /** Encrypts and stores a workspace-bound credential; returns its id. */
-export async function storeSecret(admin: SupabaseClient, workspaceId: string, purpose: "agent", plaintext: string): Promise<string | null> {
+export async function storeSecret(admin: SupabaseClient, workspaceId: string, purpose: "agent" | "integration", plaintext: string): Promise<string | null> {
   const sealed = sealCredential(workspaceId, plaintext);
   const { data, error } = await admin.from("credential_secrets")
     .insert({ workspace_id: workspaceId, purpose, ciphertext: sealed.ciphertext, key_version: sealed.keyVersion })

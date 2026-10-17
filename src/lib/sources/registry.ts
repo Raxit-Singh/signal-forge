@@ -3,11 +3,14 @@ import { createGithubAdapter } from "./github.ts";
 import { hackerNews } from "./hackernews.ts";
 import { appStore, bluesky, dev } from "./official.ts";
 import { createStackExchangeAdapter } from "./stackexchange.ts";
+import { createGooglePlayAdapter } from "./google-play.ts";
+import { createDiscordAdapter } from "./discord.ts";
 import type { LegacySourceId, PaidSourceId, PublicSourceId, SourceAdapter, StreamSpec } from "./types.ts";
 import { createYoutubeAdapter } from "./youtube.ts";
 import { CAPS } from "./capabilities.ts";
 
 export interface SourceKeys {
+  discordBotToken?: string;
   githubToken?: string;
   stackExchangeKey?: string;
   youtubeApiKey?: string;
@@ -16,7 +19,7 @@ export interface SourceKeys {
 
 /** Milestone 2 sources (one stream, "default"; checkpoints always advance and gaps are recorded). */
 export const LEGACY_SOURCES: readonly LegacySourceId[] = ["hackernews", "github", "stackexchange", "youtube"];
-export const OFFICIAL_SOURCES = [...LEGACY_SOURCES, "bluesky", "dev", "app_store"] as const;
+export const OFFICIAL_SOURCES = [...LEGACY_SOURCES, "bluesky", "dev", "app_store", "google_play", "discord"] as const;
 export const PAID_SOURCES: readonly PaidSourceId[] = [
   "reddit", "x", "linkedin", "tiktok", "instagram", "facebook", "substack", "web", "news", "trustpilot",
 ];
@@ -31,6 +34,8 @@ export function createAdapters(keys: SourceKeys): Record<PublicSourceId, SourceA
     bluesky,
     dev,
     app_store: appStore,
+    google_play: createGooglePlayAdapter(),
+    discord: createDiscordAdapter(keys.discordBotToken || undefined),
     ...createApiDirectAdapters(keys.apiDirectKey || undefined),
   };
 }

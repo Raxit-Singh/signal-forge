@@ -9,6 +9,7 @@ import { AuthorizationError, getUser, requireWorkspaceRole } from "@/lib/server/
 import { refreshActivity } from "@/lib/server/collection/activity";
 import { resolveEnablement, syncOptimizedQueries } from "@/lib/server/collection/query-sync";
 import { getAdapters, paidCollectionEnabled } from "@/lib/server/collection/sources";
+import { connectedSources } from "@/lib/server/collection/connections";
 import { isLegacySource, isPaidSource, isPublicSource } from "@/lib/sources/registry";
 
 async function authorizeProduct(productId: string) {
@@ -16,7 +17,7 @@ async function authorizeProduct(productId: string) {
   if (!user) throw new AuthorizationError("Your session has expired. Sign in again.");
   const supabase = await createClient();
   const { data: product } = await supabase
-    .from("products").select("id, workspace_id, website_url, app_store_url, archived_at").eq("id", productId).maybeSingle();
+    .from("products").select("id, workspace_id, website_url, app_store_url, play_store_url, archived_at").eq("id", productId).maybeSingle();
   if (!product || product.archived_at) throw new AuthorizationError("Product not found.");
   await requireWorkspaceRole(product.workspace_id as string, "admin");
   return { user, supabase, product };
@@ -62,7 +63,8 @@ export async function setSourceEnabledAction(_: ActionState, formData: FormData)
       }
     }
     if (on) {
-      const e = resolveEnablement(getAdapters(), product as never, new Map([[platform, true]]), Number.POSITIVE_INFINITY, paidCollectionEnabled())
+      const connected = await connectedSources(createAdminClient(), productId, product.workspace_id as string);
+      const e = resolveEnablement(getAdapters(), product as never, new Map([[platform, true]]), Number.POSITIVE_INFINITY, paidCollectionEnabled(), connected)
         .find((x) => x.id === platform);
       if (e && !e.enabled) return failure(e.reason ?? "This source can't be enabled.");
     }

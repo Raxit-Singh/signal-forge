@@ -11,6 +11,7 @@ import { isLegacySource, PUBLIC_SOURCES } from "@/lib/sources/registry";
 import type { PublicSourceId } from "@/lib/sources/types";
 import { getCoverageSummary, type CoverageState } from "./status";
 import { getAdapters, paidCollectionEnabled } from "./sources";
+import { connectedSources } from "./connections";
 import { keywordAllowanceFor, resolveEnablement } from "./query-sync";
 import { applyKeywordAllowance } from "@/lib/sources/entitlements";
 
@@ -177,7 +178,7 @@ export async function getMonitoringOverview(productId: string, workspaceId: stri
   const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString().slice(0, 10);
 
   const [{ data: product }, { data: queries }, { data: execs }, { data: settings }, { data: boosts }, { data: aliases }, coverage, { data: activity }, { data: changes }, { data: ctx }, { data: alloc }] = await Promise.all([
-    sb.from("products").select("id, website_url, app_store_url, archived_at, workspace_id").eq("id", productId).maybeSingle(),
+    sb.from("products").select("id, website_url, app_store_url, play_store_url, archived_at, workspace_id").eq("id", productId).maybeSingle(),
     sb.from("monitoring_queries")
       .select("id, provider, params, enabled, last_success_at, next_run_at, interval_minutes, interval_reasons, coverage_confidence, consecutive_failures, last_saturated_at")
       .eq("product_id", productId).is("competitor_id", null),
@@ -210,7 +211,8 @@ export async function getMonitoringOverview(productId: string, workspaceId: stri
   const plans = new Map<PublicSourceId, PlatformKeywordPlan>();
   const planName = sc.plan_name ?? "current";
   const settingsMap = new Map((settings ?? []).map((s) => [s.platform as string, s.enabled as boolean]));
-  const enablement = new Map(resolveEnablement(adapters, product as never, settingsMap, allowance, paidCollectionEnabled()).map((e) => [e.id, e]));
+  const connected = await connectedSources(admin, productId, workspaceId);
+  const enablement = new Map(resolveEnablement(adapters, product as never, settingsMap, allowance, paidCollectionEnabled(), connected).map((e) => [e.id, e]));
   const coverageBy = new Map(coverage.sources.map((s) => [s.id, s]));
   const activityBy = new Map(((activity ?? []) as ActivityRow[]).map((r) => [r.platform, r]));
   const allKeywords = (aliases ?? []).map((a) => ({ term: a.term, kind: a.kind, isAmbiguous: a.is_ambiguous, contextTerms: a.context_terms ?? [] }));

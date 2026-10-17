@@ -9,6 +9,8 @@ import { SourceError } from "@/lib/sources/errors";
 import { selectExpansions, type ExpansionCandidate, type ExpansionHistory } from "@/lib/sources/expansion";
 import { keywordIntervalMinutes, rotationNextRun, type Rotation } from "@/lib/sources/keyword-plan";
 import { appStoreIds } from "@/lib/sources/official";
+import { playPackage } from "@/lib/sources/google-play";
+import { connectionFor, isConnectedSource } from "./connections";
 import { prepareIngest, type IngestItem } from "@/lib/sources/pipeline";
 import { isLegacySource, isPaidSource, isPublicSource, streamsOf } from "@/lib/sources/registry";
 import type { AliasRule } from "@/lib/sources/relevance";
@@ -310,6 +312,18 @@ export async function runMonitorQuery(
   try {
     const terms = (q.params?.terms ?? []).filter((t) => typeof t === "string" && t.trim()).slice(0, 10);
     const app = appStoreIds(ctx.app_store_url);
+    // Connected sources read the customer's own account: their connection (decrypted here, never logged).
+    let connection: { secret: string | null; config: Record<string, unknown> } | null = null;
+    let playPkg: string | null = null;
+    if (isConnectedSource(provider)) {
+      const c = await connectionFor(admin, provider, q.product_id, q.workspace_id);
+      if (!c) throw new SourceError("auth", `${adapter.name} isn't connected for this product.`);
+      connection = { secret: c.secret, config: c.config };
+      if (provider === "google_play") {
+        const { data: pr } = await admin.from("products").select("play_store_url").eq("id", q.product_id).maybeSingle();
+        playPkg = playPackage(pr?.play_store_url as string | null);
+      }
+    }
     const search = await searchWithEscalation(adapter, {
       terms: terms.length ? terms : [ctx.name],
       window: fetchWindow,
@@ -317,7 +331,7 @@ export async function runMonitorQuery(
       startPage: gap?.page,
       stream: q.stream === "default" ? undefined : q.stream,
       query: q.managed_by === "optimizer" ? q.query : undefined,
-      target: { websiteDomain: websiteDomain(ctx.website_url), appStoreId: app?.id ?? null, appStoreCountry: app?.country ?? null },
+      target: { websiteDomain: websiteDomain(ctx.website_url), appStoreId: app?.id ?? null, appStoreCountry: app?.country ?? null, playPackage: playPkg, connection },
     }, sctx, profile, capPages);
 
     // Selective comment expansion for platforms without global comment search.

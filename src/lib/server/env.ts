@@ -29,6 +29,10 @@ const serverSchema = z.object({
   GITHUB_APP_CLIENT_ID: z.string().optional(),
   GITHUB_APP_CLIENT_SECRET: z.string().optional(),
   GITHUB_APP_PRIVATE_KEY: z.string().optional(),
+  // Discord bot (Discord source): SignalForge's application. Customers install the bot into their server.
+  DISCORD_CLIENT_ID: z.string().optional(),
+  DISCORD_CLIENT_SECRET: z.string().optional(),
+  DISCORD_BOT_TOKEN: z.string().optional(),
   // SignalForge staff (comma-separated verified emails): the internal cost dashboard at /admin/costs.
   SIGNALFORGE_STAFF_EMAILS: z.string().default(""),
 });

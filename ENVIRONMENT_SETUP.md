@@ -201,3 +201,14 @@ Customers choose the period at onboarding (step 5) or on **Smart Monitoring → 
 ## Staff cost dashboard
 
 `SIGNALFORGE_STAFF_EMAILS` (comma-separated) lists the verified account emails that may open `/admin/costs`, an internal, read-only view of what SignalForge spends on Gemini and API Direct this month against the operator limits. Leave it empty in any environment where nobody should see it; non-staff get a 404.
+
+## Discord source (optional)
+
+Create an application at https://discord.com/developers/applications:
+1. **Bot** → reset/copy the token (`DISCORD_BOT_TOKEN`); turn on **Message Content Intent** (Discord requires approval once the bot is in 100+ servers). Leave "Public Bot" on so customers can add it.
+2. **OAuth2** → copy Client ID (`DISCORD_CLIENT_ID`) and Client Secret (`DISCORD_CLIENT_SECRET`); add the redirect `https://<your site>/api/discord/callback` and turn on **Requires OAuth2 Code Grant** (SignalForge confirms the server through the code exchange).
+3. Set the three variables and restart. Customers then use Integrations → "Add bot to Discord". The bot asks only for View Channels and Read Message History.
+
+## Google Play source
+
+Nothing to configure on the server. Each customer connects their own Play Console on the Integrations page with a Google Cloud service account JSON key invited in Play Console with "View app information", and sets the product's Google Play URL.

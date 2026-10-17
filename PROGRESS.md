@@ -16,6 +16,15 @@ Legend: ✅ verified by an automated check that ran · 🟡 written, not yet exe
 
 Test users created for the walk-through were removed afterwards via the app's own deletion path.
 
+## Connected sources: Google Play and Discord; App Store, Bluesky and DEV verified (2026-10-18)
+
+- **Verified live**: Apple App Store reviews (public feed: all 50 entries of a live app normalized), Bluesky and DEV (collected real mentions on 2026-10-17). Catalog now says "available".
+- **Google Play** (`src/lib/sources/google-play.ts`, *unverified — no Play Console to test with*): official Play Developer API `reviews.list` with a service account the customer creates and invites in Play Console ("View app information"); RS256 JWT bearer grant, read-only `androidpublisher` scope; one workspace connection, per-product package from the product's Play URL. Connecting checks the key locally, signs in to Google and (if a product has a Play URL) reads one review to prove access; the key is stored encrypted and never shown again. Google only returns reviews from about the last week.
+- **Discord** (`src/lib/sources/discord.ts`, *unverified — needs a Discord application*): SignalForge's bot, installed by a server admin through Discord's OAuth2 bot flow with **View Channels + Read Message History only** (permissions 66560). The callback trusts only the server returned by the **code exchange** (a guild id in the URL is ignored), bound to the user/workspace/product by signed state. Admins choose channels and mode ("every message" — counts toward the allowance — or "only keyword matches"). Bots, webhooks and system messages are skipped; messages link to themselves; replies keep their parent. If every message comes back without text, the run fails with "turn on the Message Content intent" instead of storing blanks. Searches only start once channels are chosen.
+- Connected sources are planned like product-level streams (`play:<package>`, `discord:<product>`); the monitor decrypts the connection only at fetch time. Disconnecting deletes the stored secret and stops the searches.
+- Tests: unit `connected.test.ts` (key validation, JWT signature verified with the public key, token exchange + paging, window filtering, error messages, Discord paging from the window's snowflake, skips, intent detection, planning); browser `e2e/connections.spec.ts` (bad keys refused and never stored; Discord channel state; no search without channels).
+- Known: in the full browser run (8.8 min, dev scheduler ticking in the background) two long tests timed out once and passed on re-run.
+
 ## Staff cost dashboard (2026-10-18)
 
 - `/admin/costs` for SignalForge staff only: verified accounts listed in `SIGNALFORGE_STAFF_EMAILS`; everyone else gets a 404 (title included). Read-only; limits are still changed by the operator.

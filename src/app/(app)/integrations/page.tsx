@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
-import { getActiveProduct, requireWorkspace } from "@/lib/server/session";
+import { getActiveProduct, hasRole, requireWorkspace } from "@/lib/server/session";
+import { discordConfig } from "@/lib/server/collection/manage-connections";
+import { playPackage } from "@/lib/sources/google-play";
+import { Button } from "@/components/ui/button";
+import { CardDescription } from "@/components/ui/primitives";
+import { DiscordChannels, Disconnect, GooglePlayConnect } from "./connections-client";
 import { getCoverageSummary, type CoverageState } from "@/lib/server/collection/status";
 import { integrationInfo } from "@/lib/domain/integrations";
 import { formatRelative, formatUtc } from "@/lib/format";
@@ -29,12 +34,24 @@ interface JobRow {
   scan_id: string | null;
 }
 
-export default async function IntegrationsPage() {
+const DISCORD_RESULT: Record<string, { ok: boolean; text: string }> = {
+  connected: { ok: true, text: "Discord connected. Choose the channels to read below." },
+  cancelled: { ok: false, text: "Discord setup was cancelled." },
+  expired: { ok: false, text: "That Discord setup link expired. Start again." },
+  denied: { ok: false, text: "Discord didn't confirm the installation. Add the bot again." },
+  forbidden: { ok: false, text: "Only workspace admins can connect Discord." },
+  not_configured: { ok: false, text: "Discord isn't configured on this server yet." },
+  invalid: { ok: false, text: "That Discord setup request wasn't valid." },
+  failed: { ok: false, text: "Couldn't finish connecting Discord. Try again." },
+};
+
+export default async function IntegrationsPage({ searchParams }: { searchParams: Promise<{ discord?: string }> }) {
   const { workspace } = await requireWorkspace();
+  const discordResult = DISCORD_RESULT[(await searchParams).discord ?? ""];
   const product = await getActiveProduct(workspace.id);
   const supabase = await createClient();
 
-  const [coverage, { data: health }, { data: jobs }] = await Promise.all([
+  const [coverage, { data: health }, { data: jobs }, { data: conns }, { data: productRow }] = await Promise.all([
     product ? getCoverageSummary(product.id) : null,
     supabase.from("source_health").select("provider, status, last_success_at, last_error_at, last_error, detail"),
     supabase
@@ -43,7 +60,14 @@ export default async function IntegrationsPage() {
       .eq("workspace_id", workspace.id)
       .order("created_at", { ascending: false })
       .limit(20),
+    supabase.from("integrations").select("provider, product_id, status, config, external_account, updated_at").eq("workspace_id", workspace.id).in("provider", ["google_play", "discord"]),
+    product ? supabase.from("products").select("play_store_url").eq("id", product.id).maybeSingle() : Promise.resolve({ data: null }),
   ]);
+  const canManage = hasRole(workspace.role, "admin");
+  const play = (conns ?? []).find((c) => c.provider === "google_play" && !c.product_id && c.status === "connected");
+  const disc = product ? (conns ?? []).find((c) => c.provider === "discord" && c.product_id === product.id && c.status === "connected") : undefined;
+  const dcfg = disc?.config as { guild_name?: string; channels?: Array<{ id: string; name: string }>; available_channels?: Array<{ id: string; name: string }>; mode?: "all" | "keywords" } | undefined;
+  const pkg = playPackage((productRow as { play_store_url?: string | null } | null)?.play_store_url);
 
   const healthBy = new Map((health ?? []).map((h) => [h.provider as string, h]));
   const live: Record<string, LiveStatus> = {};
@@ -66,6 +90,45 @@ export default async function IntegrationsPage() {
         description={<>Data sources SignalForge uses, what each can access, and their live status{product ? <> for {product.name}</> : null}.</>}
       />
       <div className="grid gap-6">
+        {discordResult && (
+          <p role={discordResult.ok ? "status" : "alert"} className={`rounded-md border px-3 py-2 text-[13px] ${discordResult.ok ? "border-positive/30 text-positive" : "border-negative/30 text-negative"}`}>{discordResult.text}</p>
+        )}
+        <Card data-testid="connected-sources">
+          <CardHeader>
+            <CardTitle>Your own accounts</CardTitle>
+            <CardDescription>Sources that read accounts you own. You authorize each one; SignalForge only reads, and you can disconnect at any time.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-6 md:grid-cols-2">
+            <section className="grid content-start gap-2" aria-labelledby="gp">
+              <div className="flex items-center gap-2"><h3 id="gp" className="text-[13px] font-semibold">Google Play reviews</h3>
+                {play ? <Badge tone="positive">Connected</Badge> : <Badge tone="neutral">Not connected</Badge>}</div>
+              {play ? (
+                <>
+                  <p className="text-[13px] text-muted-foreground">Reading as {play.external_account}.{product ? (pkg ? ` Collecting reviews of ${pkg} for ${product.name}.` : ` Add ${product.name}'s Google Play URL in product settings to collect its reviews.`) : ""}</p>
+                  {canManage && <Disconnect workspaceId={workspace.id} provider="google_play" label="Disconnect Google Play" />}
+                </>
+              ) : canManage ? <GooglePlayConnect workspaceId={workspace.id} /> : <p className="text-[13px] text-muted-foreground">A workspace admin can connect your Play Console.</p>}
+            </section>
+            <section className="grid content-start gap-2" aria-labelledby="dc">
+              <div className="flex items-center gap-2"><h3 id="dc" className="text-[13px] font-semibold">Discord{product ? ` for ${product.name}` : ""}</h3>
+                {disc ? <Badge tone={(dcfg?.channels?.length ?? 0) > 0 ? "positive" : "warning"}>{(dcfg?.channels?.length ?? 0) > 0 ? "Connected" : "Choose channels"}</Badge> : <Badge tone="neutral">Not connected</Badge>}</div>
+              {!product ? <p className="text-[13px] text-muted-foreground">Add a product first.</p>
+                : disc ? (
+                  <>
+                    <p className="text-[13px] text-muted-foreground">Server: {dcfg?.guild_name ?? disc.external_account}. The bot can only view channels and read history.</p>
+                    {canManage && <DiscordChannels workspaceId={workspace.id} productId={product.id} available={dcfg?.available_channels ?? []} chosen={(dcfg?.channels ?? []).map((c) => c.id)} mode={dcfg?.mode ?? "all"} />}
+                    {canManage && <Disconnect workspaceId={workspace.id} provider="discord" productId={product.id} label="Disconnect Discord" />}
+                  </>
+                ) : !discordConfig() ? <p className="text-[13px] text-muted-foreground">Discord isn&apos;t configured on this server yet.</p>
+                : canManage ? (
+                  <>
+                    <p className="text-[13px] text-muted-foreground">Add SignalForge&apos;s bot to your server (you need Manage Server there), then choose channels. It asks only for View Channels and Read Message History.</p>
+                    <div><Button asChild size="sm"><a href={`/api/discord/install?product=${product.id}`}>Add bot to Discord</a></Button></div>
+                  </>
+                ) : <p className="text-[13px] text-muted-foreground">A workspace admin can connect your Discord server.</p>}
+            </section>
+          </CardContent>
+        </Card>
         <IntegrationList live={live} />
 
         <Card>

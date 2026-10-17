@@ -4,7 +4,9 @@
 /** Free official sources from Milestone 2. */
 export type LegacySourceId = "hackernews" | "github" | "stackexchange" | "youtube";
 /** Free official sources added in Milestone 2.5. */
-export type OfficialSourceId = LegacySourceId | "bluesky" | "dev" | "app_store";
+export type OfficialSourceId = LegacySourceId | "bluesky" | "dev" | "app_store" | ConnectedSourceId;
+/** Official sources that read the customer's own account, through a connection they authorize. */
+export type ConnectedSourceId = "google_play" | "discord";
 /** Platforms collected through API Direct (paid, pay-as-you-go). */
 export type PaidSourceId =
   | "reddit" | "x" | "linkedin" | "tiktok" | "instagram" | "facebook" | "substack" | "web" | "news" | "trustpilot";
@@ -41,7 +43,13 @@ export interface SearchRequest {
   /** Pre-built query expression from the optimizer; adapters use it instead of building from `terms`. */
   query?: string;
   /** Product facts some sources need (Trustpilot domain, App Store app id). */
-  target?: { websiteDomain?: string | null; appStoreId?: string | null; appStoreCountry?: string | null };
+  target?: {
+    websiteDomain?: string | null; appStoreId?: string | null; appStoreCountry?: string | null;
+    /** Google Play package name (from the product's Play Store URL). */
+    playPackage?: string | null;
+    /** The customer's connection for connected sources: decrypted secret (if any) and its non-secret config. */
+    connection?: { secret: string | null; config: Record<string, unknown> } | null;
+  };
 }
 
 /** A source item in SignalForge's shape, before relevance filtering. */
@@ -217,6 +225,8 @@ export interface SourceAdapter {
   expandComments?(parents: ExpansionParent[], ctx: SourceContext, signal?: AbortSignal): Promise<SearchResult>;
   /** Whether the server has what this source needs (API key etc.). */
   configured(): Configured;
+  /** Reads the customer's own account: needs a connection they authorized (Integrations page). */
+  requiresConnection?: boolean;
   /** Bucket for a call; sources with per-endpoint quotas (YouTube search) return different buckets. */
   rateLimit(endpoint?: string): RateLimitPolicy;
   /** How long stored items may be kept, if the platform limits it. */

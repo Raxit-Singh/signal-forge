@@ -5,6 +5,7 @@ import { buildQueryGroups, resolveEnablement, type ProductRow } from "@/lib/sour
 import type { OptimizerKeyword } from "@/lib/sources/query-optimizer";
 import { serverEnv } from "@/lib/server/env";
 import { getAdapters, paidCollectionEnabled } from "./sources";
+import { connectedSources } from "./connections";
 
 /** Keywords per competitor, including its name (matches private.competitor_max_keywords()). */
 export const COMPETITOR_MAX_KEYWORDS = 3;
@@ -41,21 +42,22 @@ export async function keywordAllowanceFor(sb: SupabaseClient, productId: string,
 export async function syncOptimizedQueries(admin: SupabaseClient, productId: string): Promise<number> {
   const { data: product } = await admin
     .from("products")
-    .select("id, workspace_id, website_url, app_store_url, archived_at")
+    .select("id, workspace_id, website_url, app_store_url, play_store_url, archived_at")
     .eq("id", productId)
     .maybeSingle<ProductRow>();
   if (!product) return 0;
 
-  const [{ data: aliases }, { data: settingRows }, { data: ctx }] = await Promise.all([
+  const [{ data: aliases }, { data: settingRows }, { data: ctx }, connected] = await Promise.all([
     admin.from("product_aliases").select("term, kind, is_ambiguous, context_terms, enabled").eq("product_id", productId).eq("enabled", true),
     admin.from("product_source_settings").select("platform, enabled").eq("product_id", productId),
     admin.rpc("svc_schedule_context", { p_product_id: productId, p_platform: "reddit" }),
+    connectedSources(admin, productId, product.workspace_id),
   ]);
   const adapters = getAdapters();
   const settings = new Map((settingRows ?? []).map((r) => [r.platform as string, r.enabled as boolean]));
   const allowance = Number((ctx as { paid_allowance_usd?: number } | null)?.paid_allowance_usd ?? 0);
   const maxSearches = Number((ctx as { max_searches_per_platform?: number } | null)?.max_searches_per_platform ?? 2);
-  const enablement = product.archived_at ? [] : resolveEnablement(adapters, product, settings, allowance, paidCollectionEnabled());
+  const enablement = product.archived_at ? [] : resolveEnablement(adapters, product, settings, allowance, paidCollectionEnabled(), connected);
 
   const all: OptimizerKeyword[] = (aliases ?? []).map((a) => ({
     term: a.term, kind: a.kind, isAmbiguous: a.is_ambiguous, contextTerms: a.context_terms ?? [],
