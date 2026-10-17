@@ -8,3 +8,10 @@ export function stateSecret(): Buffer {
   if (!base) throw new Error("CREDENTIALS_ENCRYPTION_KEY is required for signed redirect state.");
   return Buffer.from(hkdfSync("sha256", Buffer.from(base, "base64"), Buffer.alloc(0), "signalforge:redirect-state:v1", 32));
 }
+
+/** Key for signing unsubscribe links (separate derivation from redirect state). */
+export function unsubscribeSecret(): Buffer {
+  const base = serverEnv().CREDENTIALS_ENCRYPTION_KEY;
+  if (!base) throw new Error("CREDENTIALS_ENCRYPTION_KEY is required for unsubscribe links.");
+  return Buffer.from(hkdfSync("sha256", Buffer.from(base, "base64"), Buffer.alloc(0), "signalforge:unsubscribe:v1", 32));
+}

@@ -1475,6 +1475,14 @@ select t.throws(format($$select public.svc_apply_subscription(%L, 'scale', 'acti
 reset role;
 update public.subscriptions set last_webhook_event_at = null where workspace_id = (select v from ids where k = 'ws_d');
 
+-- Email log: service role only.
+insert into public.email_log (workspace_id, recipient, kind, subject, status) values ((select v from ids where k = 'ws_d'), 'x@example.test', 'invitation', 'Join', 'skipped');
+select t.as_user('00000000-0000-0000-0000-00000000000d');
+set role authenticated;
+select t.throws($$select * from public.email_log$$, 'users cannot read the email log', 'permission denied');
+reset role;
+select t.ok(public.svc_purge_email_log() >= 0, 'email log purge runs for the service role');
+
 -- ===================================================================== summary
 do $$
 declare passed int; failed int;

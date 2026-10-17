@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { coverageRows, coveredShare, totals } from "@/lib/server/analytics/buzz";
 import { getCompetitorComparison } from "@/lib/server/analytics/competitors";
 import { integrationInfo } from "@/lib/domain/integrations";
+import { emailWeeklyReport } from "@/lib/server/email/reports";
 import { highlights, lastCompleteWeek, REPORT_VERSION, type PeriodNumbers, type ReportData } from "@/lib/reports/weekly";
 
 const sourceName = (id: string) => integrationInfo(id as never)?.name.replace(/ \/ Stack Exchange$/, "") ?? id;
@@ -141,7 +142,11 @@ export async function generateWeeklyReports(admin: SupabaseClient, now = new Dat
   for (const p of products ?? []) {
     if (done.has(p.id as string)) continue;
     try {
-      if (await generateReport(admin, p.id as string, "weekly", week, now)) n++;
+      const r = await generateReport(admin, p.id as string, "weekly", week, now);
+      if (r) {
+        n++;
+        await emailWeeklyReport(admin, r.id).catch((e) => console.error(`[reports] email ${r.id}: ${e instanceof Error ? e.message : e}`));
+      }
     } catch (e) {
       console.error(`[reports] product ${p.id}: ${e instanceof Error ? e.message : e}`);
     }

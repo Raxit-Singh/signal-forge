@@ -165,6 +165,7 @@ export async function tick(budgetMs: number): Promise<TickSummary> {
         purged = Number(n ?? 0);
         await admin.rpc("svc_purge_workspace_events");
         await admin.rpc("svc_ai_purge_cache");
+        await admin.rpc("svc_purge_email_log");
         for (const s of sourceSetup()) {
           if (!s.configured) await recordHealth(admin, s.id, { status: "not_configured", error: s.reason });
         }

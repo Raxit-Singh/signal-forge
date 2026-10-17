@@ -16,6 +16,17 @@ Legend: ✅ verified by an automated check that ran · 🟡 written, not yet exe
 
 Test users created for the walk-through were removed afterwards via the app's own deletion path.
 
+## Email (Resend) — built, not yet sent for real (2026-10-18)
+
+Migration `20261018000007`.
+- `sendEmail` posts to Resend's REST API (idempotency key per email) when `RESEND_API_KEY` and `EMAIL_FROM` are set; otherwise it records "skipped". Every attempt is logged in `email_log` (kind, recipient, subject, status, provider id — no bodies; service role only; purged after 90 days). Never throws: email is best effort.
+- **Invitations** are emailed on creation (the copyable link stays as a fallback).
+- **Weekly reports** are emailed after daily maintenance generates them, to members who haven't turned them off (`notification_preferences.weekly_report`, default on), once per person per report.
+- **Unsubscribe**: signed, non-expiring per-person/per-workspace links (HMAC key derived from the credentials key) in the footer and in `List-Unsubscribe` + `List-Unsubscribe-Post` headers (one-click, RFC 8058). GET only shows a confirmation button (mail scanners open links); POST unsubscribes. Settings → Account has the toggle.
+- Templates escape all user and post-derived text, keep subjects single-line, and include plain-text parts.
+- Tests: unit `email.test.ts` (3); DB +2 (→ 393); browser `e2e/email.spec.ts`.
+- **Not verified**: real delivery needs a Resend key and a verified sending domain.
+
 ## Stripe billing — built for test mode, not yet run against Stripe (2026-10-18)
 
 Migration `20261018000006`; `stripe@22.6.2` (pinned; API 2026-08-26.dahlia).

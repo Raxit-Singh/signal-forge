@@ -220,3 +220,9 @@ Test mode first:
 2. `node scripts/stripe-setup.ts` (dry run), then `node scripts/stripe-setup.ts --apply` — creates the Pro and Scale prices from the plans table and the billing portal configuration.
 3. Webhooks: locally `stripe listen --forward-to localhost:3000/api/stripe/webhook` prints a `whsec_…` secret for `STRIPE_WEBHOOK_SECRET`; deployed, add an endpoint `https://<site>/api/stripe/webhook` with events `checkout.session.completed`, `customer.subscription.created/updated/deleted/paused/resumed` and use its signing secret.
 4. Pay with test card 4242 4242 4242 4242. Going live repeats this with live keys (`--apply --live`) — only after the founder approves.
+
+## Email (Resend)
+
+1. Create a Resend account, add and verify a sending domain (DNS records), create an API key with sending access → `RESEND_API_KEY`.
+2. `EMAIL_FROM="SignalForge <reports@your-verified-domain>"`.
+3. Restart. Without both, emails are recorded as "skipped" in `email_log` and nothing is sent. Supabase Auth emails (sign-up, password reset) are separate: configure custom SMTP in Supabase (Resend provides SMTP) before real users.
