@@ -87,7 +87,7 @@ export function WorkspaceSwitcher({ current, workspaces }: { current: ShellWorks
 
 export function Sidebar({ current, workspaces }: { current: ShellWorkspace; workspaces: ShellWorkspace[] }) {
   return (
-    <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col gap-3 border-r bg-surface py-3 lg:flex">
+    <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col gap-3 border-r bg-surface py-3 lg:flex print:hidden">
       <div className="px-4 py-1"><Logo /></div>
       <div className="px-2"><WorkspaceSwitcher current={current} workspaces={workspaces} /></div>
       <SidebarNav />

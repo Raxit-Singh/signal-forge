@@ -273,7 +273,7 @@ export function Topbar(props: {
   unread: number;
 }) {
   return (
-    <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b bg-background/90 px-3 backdrop-blur sm:px-4">
+    <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b bg-background/90 px-3 backdrop-blur sm:px-4 print:hidden">
       <MobileNav current={props.current} workspaces={props.workspaces} />
       <ProductSwitcher products={props.products} activeId={props.activeProductId} />
       <GlobalSearch />

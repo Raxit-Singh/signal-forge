@@ -56,8 +56,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           />
         </Suspense>
         <main id="main" className="mx-auto w-full max-w-7xl flex-1 px-3 py-5 sm:px-6">
-          <div className="mb-1 flex justify-end"><LiveIndicator /></div>
-          <UsageBanner usage={usage} />
+          <div className="mb-1 flex justify-end print:hidden"><LiveIndicator /></div>
+          <div className="print:hidden"><UsageBanner usage={usage} /></div>
           {children}
         </main>
       </div>

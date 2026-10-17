@@ -16,6 +16,14 @@ Legend: ✅ verified by an automated check that ran · 🟡 written, not yet exe
 
 Test users created for the walk-through were removed afterwards via the app's own deletion path.
 
+## Reports (2026-10-18)
+
+- **Weekly reports**, made in the scheduler's daily maintenance for the last complete UTC week (Monday–Sunday) for every active product that doesn't have one; nothing is stored when nothing was monitored. **Last 7 days** reports on demand (members). No API or AI calls: every number comes from the same SQL as the dashboards (`buzz_totals`, `buzz_coverage`, `buzz_series`, `feedback_daily`, issues with posts in the period, spikes, competitor share of voice, most engaged posts), compared with the previous period. Week-over-week change is only stated when monitoring covered at least half of both periods.
+- Highlights are fixed rules over those numbers (volume and change, top platform, negativity shift, high-priority and new issues, confirmed spikes, share of voice, coverage warning) — not AI.
+- `/reports` list, `/reports/[id]` view (print / save as PDF: app chrome is hidden in print), `/reports/[id]/csv` download (RLS, UTF-8 BOM, formula injection neutralised).
+- Tests: unit `weekly.test.ts` (week bounds, change rules, highlights, CSV escaping); browser `e2e/reports.spec.ts` (no report from nothing; numbers match fixtures exactly; CSV).
+- Not yet: emailing reports (needs Resend), optional AI narrative.
+
 ## Product Insights — M5 re-scoped (2026-10-18)
 
 Code-level investigation moved to the customer's own Claude in 4B (developer agent), so M5 covers the evidence side. Migration `20261018000002` (investigation kinds).

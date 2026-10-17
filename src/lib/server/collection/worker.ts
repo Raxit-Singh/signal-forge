@@ -11,6 +11,7 @@ import { refreshActivityForActiveProducts } from "./activity";
 import { runBackfillTask } from "./backfill";
 import { AiError } from "@/lib/ai/types";
 import { classifyProduct, productsAwaitingClassification } from "../ai/classify";
+import { generateWeeklyReports } from "../reports/generate";
 import { reclusterProduct } from "../ai/clusters";
 import { runInvestigation } from "../ai/investigate";
 import { workspaceAvailability } from "../ai/gateway";
@@ -169,6 +170,12 @@ export async function tick(budgetMs: number): Promise<TickSummary> {
         }
         // Query groups follow server config / plan changes even when nobody edits keywords.
         synced = await syncAllProducts(admin);
+        // Last week's report for every product that doesn't have one (from stored data; no API or AI calls).
+        const reports = await generateWeeklyReports(admin).catch((e) => {
+          console.error(`[tick] weekly reports failed: ${e instanceof Error ? e.message : e}`);
+          return 0;
+        });
+        if (reports) console.log(`[tick] generated ${reports} weekly report(s)`);
       }
 
       // Hourly: spike detection for products with recent mentions, then platform activity

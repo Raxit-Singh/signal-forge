@@ -64,13 +64,13 @@ function sumTotals(rows: TotalsRow[], sources: string[] | null): PeriodTotals {
   };
 }
 
-async function totals(sb: SupabaseClient, productId: string, from: Date, to: Date, sources: string[] | null): Promise<PeriodTotals> {
+export async function totals(sb: SupabaseClient, productId: string, from: Date, to: Date, sources: string[] | null): Promise<PeriodTotals> {
   const { data, error } = await sb.rpc("buzz_totals", { p_product_id: productId, p_from: from.toISOString(), p_to: to.toISOString(), p_sources: sources });
   if (error) throw new Error(`buzz_totals failed (${error.code ?? "db"})`);
   return sumTotals((data ?? []) as TotalsRow[], null);
 }
 
-async function coverageRows(sb: SupabaseClient, productId: string, from: Date, to: Date, bucket: Bucket, tz: string, sources: string[] | null) {
+export async function coverageRows(sb: SupabaseClient, productId: string, from: Date, to: Date, bucket: Bucket, tz: string, sources: string[] | null) {
   const { data, error } = await sb.rpc("buzz_coverage", {
     p_product_id: productId, p_from: from.toISOString(), p_to: to.toISOString(), p_bucket: bucket, p_tz: tz, p_sources: sources,
   });
@@ -82,7 +82,7 @@ async function coverageRows(sb: SupabaseClient, productId: string, from: Date, t
  * Share of [from,to) that monitoring covered, averaged across the given sources.
  * `complete` counts only windows that weren't cut short by page caps.
  */
-function coveredShare(rows: CoverageRow[], sources: string[], field: "covered" | "complete" = "covered"): number {
+export function coveredShare(rows: CoverageRow[], sources: string[], field: "covered" | "complete" = "covered"): number {
   if (sources.length === 0) return 0;
   const buckets = new Set(rows.map((r) => new Date(r.bucket_start).getTime()));
   if (buckets.size === 0) return 0;
