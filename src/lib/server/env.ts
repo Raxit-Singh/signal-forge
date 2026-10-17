@@ -29,6 +29,8 @@ const serverSchema = z.object({
   GITHUB_APP_CLIENT_ID: z.string().optional(),
   GITHUB_APP_CLIENT_SECRET: z.string().optional(),
   GITHUB_APP_PRIVATE_KEY: z.string().optional(),
+  // SignalForge staff (comma-separated verified emails): the internal cost dashboard at /admin/costs.
+  SIGNALFORGE_STAFF_EMAILS: z.string().default(""),
 });
 
 let cached: z.output<typeof serverSchema> | null = null;

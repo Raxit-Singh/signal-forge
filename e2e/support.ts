@@ -30,8 +30,8 @@ export interface TestUser {
 }
 
 /** Unconfirmed account + the verification link the app would email. */
-export async function createUnconfirmedUser(): Promise<{ email: string; id: string; confirmPath: string }> {
-  const email = `sf-e2e-${Date.now()}-${randomUUID().slice(0, 6)}@example.com`;
+export async function createUnconfirmedUser(fixedEmail?: string): Promise<{ email: string; id: string; confirmPath: string }> {
+  const email = fixedEmail ?? `sf-e2e-${Date.now()}-${randomUUID().slice(0, 6)}@example.com`;
   const g = await call<{ id?: string; user?: { id: string }; hashed_token?: string; properties?: { hashed_token: string } }>(
     "/auth/v1/admin/generate_link",
     { method: "POST", headers: adminHeaders(), body: JSON.stringify({ type: "signup", email, password: `${randomUUID()}Aa1!` }) },
@@ -49,8 +49,8 @@ export async function signInPath(email: string, next: string): Promise<string> {
 }
 
 /** Confirmed account with a REST session. */
-export async function createUser(): Promise<TestUser> {
-  const u = await createUnconfirmedUser();
+export async function createUser(fixedEmail?: string): Promise<TestUser> {
+  const u = await createUnconfirmedUser(fixedEmail);
   const token = new URL(`http://x${u.confirmPath}`).searchParams.get("token_hash");
   const v = await call<{ access_token: string; user: { id: string } }>("/auth/v1/verify", {
     method: "POST", headers: { apikey: PUBLISHABLE(), "content-type": "application/json" },

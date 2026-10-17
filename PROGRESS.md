@@ -16,6 +16,13 @@ Legend: ✅ verified by an automated check that ran · 🟡 written, not yet exe
 
 Test users created for the walk-through were removed afterwards via the app's own deletion path.
 
+## Staff cost dashboard (2026-10-18)
+
+- `/admin/costs` for SignalForge staff only: verified accounts listed in `SIGNALFORGE_STAFF_EMAILS`; everyone else gets a 404 (title included). Read-only; limits are still changed by the operator.
+- One service-role-only SQL summary (`svc_admin_cost_summary`, migration `20261018000004`): Gemini spend this month against `ai_global_budget` (by purpose, model, day; failures; in-flight reservations counted like the budget check), API Direct spend against the global/provider limits (by platform, day), per-workspace AI and paid-data spend plus mention allowance use.
+- **Fix (migration `20261018000005`)**: AI usage records used to be deleted with their workspace, which removed already-spent money from the month's total that the Gemini limit is checked against. They are now kept (detached). The ~$0.003 of live-test spend deleted before the fix can't be recovered.
+- Tests: DB +3 (→ 383); browser `e2e/admin-costs.spec.ts` (customer 404, staff view). Development `.env.local` lists the founder's account and `sf-e2e-staff@example.com`.
+
 ## Member invitations and member management (2026-10-18)
 
 Migration `20261018000003`.

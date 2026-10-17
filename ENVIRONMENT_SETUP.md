@@ -197,3 +197,7 @@ Migration `20261016000007` adds `public.workspace_events` to the `supabase_realt
 ## Historical search (2026-10-16)
 
 Customers choose the period at onboarding (step 5) or on **Smart Monitoring → Historical search**. Steps run from the scheduler (`/api/jobs/tick` also schedules due backfill tasks), so the scheduler (the dev server's own ticker locally, Supabase Cron in production) must be running for a search to progress beyond its first batch. Paid platforms wait ("paused") while `PAID_SOURCES_ENABLED` is not `true`; every step goes through the same budget reservation and mention allowance as monitoring.
+
+## Staff cost dashboard
+
+`SIGNALFORGE_STAFF_EMAILS` (comma-separated) lists the verified account emails that may open `/admin/costs`, an internal, read-only view of what SignalForge spends on Gemini and API Direct this month against the operator limits. Leave it empty in any environment where nobody should see it; non-staff get a 404.

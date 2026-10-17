@@ -1426,6 +1426,22 @@ select t.throws(format($$select public.remove_member(%L, '00000000-0000-0000-000
   'outsiders cannot remove members', 'not found');
 reset role;
 
+-- ===================================================================== staff cost summary
+select t.ok((public.svc_admin_cost_summary() -> 'ai' ->> 'spent_microusd') is not null
+  and jsonb_typeof(public.svc_admin_cost_summary() -> 'workspaces') = 'array', 'cost summary computes for the service role');
+select t.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+select t.throws($$select public.svc_admin_cost_summary()$$, 'users cannot read the cost summary', 'permission denied');
+reset role;
+
+-- AI spend outlives the workspace that caused it (the global limit must still see it).
+insert into public.workspaces (id, name, slug) values ('00000000-0000-0000-0000-0000000000aa', 'Spend Co', 'spend-co-test');
+insert into public.ai_usage_records (workspace_id, provider, model, purpose, billed_to, cost_microusd, success, status)
+values ('00000000-0000-0000-0000-0000000000aa', 'gemini', 'gemini-3.1-flash-lite', 'classify', 'signalforge', 4321, true, 'settled');
+delete from public.workspaces where id = '00000000-0000-0000-0000-0000000000aa';
+select t.ok((select count(*) from public.ai_usage_records where cost_microusd = 4321 and workspace_id is null) = 1,
+  'deleting a workspace keeps its AI spend (detached) for the monthly limit');
+
 -- ===================================================================== summary
 do $$
 declare passed int; failed int;
