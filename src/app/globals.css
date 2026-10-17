@@ -45,6 +45,15 @@
   --feedback-bug: oklch(0.62 0.18 42);
   --feedback-feature: oklch(0.56 0.12 245);
   --feedback-complaint: oklch(0.6 0.13 165);
+  /* Product vs competitors (identity, fixed order). Reference categorical slots 1–6,
+     validated for adjacent-pair CVD separation in both modes; light slots 3–5 sit below
+     3:1 on white, so charts using them ship labels and a table view. */
+  --entity-1: #2a78d6;
+  --entity-2: #eb6834;
+  --entity-3: #1baf7a;
+  --entity-4: #eda100;
+  --entity-5: #e87ba4;
+  --entity-6: #008300;
 
   --radius: 0.4rem;
 }
@@ -84,6 +93,12 @@
   --feedback-bug: oklch(0.64 0.16 45);
   --feedback-feature: oklch(0.58 0.12 255);
   --feedback-complaint: oklch(0.66 0.12 165);
+  --entity-1: #3987e5;
+  --entity-2: #d95926;
+  --entity-3: #199e70;
+  --entity-4: #c98500;
+  --entity-5: #d55181;
+  --entity-6: #008300;
 }
 
 @theme inline {

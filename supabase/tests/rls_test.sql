@@ -1276,6 +1276,75 @@ select t.ok((select count(*) from public.oauth_grants where workspace_id = (sele
   'other workspaces see none of the developer-agent data');
 reset role;
 
+-- ===================================================================== competitors
+-- Dave's workspace on Pro (3 competitors per product, 3 products).
+update public.subscriptions set plan_id = 'pro' where workspace_id = (select v from ids where k = 'ws_d');
+select t.as_user('00000000-0000-0000-0000-00000000000d');
+set role authenticated;
+insert into ids select 'c1', public.add_competitor((select v from ids where k = 'p_d'), ' RivalApp ', 'https://rival.example', array['rival app', 'RIVALAPP', 'rivalapp.io']);
+insert into ids select 'tp1', tracking_product_id from public.competitors where id = (select v from ids where k = 'c1');
+select t.ok((select competitor_of from public.products where id = (select v from ids where k = 'tp1')) = (select v from ids where k = 'p_d')
+  and (select onboarding_step from public.products where id = (select v from ids where k = 'tp1')) = 6
+  and (select name from public.products where id = (select v from ids where k = 'tp1')) = 'RivalApp',
+  'adding a competitor creates its tracking product under the product');
+select t.ok((select array_agg(term order by kind, term) from public.product_aliases where product_id = (select v from ids where k = 'tp1')) = array['RivalApp', 'rival app', 'rivalapp.io']
+  and (select kind from public.product_aliases where product_id = (select v from ids where k = 'tp1') and term = 'RivalApp') = 'exact_name',
+  'competitor keywords: name first, duplicates (any case) removed');
+select t.throws(format($$select public.add_competitor(%L, 'Other', null, array['a1', 'b2', 'c3'])$$, (select v from ids where k = 'p_d')),
+  'a competitor has at most 3 keywords including its name', 'at most 3');
+select t.throws(format($$insert into public.product_aliases (workspace_id, product_id, term) values (%L, %L, 'fourth term')$$,
+  (select v from ids where k = 'ws_d'), (select v from ids where k = 'tp1')), 'the keyword cap also holds for direct keyword writes', 'at most 3');
+select t.throws(format($$insert into public.competitors (workspace_id, product_id, name) values (%L, %L, 'Sneaky')$$,
+  (select v from ids where k = 'ws_d'), (select v from ids where k = 'p_d')), 'competitors are only written through the RPCs', 'permission denied');
+select t.throws(format($$select public.add_competitor(%L, 'Nested')$$, (select v from ids where k = 'tp1')),
+  'a competitor cannot have competitors', 'active product');
+select public.add_competitor((select v from ids where k = 'p_d'), 'DaveApp');
+select t.ok(true, 'a competitor may share a name with one of the workspace''s own products');
+select public.add_competitor((select v from ids where k = 'p_d'), 'Third Rival');
+select t.throws(format($$select public.add_competitor(%L, 'Fourth Rival')$$, (select v from ids where k = 'p_d')),
+  'competitor count follows the plan (Pro: 3)', 'competitor limit');
+reset role;
+select t.ok((select count(*) from public.products where workspace_id = (select v from ids where k = 'ws_d') and competitor_of is not null) = 3,
+  'three tracking products exist');
+select t.as_user('00000000-0000-0000-0000-00000000000d');
+set role authenticated;
+-- Tracking products don't use product slots: Pro allows 3 products and Dave can still add them.
+insert into public.products (workspace_id, name, created_by) select v, 'DaveTwo', auth.uid() from ids where k = 'ws_d';
+insert into public.products (workspace_id, name, created_by) select v, 'DaveThree', auth.uid() from ids where k = 'ws_d';
+select t.ok((select count(*) from public.products where workspace_id = (select v from ids where k = 'ws_d') and competitor_of is null and archived_at is null) = 3,
+  'tracking products do not use product slots');
+select public.update_competitor((select v from ids where k = 'c1'), 'RivalApp', null, array['rival app'], false);
+select t.ok((select archived_at from public.products where id = (select v from ids where k = 'tp1')) is not null
+  and not (select enabled from public.competitors where id = (select v from ids where k = 'c1')),
+  'pausing a competitor archives its tracking product (no monitoring)');
+select public.update_competitor((select v from ids where k = 'c1'), 'RivalApp', null, array['rival app'], true);
+select t.ok((select archived_at from public.products where id = (select v from ids where k = 'tp1')) is null
+  and (select count(*) from public.product_aliases where product_id = (select v from ids where k = 'tp1')) = 2,
+  'resuming restores it with the new keywords');
+update public.products set archived_at = now() where id = (select v from ids where k = 'p_d');
+select t.ok((select archived_at from public.products where id = (select v from ids where k = 'tp1')) is not null,
+  'archiving a product archives its competitors'' tracking');
+update public.products set archived_at = null where id = (select v from ids where k = 'p_d');
+select t.ok((select archived_at from public.products where id = (select v from ids where k = 'tp1')) is null,
+  'restoring the product restores enabled competitors');
+reset role;
+select t.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+select t.ok((select count(*) from public.competitors where workspace_id = (select v from ids where k = 'ws_d')) = 0
+  and (select count(*) from public.products where competitor_of = (select v from ids where k = 'p_d')) = 0,
+  'other workspaces see no competitors or tracking products');
+select t.throws(format($$select public.add_competitor(%L, 'Hijack')$$, (select v from ids where k = 'p_d')), 'other workspaces cannot add competitors', 'not found');
+select t.throws(format($$select public.remove_competitor(%L)$$, (select v from ids where k = 'c1')), 'other workspaces cannot remove competitors', 'not found');
+reset role;
+select t.as_user('00000000-0000-0000-0000-00000000000d');
+set role authenticated;
+select public.remove_competitor((select v from ids where k = 'c1'));
+select t.ok((select count(*) from public.products where id = (select v from ids where k = 'tp1')) = 0
+  and (select count(*) from public.competitors where id = (select v from ids where k = 'c1')) = 0,
+  'removing a competitor deletes its tracking product and data');
+reset role;
+update public.subscriptions set plan_id = 'free' where workspace_id = (select v from ids where k = 'ws_d');
+
 -- ===================================================================== summary
 do $$
 declare passed int; failed int;

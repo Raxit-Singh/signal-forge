@@ -108,6 +108,9 @@ Daily aggregation job (idempotent recompute per day/product/source), charts (24h
 Provider abstraction (Claude, OpenAI, Gemini), BYOK validation call, budget + quota checks before each call, caching by content hash, staged pipeline (rules → dedup → cheap classifier → clustering → deep analysis on demand), product-targeted sentiment, feedback categories, clusters with evidence, spike explanations that cite mentions or say "insufficient data". Prompt-injection hardening: content passed as quoted data, no tool access, outputs validated by schema.
 **Acceptance:** every AI output links to evidence; AI failures leave analytics untouched.
 
+### Competitors — *implemented and verified 2026-10-18* (see PROGRESS.md)
+Tracking products per competitor; share of voice, volume and sentiment on sources monitored for all, over the period all were tracked.
+
 ### M5 Product intelligence
 GitHub App (read-only), selective file retrieval, product knowledge base, duplicate-issue detection, investigation reports (confirmed / hypotheses / assumptions), feature evaluation, issue drafts created only after explicit confirmation.
 **Acceptance:** useful, evidence-based reports with zero unauthorized repository writes.

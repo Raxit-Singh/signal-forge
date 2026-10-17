@@ -18,7 +18,7 @@ export default async function ProductKeywordsPage({ params }: { params: Promise<
 
   const supabase = await createClient();
   const [{ data: product }, { data: aliases }] = await Promise.all([
-    supabase.from("products").select("id, name").eq("id", productId).eq("workspace_id", workspace.id).is("archived_at", null).maybeSingle(),
+    supabase.from("products").select("id, name").eq("id", productId).eq("workspace_id", workspace.id).is("archived_at", null).is("competitor_of", null).maybeSingle(),
     supabase
       .from("product_aliases")
       .select("term, kind, is_ambiguous, context_terms, negative_terms, enabled, source")

@@ -24,6 +24,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ pr
     .eq("id", productId)
     .eq("workspace_id", workspace.id)
     .is("archived_at", null)
+    .is("competitor_of", null)
     .maybeSingle();
   if (!data) notFound();
   const product = data as ProductValues;

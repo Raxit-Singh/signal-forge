@@ -118,6 +118,7 @@ export const getProducts = cache(async (workspaceId: string): Promise<ProductSum
     .select("id, name, website_url, onboarding_step")
     .eq("workspace_id", workspaceId)
     .is("archived_at", null)
+    .is("competitor_of", null) // competitors' tracking products aren't the workspace's products
     .order("created_at", { ascending: true });
   if (error) throw new Error(`Failed to load products: ${error.message}`);
   return (data ?? []).map((p) => ({

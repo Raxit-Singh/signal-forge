@@ -119,6 +119,9 @@ async function confirmMerges(admin: SupabaseClient, ai: ResolvedAi, product: Non
 export async function reclusterProduct(admin: SupabaseClient, productId: string, now = new Date()): Promise<{ clusters: number; inserted: number; removed: number; grouping: Grouping }> {
   const product = await productContext(admin, productId);
   if (!product) return { clusters: 0, inserted: 0, removed: 0, grouping: "tfidf_v1" };
+  // Competitors are compared on volume and sentiment; grouping their feedback into issues would spend embeddings on nothing shown.
+  const { data: kind } = await admin.from("products").select("competitor_of").eq("id", productId).maybeSingle();
+  if (kind?.competitor_of) return { clusters: 0, inserted: 0, removed: 0, grouping: "tfidf_v1" };
   const since = new Date(now.getTime() - WINDOW_DAYS * 86_400_000).toISOString();
   const { data, error } = await admin
     .from("mentions")

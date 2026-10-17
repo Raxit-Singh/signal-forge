@@ -19,7 +19,7 @@ const ok = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.s
 const fail = (message: string) => ({ content: [{ type: "text" as const, text: message }], isError: true });
 
 async function productInWorkspace(admin: SupabaseClient, who: McpPrincipal, productId?: string) {
-  let q = admin.from("products").select("id, name, website_url, description, category, created_at").eq("workspace_id", who.workspaceId).is("archived_at", null);
+  let q = admin.from("products").select("id, name, website_url, description, category, created_at").eq("workspace_id", who.workspaceId).is("archived_at", null).is("competitor_of", null);
   if (productId) q = q.eq("id", productId);
   const { data } = await q.order("created_at").limit(productId ? 1 : 10);
   return data ?? [];

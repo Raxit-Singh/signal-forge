@@ -16,6 +16,18 @@ Legend: ✅ verified by an automated check that ran · 🟡 written, not yet exe
 
 Test users created for the walk-through were removed afterwards via the app's own deletion path.
 
+## Fixes after 4A/4B + Competitors (2026-10-17/18)
+
+**Fixes (commit 20e2ee9).** Live Gemini verified (schema keywords Gemini rejects are stripped; one embedding per text; 402 prepaid-credit errors stop instead of retrying; live run cost $0.0026, `e2e/ai-live.spec.ts`, opt-in with `LIVE_GEMINI=1`). The dev server now ticks the scheduler itself (`src/instrumentation.ts`; `DEV_SCHEDULER=off`); the manual "Scan now" button was removed. RLS policies compute membership once per query (`20261017000004`): reading 13k mentions went from 1.8 s to 23 ms, Buzz no longer hits the statement timeout. Monitoring stops follow-up loops and checks 6-hourly while the mention allowance is used up.
+
+**Competitors (migration `20261018000001`).**
+- Each competitor gets a hidden *tracking product* (`products.competitor_of`), so collection, dedup, relevance rules, AI classification and the Buzz SQL functions work unchanged and the product's own data is untouched. Tracking products are excluded from product lists, the product limit and the product keyword allowance; each has at most 3 keywords (name + 2). Their mentions count toward the mention allowance. Issue grouping is skipped for them (no embedding spend on issues nobody sees).
+- Writes only through `add_competitor` / `update_competitor` / `remove_competitor` (admins); plan limit `max_competitors_per_product` (Free 0, Pro 3, Scale 5). Pausing archives the tracking product (its searches are disabled); removing deletes it and its mentions. Archiving a product archives its competitors' tracking.
+- `/competitors`: share of voice, daily volume and sentiment, computed **only on sources monitored for the product and every competitor**, over the period **all of them were tracked** (both disclosed on the page). Sentiment needs ≥ 20 classified mentions before a net score is shown; classification coverage is shown.
+- Colors: new `--entity-1…6` tokens (reference categorical slots, validated with the dataviz validator in light and dark: adjacent CVD ΔE ≥ 8.4, normal-vision ≥ 19.3; light slots 3–5 below 3:1 → legend, labels and table view). The existing `--chart-*` platform palette fails the validator in dark mode (too light; two adjacent hues ΔE 14.9) and `--chart-6` is under the chroma floor — follow-up.
+- Tests: unit (`competitors.test.ts`, 5), DB (+18 → 355), browser (`e2e/competitors.spec.ts`: free plan blocked; add → searches → share of voice/volume/sentiment on common sources → pause → remove).
+- Not yet: historical search for competitors (comparisons start when a competitor is added).
+
 ## Milestone 4A/4B — two AI systems: SignalForge Intelligence (Gemini) and Claude developer agent (2026-10-17)
 
 This corrects the first Milestone 4 architecture (section below).

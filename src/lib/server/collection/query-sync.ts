@@ -6,6 +6,9 @@ import type { OptimizerKeyword } from "@/lib/sources/query-optimizer";
 import { serverEnv } from "@/lib/server/env";
 import { getAdapters, paidCollectionEnabled } from "./sources";
 
+/** Keywords per competitor, including its name (matches private.competitor_max_keywords()). */
+export const COMPETITOR_MAX_KEYWORDS = 3;
+
 export { resolveEnablement, websiteDomain, type SourceEnablement } from "@/lib/sources/query-groups";
 
 /**
@@ -15,14 +18,17 @@ export { resolveEnablement, websiteDomain, type SourceEnablement } from "@/lib/s
  */
 export async function keywordAllowanceFor(sb: SupabaseClient, productId: string, workspaceId: string, maxKeywords: number): Promise<number> {
   const [{ data: products }, { data: aliases }] = await Promise.all([
-    sb.from("products").select("id, created_at").eq("workspace_id", workspaceId).is("archived_at", null),
+    sb.from("products").select("id, created_at, competitor_of").eq("workspace_id", workspaceId).is("archived_at", null),
     sb.from("product_aliases").select("product_id").eq("workspace_id", workspaceId).eq("enabled", true).limit(10_000),
   ]);
+  // A competitor's tracking product has its own small cap (enforced in the database too).
+  if ((products ?? []).some((p) => p.id === productId && p.competitor_of)) return COMPETITOR_MAX_KEYWORDS;
+  const own = (products ?? []).filter((p) => !p.competitor_of);
   const counts = new Map<string, number>();
   for (const a of aliases ?? []) counts.set(a.product_id as string, (counts.get(a.product_id as string) ?? 0) + 1);
   return productKeywordAllowance(
     productId,
-    (products ?? []).map((p) => ({ id: p.id as string, createdAt: p.created_at as string, activeKeywords: counts.get(p.id as string) ?? 0 })),
+    own.map((p) => ({ id: p.id as string, createdAt: p.created_at as string, activeKeywords: counts.get(p.id as string) ?? 0 })),
     maxKeywords,
   );
 }

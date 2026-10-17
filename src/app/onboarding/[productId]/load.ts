@@ -25,6 +25,7 @@ export async function loadOnboardingProduct(productId: string): Promise<Onboardi
     .select("id, workspace_id, name, website_url, description, category, target_audience, github_repo, onboarding_step")
     .eq("id", productId)
     .is("archived_at", null)
+    .is("competitor_of", null)
     .maybeSingle();
   if (!data) notFound();
   try {
