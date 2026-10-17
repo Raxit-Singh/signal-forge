@@ -7,7 +7,7 @@ import type { z } from "zod";
 export type AiProviderId = "gemini" | "mock";
 /** Cheap = bulk classification and merge checks; deep = on-demand analysis. */
 export type AiTier = "cheap" | "deep";
-export type AiPurpose = "classify" | "embed" | "merge_check" | "spike_explanation" | "cluster_summary";
+export type AiPurpose = "classify" | "embed" | "merge_check" | "spike_explanation" | "cluster_summary" | "feature_evaluation" | "issue_draft";
 
 /** Stored sentiment values (uncertain = low confidence; the model itself answers with the first four). */
 export const SENTIMENTS = ["positive", "negative", "neutral", "mixed", "uncertain"] as const;

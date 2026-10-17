@@ -16,6 +16,20 @@ Legend: ✅ verified by an automated check that ran · 🟡 written, not yet exe
 
 Test users created for the walk-through were removed afterwards via the app's own deletion path.
 
+## Product Insights — M5 re-scoped (2026-10-18)
+
+Code-level investigation moved to the customer's own Claude in 4B (developer agent), so M5 covers the evidence side. Migration `20261018000002` (investigation kinds).
+- `/insights`: open issues by priority with which analyses exist, recent analyses, developer-agent tasks. `/insights/[issue]`: all posts, priority evidence (observed vs inferred), status actions and:
+  - **Summary** (existing cited summary).
+  - **Feature evaluation** (feature requests): cited needs / use cases / workarounds / concerns + AI-suggested open questions; **demand strength is computed from measured facts** (independent people, platforms, recurrence, trend — `demandStrength`), never asked of the model. Many posts from few people stay "early".
+  - **Already on GitHub?**: GitHub issue search in the product's repository (public repositories; read-only, no AI). Words: area, stored terms, words recurring in ≥ 2 of the issue's posts; product name excluded; PRs dropped; results labelled "likely the same" (≥ 2 shared words covering half the search words) or "possibly related" — never asserted as duplicates. Private/missing repos say so.
+  - **GitHub issue draft**: the model writes cited statements only; title sanitized, body (sections, numbered sources, measured reach) assembled by code; markdown/HTML control characters and @mentions neutralised. The user edits it and opens GitHub's own new-issue page prefilled (`newIssueUrl`); **SignalForge never creates issues or writes to repositories**.
+  - Developer agent controls (4B).
+- AI calls go through the same budget/cache/validation path (purposes `feature_evaluation`, `issue_draft`); test classifier outputs for both.
+- Shared issue UI extracted to `src/components/feedback/issue-parts.tsx` (Feedback page refactored to use it).
+- Dev-only GitHub search stand-in `/api/dev/mock-github` for reserved `e2e-fixture/*` repositories (404 in production), so browser tests never call GitHub.
+- Tests: unit `insights.test.ts` (demand, issue body, URL, search terms, ranking); browser `e2e/insights.spec.ts`. Not verified live: GitHub search against a real repository (uses `GITHUB_TOKEN` when set), real Gemini output for the new prompts.
+
 ## Fixes after 4A/4B + Competitors (2026-10-17/18)
 
 **Fixes (commit 20e2ee9).** Live Gemini verified (schema keywords Gemini rejects are stripped; one embedding per text; 402 prepaid-credit errors stop instead of retrying; live run cost $0.0026, `e2e/ai-live.spec.ts`, opt-in with `LIVE_GEMINI=1`). The dev server now ticks the scheduler itself (`src/instrumentation.ts`; `DEV_SCHEDULER=off`); the manual "Scan now" button was removed. RLS policies compute membership once per query (`20261017000004`): reading 13k mentions went from 1.8 s to 23 ms, Buzz no longer hits the statement timeout. Monitoring stops follow-up loops and checks 6-hourly while the mention allowance is used up.

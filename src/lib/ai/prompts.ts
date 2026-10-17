@@ -300,12 +300,82 @@ export function clusterSummaryPrompt(product: ProductContext, cluster: { categor
   return { system, user };
 }
 
+export const featureEvaluationSchema = z.object({
+  insufficient_evidence: z.boolean(),
+  summary: z.string().max(1200),
+  findings: z.array(finding.extend({
+    tier: z.enum(["reported", "hypothesis"]),
+    aspect: z.enum(["need", "use_case", "workaround", "concern"]),
+  })).max(12),
+  open_questions: z.array(z.string().max(240)).max(5),
+});
+export type FeatureEvaluationOutput = z.infer<typeof featureEvaluationSchema>;
+
+/**
+ * Feature request evaluation: what people need and why, from their own posts.
+ * Demand strength is NOT asked for — it is computed from measured facts.
+ */
+export function featureEvaluationPrompt(product: ProductContext, cluster: { title: string }, facts: Record<string, unknown>, evidence: EvidenceInput[]) {
+  const system = [
+    "You help the product team of the product in <product> understand a feature request from the public posts that ask for it.",
+    UNTRUSTED,
+    "Use only the posts in <evidence>. Each finding must list the ids of the posts that support it in mention_ids.",
+    "aspect: \"need\" = the underlying problem people want solved; \"use_case\" = what they would do with it;",
+    "\"workaround\" = what they do today instead; \"concern\" = risks, objections or conflicting wishes in the posts.",
+    "tier \"reported\": stated by at least one post. tier \"hypothesis\": your inference — say so in the statement.",
+    "Do not judge whether the product should build it, estimate effort, or state how many people want it: <facts> holds",
+    "the measured demand and you must not contradict it or add numbers. Findings without post ids are discarded.",
+    "open_questions: up to 5 short questions the team would need answered before deciding (no citations needed).",
+    "If the posts don't describe a common request, set insufficient_evidence to true. summary: two or three plain sentences.",
+  ].join("\n");
+  const user = [
+    productBlock(product),
+    dataBlock("request", { label: cluster.title }),
+    dataBlock("facts", facts),
+    dataBlock("evidence", evidence.map((e) => ({ id: e.id, source: e.source, published: e.published, title: e.title ?? "", text: e.text }))),
+  ].join("\n\n");
+  return { system, user };
+}
+
+export const issueDraftSchema = z.object({
+  insufficient_evidence: z.boolean(),
+  title: z.string().max(120),
+  summary: z.string().max(800),
+  details: z.array(finding.extend({ tier: z.enum(["reported", "hypothesis"]) })).max(8),
+});
+export type IssueDraftOutput = z.infer<typeof issueDraftSchema>;
+
+/** A GitHub issue draft. The model writes cited statements only; links, counts and layout are added by code. */
+export function issueDraftPrompt(product: ProductContext, cluster: { category: string; title: string }, evidence: EvidenceInput[]) {
+  const bug = cluster.category === "bug_report" || cluster.category === "performance_issue";
+  const system = [
+    "You draft a GitHub issue for the product in <product> from public posts that report the same thing.",
+    UNTRUSTED,
+    "Use only the posts in <evidence>. Each detail must list the ids of the posts that support it in mention_ids.",
+    bug
+      ? "details: what users report happening, what they expected, the steps, platforms or versions they mention — only what the posts say."
+      : "details: what users ask for, the problem behind it and how they would use it — only what the posts say.",
+    "tier \"reported\": stated by a post. tier \"hypothesis\": your inference — say so in the statement. Never invent versions,",
+    "error messages, steps or numbers. Do not include links, @mentions, labels or markdown headings. Details without post ids are discarded.",
+    "title: a concise, neutral issue title (no product name prefix, no brackets). summary: two or three plain sentences.",
+    "If the posts don't describe one issue, set insufficient_evidence to true.",
+  ].join("\n");
+  const user = [
+    productBlock(product),
+    dataBlock("group", { category: cluster.category, label: cluster.title }),
+    dataBlock("evidence", evidence.map((e) => ({ id: e.id, source: e.source, published: e.published, title: e.title ?? "", text: e.text }))),
+  ].join("\n\n");
+  return { system, user };
+}
+
 const URL_RE = /\b(?:https?:\/\/|www\.)\S+/gi;
 export const stripLinks = (s: string) => s.replace(URL_RE, "[link removed]");
 
 export interface CitedFinding {
   statement: string;
   tier?: "reported" | "hypothesis";
+  /** Feature evaluations: which part of the request the finding is about. */
+  aspect?: "need" | "use_case" | "workaround" | "concern";
   /** Database mention ids (mapped back from local ids). */
   mentionIds: string[];
 }
@@ -316,7 +386,7 @@ export interface CitedFinding {
  * null when nothing survives (→ "insufficient data").
  */
 export function validateCitedOutput(
-  out: { insufficient_evidence: boolean; summary: string; items: Array<{ statement: string; mention_ids: string[]; tier?: "reported" | "hypothesis" }> },
+  out: { insufficient_evidence: boolean; summary: string; items: Array<{ statement: string; mention_ids: string[]; tier?: "reported" | "hypothesis"; aspect?: CitedFinding["aspect"] }> },
   idMap: Map<string, string>,
 ): { summary: string; findings: CitedFinding[]; dropped: number } | null {
   if (out.insufficient_evidence) return null;
@@ -329,7 +399,7 @@ export function validateCitedOutput(
       dropped++;
       continue;
     }
-    findings.push({ statement, mentionIds: ids, ...(it.tier ? { tier: it.tier } : {}) });
+    findings.push({ statement, mentionIds: ids, ...(it.tier ? { tier: it.tier } : {}), ...(it.aspect ? { aspect: it.aspect } : {}) });
   }
   if (findings.length === 0) return null;
   return { summary: stripLinks(cleanText(out.summary, 1200).text), findings, dropped };

@@ -2,15 +2,20 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { selectEvidence, sha256, MIN_EVIDENCE, type EvidenceMention } from "@/lib/ai/pipeline";
 import {
-  clusterSummaryPrompt, clusterSummarySchema, PROMPT_VERSION, spikeExplanationPrompt, spikeExplanationSchema, validateCitedOutput,
+  clusterSummaryPrompt, clusterSummarySchema, featureEvaluationPrompt, featureEvaluationSchema, issueDraftPrompt, issueDraftSchema,
+  PROMPT_VERSION, spikeExplanationPrompt, spikeExplanationSchema, validateCitedOutput,
   type CitedFinding, type EvidenceInput,
 } from "@/lib/ai/prompts";
+import type { PriorityResult } from "@/lib/ai/priority";
+import { buildIssueBody, demandStrength } from "@/lib/insights/insights";
+import { integrationInfo } from "@/lib/domain/integrations";
 import { AiError } from "@/lib/ai/types";
+import { cleanText, stripLinks } from "@/lib/ai/prompts";
 import { emitEvent } from "@/lib/server/collection/monitor";
 import { budgetedCall, cacheGet, cachePut, resolveAi } from "./gateway";
 import { productContext } from "./classify";
 
-export type InvestigationKind = "spike_explanation" | "cluster_summary";
+export type InvestigationKind = "spike_explanation" | "cluster_summary" | "feature_evaluation" | "issue_draft";
 
 export interface InvestigationReport {
   summary: string;
@@ -21,8 +26,12 @@ export interface InvestigationReport {
   dropped_findings: number;
   test_classifier: boolean;
   prompt_version: string;
-  /** Measured facts shown next to the AI text (spike explanations only). */
+  /** Measured facts shown next to the AI text (spike explanations, feature evaluations). */
   facts?: Record<string, unknown> | null;
+  /** Feature evaluations: questions to answer before deciding (model text, uncited). */
+  open_questions?: string[];
+  /** Issue drafts: title and Markdown body assembled from cited statements and stored data. */
+  draft?: { title: string; body: string };
 }
 
 /** Product-level, platform-level or keyword-level spike. */
@@ -135,7 +144,8 @@ async function spikeEvidence(admin: SupabaseClient, productId: string, subject: 
 }
 
 async function clusterEvidence(admin: SupabaseClient, clusterId: string) {
-  const { data: cluster } = await admin.from("feedback_clusters").select("id, category, title").eq("id", clusterId).maybeSingle();
+  const { data: cluster } = await admin.from("feedback_clusters")
+    .select("id, category, title, report_count, platforms, first_detected_at, last_detected_at, priority_evidence").eq("id", clusterId).maybeSingle();
   const { data: members } = await admin.from("feedback_cluster_members").select("mention_id").eq("cluster_id", clusterId).limit(200);
   const ids = (members ?? []).map((m) => m.mention_id as string);
   const { data } = ids.length ? await admin.from("mentions").select(MENTION_COLS).in("id", ids) : { data: [] };
@@ -183,14 +193,30 @@ export async function runInvestigation(admin: SupabaseClient, investigationId: s
       periodLabel: label, platform: subject.platform, keyword: subject.keyword, observed: s.spike.observed, expected: s.spike.expected, ...s.facts,
     }, ev);
   } else {
-    kind = "cluster_summary";
+    kind = inv.kind === "feature_evaluation" || inv.kind === "issue_draft" ? inv.kind : "cluster_summary";
     const c = await clusterEvidence(admin, (inv.cluster_id ?? inv.subject_key) as string);
     if (!c.cluster) {
       await finish(admin, inv.id, { status: "failed", error: "This issue no longer exists." });
       return { status: "failed" };
     }
     rows = c.rows;
-    build = (ev) => clusterSummaryPrompt(product, { category: c.cluster!.category as string, title: c.cluster!.title as string }, ev);
+    const cl = { category: c.cluster.category as string, title: c.cluster.title as string };
+    const observed = (c.cluster.priority_evidence as PriorityResult["evidence"] | null)?.observed ?? null;
+    if (kind === "feature_evaluation") {
+      // Demand is measured, not asked of the model.
+      const demand = observed ? demandStrength(observed) : null;
+      facts = {
+        independent_reporters: observed?.independent_reporters ?? c.cluster.report_count, platforms: c.cluster.platforms,
+        first_seen: c.cluster.first_detected_at, last_seen: c.cluster.last_detected_at, trend: observed?.trend ?? null,
+        weeks_active: observed?.weeks_active ?? null, demand: demand?.level ?? null, demand_reasons: demand?.reasons ?? [],
+      };
+      build = (ev) => featureEvaluationPrompt(product, cl, facts!, ev);
+    } else if (kind === "issue_draft") {
+      facts = { reporters: observed?.independent_reporters ?? c.cluster.report_count, platforms: c.cluster.platforms, first_seen: c.cluster.first_detected_at, last_seen: c.cluster.last_detected_at };
+      build = (ev) => issueDraftPrompt(product, cl, ev);
+    } else {
+      build = (ev) => clusterSummaryPrompt(product, cl, ev);
+    }
   }
 
   const sel = selectEvidence(toEvidence(rows));
@@ -221,7 +247,9 @@ export async function runInvestigation(admin: SupabaseClient, investigationId: s
   let cost: number | null = 0;
   if (!output) {
     try {
-      const schema = kind === "spike_explanation" ? spikeExplanationSchema : clusterSummarySchema;
+      const schema = kind === "spike_explanation" ? spikeExplanationSchema
+        : kind === "feature_evaluation" ? featureEvaluationSchema
+        : kind === "issue_draft" ? issueDraftSchema : clusterSummarySchema;
       const r = await budgetedCall(admin, ai, { workspaceId: inv.workspace_id as string, productId: inv.product_id as string }, {
         purpose: kind, tier: "deep", system, user, schema: schema as typeof spikeExplanationSchema, schemaName: kind,
         maxTokens: 16_000, mockInput: { evidence: sel.evidence },
@@ -239,8 +267,13 @@ export async function runInvestigation(admin: SupabaseClient, investigationId: s
     }
   }
 
-  const o = output as { insufficient_evidence: boolean; summary: string; drivers?: Array<{ statement: string; mention_ids: string[] }>; findings?: Array<{ statement: string; mention_ids: string[]; tier: "reported" | "hypothesis" }>; confidence?: "low" | "medium" | "high" };
-  const valid = validateCitedOutput({ insufficient_evidence: o.insufficient_evidence, summary: o.summary, items: o.drivers ?? o.findings ?? [] }, sel.idMap);
+  const o = output as {
+    insufficient_evidence: boolean; summary: string; confidence?: "low" | "medium" | "high"; title?: string; open_questions?: string[];
+    drivers?: Array<{ statement: string; mention_ids: string[] }>;
+    findings?: Array<{ statement: string; mention_ids: string[]; tier: "reported" | "hypothesis"; aspect?: CitedFinding["aspect"] }>;
+    details?: Array<{ statement: string; mention_ids: string[]; tier: "reported" | "hypothesis" }>;
+  };
+  const valid = validateCitedOutput({ insufficient_evidence: o.insufficient_evidence, summary: o.summary, items: o.drivers ?? o.findings ?? o.details ?? [] }, sel.idMap);
   const base = { model: ai.classifier(model), cost_microusd: cost ?? null };
   if (!valid) {
     await finish(admin, inv.id, { ...base, status: "insufficient_data", report: { reason: "The collected posts don't show a clear common cause.", evidence: evidenceList, test_classifier: ai.test } });
@@ -250,6 +283,19 @@ export async function runInvestigation(admin: SupabaseClient, investigationId: s
       evidence: evidenceList, dropped_findings: valid.dropped, test_classifier: ai.test, prompt_version: PROMPT_VERSION,
       facts,
     };
+    if (kind === "feature_evaluation") {
+      report.open_questions = (o.open_questions ?? []).map((q) => stripLinks(cleanText(q, 240).text)).filter(Boolean).slice(0, 5);
+    }
+    if (kind === "issue_draft") {
+      const title = stripLinks(cleanText(o.title ?? "", 120).text).replace(/[\r\n]+/g, " ") || "Untitled issue";
+      const f = facts as { reporters: number; platforms: string[]; first_seen: string | null; last_seen: string | null };
+      report.draft = {
+        title,
+        body: buildIssueBody({ title, summary: valid.summary, details: valid.findings }, evidenceList,
+          { reporters: f.reporters, platforms: f.platforms, firstSeen: f.first_seen, lastSeen: f.last_seen },
+          (id) => integrationInfo(id as never)?.name ?? id),
+      };
+    }
     await finish(admin, inv.id, { ...base, status: "completed", report, error: null });
   }
   await emitEvent(admin, inv.workspace_id as string, inv.product_id as string, "ai", { investigation: inv.id });

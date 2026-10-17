@@ -6,7 +6,7 @@
 
 import type { AiCall, AiProviderClient, AiResult, IntelCategory, Severity } from "./types.ts";
 import type {
-  ClassificationOutput, ClusterSummaryOutput, EvidenceInput, MergeCheckOutput, MergePairInput, PostInput, SpikeExplanationOutput,
+  ClassificationOutput, ClusterSummaryOutput, EvidenceInput, FeatureEvaluationOutput, IssueDraftOutput, MergeCheckOutput, MergePairInput, PostInput, SpikeExplanationOutput,
 } from "./prompts.ts";
 import { estimateInputTokens } from "./pricing.ts";
 import { normalize } from "./semantic.ts";
@@ -104,6 +104,24 @@ export function mockSummarize(evidence: EvidenceInput[]): ClusterSummaryOutput {
   return { insufficient_evidence: e.insufficient_evidence, summary: e.summary, findings: e.drivers.map((d) => ({ ...d, tier: "reported" as const })) };
 }
 
+export function mockEvaluateFeature(evidence: EvidenceInput[]): FeatureEvaluationOutput {
+  const e = mockExplain(evidence);
+  return {
+    insufficient_evidence: e.insufficient_evidence, summary: e.summary,
+    findings: e.drivers.map((d) => ({ ...d, tier: "reported" as const, aspect: "need" as const })),
+    open_questions: e.insufficient_evidence ? [] : ["Test classifier: no real questions are generated."],
+  };
+}
+
+export function mockDraftIssue(evidence: EvidenceInput[]): IssueDraftOutput {
+  const e = mockExplain(evidence);
+  const word = commonWord(evidence) ?? "issue";
+  return {
+    insufficient_evidence: e.insufficient_evidence, title: `Test classifier draft: "${word}"`, summary: e.summary,
+    details: e.drivers.map((d) => ({ ...d, tier: "reported" as const })),
+  };
+}
+
 export function mockMergeCheck(pairs: MergePairInput[]): MergeCheckOutput {
   return { pairs: pairs.map((p) => ({ id: p.id, same_issue: "unsure" as const })) };
 }
@@ -119,6 +137,8 @@ export function mockClient(): AiProviderClient {
         call.purpose === "classify" ? mockClassify(input.posts ?? [])
         : call.purpose === "merge_check" ? mockMergeCheck(input.pairs ?? [])
         : call.purpose === "spike_explanation" ? mockExplain(input.evidence ?? [])
+        : call.purpose === "feature_evaluation" ? mockEvaluateFeature(input.evidence ?? [])
+        : call.purpose === "issue_draft" ? mockDraftIssue(input.evidence ?? [])
         : mockSummarize(input.evidence ?? []);
       const output = call.schema.parse(raw);
       return {

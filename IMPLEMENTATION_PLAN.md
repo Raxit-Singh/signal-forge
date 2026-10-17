@@ -111,8 +111,8 @@ Provider abstraction (Claude, OpenAI, Gemini), BYOK validation call, budget + qu
 ### Competitors — *implemented and verified 2026-10-18* (see PROGRESS.md)
 Tracking products per competitor; share of voice, volume and sentiment on sources monitored for all, over the period all were tracked.
 
-### M5 Product intelligence
-GitHub App (read-only), selective file retrieval, product knowledge base, duplicate-issue detection, investigation reports (confirmed / hypotheses / assumptions), feature evaluation, issue drafts created only after explicit confirmation.
+### M5 Product intelligence — *implemented 2026-10-18 as Product Insights; tested with the test classifier and a GitHub search stand-in* (see PROGRESS.md)
+Re-scoped after 4B: code reading, file retrieval and repository knowledge are done by the customer's own Claude (developer agent). Product Insights adds feature evaluation (cited, with measured demand), existing-issue search on GitHub, and issue drafts the user files on GitHub themselves (no repository writes).
 **Acceptance:** useful, evidence-based reports with zero unauthorized repository writes.
 
 ### M6 Monetization & launch

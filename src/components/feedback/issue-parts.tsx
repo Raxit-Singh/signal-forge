@@ -1,0 +1,64 @@
+import { ExternalLink } from "lucide-react";
+import type { PriorityResult } from "@/lib/ai/priority";
+import type { FeedbackCategory } from "@/lib/ai/types";
+import { integrationInfo } from "@/lib/domain/integrations";
+
+// Shared by Feedback Intelligence and Product Insights.
+
+export const nameOf = (id: string) => integrationInfo(id as never)?.name.replace(/ \/ Stack Exchange$/, "") ?? id;
+export const PRIORITY_TONE = { critical: "negative", high: "negative", medium: "warning", low: "neutral" } as const;
+export const PRIORITIES = ["critical", "high", "medium", "low"] as const;
+export const STATUS_LABEL: Record<string, string> = { open: "Open", acknowledged: "Acknowledged", resolved: "Resolved", dismissed: "Dismissed" };
+export const TREND_LABEL: Record<string, string> = { new: "New this week", worsening: "Worsening", growing: "Growing", steady: "Steady", declining: "Declining" };
+/** Categories the developer agent and issue drafts work on. */
+export const AGENT_CATEGORIES = ["bug_report", "feature_request", "complaint", "usability_complaint", "performance_issue", "security_concern"];
+
+export const CLUSTER_COLS = "id, category, title, report_count, unique_reporters, platforms, sentiment, suggested_priority, confidence, first_detected_at, last_detected_at, status, priority_score, priority_evidence, algorithm";
+
+export type Cluster = {
+  id: string; category: FeedbackCategory; title: string; report_count: number; unique_reporters: number | null;
+  platforms: string[]; sentiment: string | null; suggested_priority: (typeof PRIORITIES)[number] | null; confidence: number | null;
+  first_detected_at: string | null; last_detected_at: string | null; status: string; priority_score: number | null;
+  priority_evidence: PriorityResult["evidence"] | null; algorithm: string;
+};
+export type Member = { id: string; title: string | null; content: string | null; source: string; source_url: string; published_at: string; author_display: string | null };
+
+export function Evidence({ m }: { m: Member }) {
+  const text = (m.title || m.content || "").replace(/\s+/g, " ").slice(0, 180);
+  return (
+    <li className="grid gap-0.5 text-xs">
+      <a href={m.source_url} target="_blank" rel="noreferrer noopener nofollow" className="inline-flex min-w-0 items-start gap-1 underline-offset-2 hover:underline">
+        <span className="line-clamp-2">{text || "Untitled post"}</span><ExternalLink className="mt-0.5 size-3 shrink-0" aria-hidden />
+      </a>
+      <span className="text-muted-foreground">{nameOf(m.source)}{m.author_display ? ` · ${m.author_display}` : ""} · {m.published_at.slice(0, 10)}</span>
+    </li>
+  );
+}
+
+/** What was measured vs what the AI inferred behind an issue's priority. */
+export function PriorityEvidence({ ev, testLabels, open = false }: { ev: PriorityResult["evidence"]; testLabels: boolean; open?: boolean }) {
+  return (
+    <details className="text-xs" data-testid="priority-evidence" open={open}>
+      <summary className="cursor-pointer text-muted-foreground">Why this priority</summary>
+      <div className="mt-1 grid gap-2 sm:grid-cols-2">
+        <div>
+          <p className="font-medium">Observed in collected posts</p>
+          <ul className="list-disc pl-4 text-muted-foreground">
+            <li>{ev.observed.independent_reporters} independent reporters, {ev.observed.mentions} posts</li>
+            <li>{ev.observed.last_7_days} posts in the last 7 days, {ev.observed.previous_7_days} the week before</li>
+            <li>{ev.observed.recurring ? `Recurring: ${ev.observed.weeks_active} different weeks` : `Active in ${ev.observed.weeks_active} week${ev.observed.weeks_active === 1 ? "" : "s"}`}</li>
+            <li>{Math.round(ev.observed.negative_share * 100)}% of classified posts negative</li>
+          </ul>
+        </div>
+        <div>
+          <p className="font-medium">Inferred by AI{testLabels ? " (test classifier)" : ""}</p>
+          <ul className="list-disc pl-4 text-muted-foreground">
+            <li>Severity: {ev.inferred.severity}{ev.inferred.severity !== "unknown" && ` (${Object.entries(ev.inferred.severity_votes).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${k}`).join(", ")})`}</li>
+            {ev.inferred.area && <li>Affected area: {ev.inferred.area}</li>}
+            <li>Confidence: {Math.round(ev.inferred.confidence * 100)}%</li>
+          </ul>
+        </div>
+      </div>
+    </details>
+  );
+}

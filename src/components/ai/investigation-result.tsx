@@ -43,11 +43,12 @@ export function InvestigationResult({ inv }: { inv: InvestigationView }) {
         {inv.completed_at && <span>{formatUtc(inv.completed_at)}</span>}
       </div>
       {r.summary && <p>{r.summary}</p>}
-      {r.facts && <MeasuredFacts facts={r.facts as Facts} />}
+      {r.facts && isSpikeFacts(r.facts) && <MeasuredFacts facts={r.facts as Facts} />}
       <ul className="grid gap-1.5">
         {(r.findings ?? []).map((f, i) => (
           <li key={i} className="grid gap-0.5">
             <span>
+              {f.aspect && <Badge tone="info" className="mr-1">{ASPECT[f.aspect]}</Badge>}
               {f.tier === "hypothesis" && <Badge tone="neutral" className="mr-1">Hypothesis</Badge>}
               {f.statement}{" "}
               {f.mentionIds.map((id) => {
@@ -63,6 +64,12 @@ export function InvestigationResult({ inv }: { inv: InvestigationView }) {
           </li>
         ))}
       </ul>
+      {r.open_questions && r.open_questions.length > 0 && (
+        <div className="grid gap-0.5 text-xs" data-testid="open-questions">
+          <p className="font-medium">Questions to answer before deciding <span className="font-normal text-muted-foreground">(suggested by the AI)</span></p>
+          <ul className="list-disc pl-4 text-muted-foreground">{r.open_questions.map((q) => <li key={q}>{q}</li>)}</ul>
+        </div>
+      )}
       <details className="text-xs">
         <summary className="cursor-pointer text-muted-foreground">Posts analysed ({evidence.length})</summary>
         <ol className="mt-1 grid gap-0.5">
@@ -81,6 +88,10 @@ export function InvestigationResult({ inv }: { inv: InvestigationView }) {
     </div>
   );
 }
+
+const ASPECT = { need: "Need", use_case: "Use case", workaround: "Workaround", concern: "Concern" } as const;
+
+const isSpikeFacts = (f: Record<string, unknown>) => "negative_share" in f || "keyword" in f || ("issues" in f && Array.isArray(f.issues));
 
 type Facts = {
   keyword?: string | null;

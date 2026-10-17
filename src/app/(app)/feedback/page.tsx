@@ -1,16 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { BarChart3, ExternalLink, PackagePlus } from "lucide-react";
+import { BarChart3, PackagePlus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getActiveProduct, hasRole, requireWorkspace } from "@/lib/server/session";
 import { workspaceAvailability } from "@/lib/server/ai/gateway";
 import { categoryLabel } from "@/lib/ai/cluster";
-import type { PriorityResult } from "@/lib/ai/priority";
-import type { FeedbackCategory } from "@/lib/ai/types";
 import { isValidTimeZone } from "@/lib/analytics/buzz";
-import { integrationInfo } from "@/lib/domain/integrations";
 import { formatCount } from "@/lib/format";
 import { EmptyState, PageHeader } from "@/components/page";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
@@ -20,23 +17,12 @@ import { classifyNowAction, summarizeClusterAction } from "@/app/actions/ai";
 import { setClusterStatusAction } from "@/app/actions/feedback";
 import { AgentIssueControls } from "@/components/agent/issue-controls";
 import { FeedbackTrendChart, SentimentChart, type FeedbackDay } from "./feedback-charts";
+import {
+  AGENT_CATEGORIES, CLUSTER_COLS, Evidence, PRIORITIES, PRIORITY_TONE, PriorityEvidence, STATUS_LABEL, TREND_LABEL, nameOf, type Cluster, type Member,
+} from "@/components/feedback/issue-parts";
 
 export const metadata: Metadata = { title: "Feedback Intelligence" };
 
-const nameOf = (id: string) => integrationInfo(id as never)?.name.replace(/ \/ Stack Exchange$/, "") ?? id;
-const PRIORITY_TONE = { critical: "negative", high: "negative", medium: "warning", low: "neutral" } as const;
-const PRIORITIES = ["critical", "high", "medium", "low"] as const;
-const STATUS_LABEL: Record<string, string> = { open: "Open", acknowledged: "Acknowledged", resolved: "Resolved", dismissed: "Dismissed" };
-const TREND_LABEL: Record<string, string> = { new: "New this week", worsening: "Worsening", growing: "Growing", steady: "Steady", declining: "Declining" };
-const AGENT_CATEGORIES = ["bug_report", "feature_request", "complaint", "usability_complaint", "performance_issue", "security_concern"];
-
-type Cluster = {
-  id: string; category: FeedbackCategory; title: string; report_count: number; unique_reporters: number | null;
-  platforms: string[]; sentiment: string | null; suggested_priority: (typeof PRIORITIES)[number] | null; confidence: number | null;
-  first_detected_at: string | null; last_detected_at: string | null; status: string; priority_score: number | null;
-  priority_evidence: PriorityResult["evidence"] | null; algorithm: string;
-};
-type Member = { id: string; title: string | null; content: string | null; source: string; source_url: string; published_at: string; author_display: string | null };
 
 function Bars({ items, label }: { items: Array<{ label: string; value: number }>; label: string }) {
   const max = Math.max(1, ...items.map((i) => i.value));
@@ -80,7 +66,7 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
     head().eq("processing_status", "filtered").in("relevance_status", ["relevant", "pending", "user_relevant"]),
     head().eq("processing_status", "classified").like("ai_model", "test:%"),
     supabase.from("feedback_clusters")
-      .select("id, category, title, report_count, unique_reporters, platforms, sentiment, suggested_priority, confidence, first_detected_at, last_detected_at, status, priority_score, priority_evidence, algorithm")
+      .select(CLUSTER_COLS)
       .eq("product_id", product.id).in("status", showClosed ? ["open", "acknowledged", "resolved", "dismissed"] : ["open", "acknowledged"])
       .order("priority_score", { ascending: false, nullsFirst: false }).order("report_count", { ascending: false }).limit(50),
     supabase.from("ai_investigations").select("subject_key, status, report, error, model, completed_at").eq("product_id", product.id).eq("kind", "cluster_summary"),
@@ -283,30 +269,7 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
                         {c.last_detected_at && `, latest ${c.last_detected_at.slice(0, 10)}`}
                         {c.sentiment && ` · mostly ${c.sentiment}`}
                       </p>
-                      {ev && (
-                        <details className="text-xs" data-testid="priority-evidence">
-                          <summary className="cursor-pointer text-muted-foreground">Why this priority</summary>
-                          <div className="mt-1 grid gap-2 sm:grid-cols-2">
-                            <div>
-                              <p className="font-medium">Observed in collected posts</p>
-                              <ul className="list-disc pl-4 text-muted-foreground">
-                                <li>{ev.observed.independent_reporters} independent reporters, {ev.observed.mentions} posts</li>
-                                <li>{ev.observed.last_7_days} posts in the last 7 days, {ev.observed.previous_7_days} the week before</li>
-                                <li>{ev.observed.recurring ? `Recurring: ${ev.observed.weeks_active} different weeks` : `Active in ${ev.observed.weeks_active} week${ev.observed.weeks_active === 1 ? "" : "s"}`}</li>
-                                <li>{Math.round(ev.observed.negative_share * 100)}% of classified posts negative</li>
-                              </ul>
-                            </div>
-                            <div>
-                              <p className="font-medium">Inferred by AI{testLabels ? " (test classifier)" : ""}</p>
-                              <ul className="list-disc pl-4 text-muted-foreground">
-                                <li>Severity: {ev.inferred.severity}{ev.inferred.severity !== "unknown" && ` (${Object.entries(ev.inferred.severity_votes).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${k}`).join(", ")})`}</li>
-                                {ev.inferred.area && <li>Affected area: {ev.inferred.area}</li>}
-                                <li>Confidence: {Math.round(ev.inferred.confidence * 100)}%</li>
-                              </ul>
-                            </div>
-                          </div>
-                        </details>
-                      )}
+                      {ev && <PriorityEvidence ev={ev} testLabels={testLabels} />}
                       <ul className="grid gap-1 border-l-2 pl-3" aria-label="Supporting posts">
                         {members.slice(0, 3).map((m) => <Evidence key={m.id} m={m} />)}
                       </ul>
@@ -339,17 +302,5 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
         </section>
       </div>
     </>
-  );
-}
-
-function Evidence({ m }: { m: Member }) {
-  const text = (m.title || m.content || "").replace(/\s+/g, " ").slice(0, 180);
-  return (
-    <li className="grid gap-0.5 text-xs">
-      <a href={m.source_url} target="_blank" rel="noreferrer noopener nofollow" className="inline-flex min-w-0 items-start gap-1 underline-offset-2 hover:underline">
-        <span className="line-clamp-2">{text || "Untitled post"}</span><ExternalLink className="mt-0.5 size-3 shrink-0" aria-hidden />
-      </a>
-      <span className="text-muted-foreground">{nameOf(m.source)}{m.author_display ? ` · ${m.author_display}` : ""} · {m.published_at.slice(0, 10)}</span>
-    </li>
   );
 }
