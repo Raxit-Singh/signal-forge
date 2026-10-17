@@ -8,8 +8,41 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const PUBLIC_PREFIXES = ["/login", "/signup", "/forgot-password", "/auth", "/legal"];
 
+/**
+ * Content Security Policy with a fresh nonce per request: only Next's own scripts
+ * (which carry the nonce) run. Inline style attributes are allowed (charts use
+ * them); forms may only lead to SignalForge and the sign-in / payment / Discord
+ * pages it redirects to.
+ */
+function contentSecurityPolicy(nonce: string): string {
+  const dev = process.env.NODE_ENV === "development";
+  const supabase = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const supabaseWs = supabase.replace(/^http/, "ws");
+  return [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ""}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' blob: data: https:",
+    "font-src 'self' data:",
+    `connect-src 'self' ${supabase} ${supabaseWs}`,
+    "frame-src 'none'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    `form-action 'self' ${supabase} https://accounts.google.com https://checkout.stripe.com https://billing.stripe.com https://discord.com`,
+    "frame-ancestors 'none'",
+    ...(dev ? [] : ["upgrade-insecure-requests"]),
+  ].join("; ");
+}
+
 export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({ request });
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const csp = contentSecurityPolicy(nonce);
+  // Next reads the nonce from the request's CSP header and applies it to its scripts.
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("Content-Security-Policy", csp);
+  const next = () => NextResponse.next({ request: { headers: requestHeaders } });
+  let response = next();
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -21,7 +54,8 @@ export async function proxy(request: NextRequest) {
         },
         setAll(cookiesToSet) {
           for (const { name, value } of cookiesToSet) request.cookies.set(name, value);
-          response = NextResponse.next({ request });
+          requestHeaders.set("cookie", request.cookies.toString());
+          response = next();
           for (const { name, value, options } of cookiesToSet) response.cookies.set(name, value, options);
         },
       },
@@ -51,6 +85,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  response.headers.set("Content-Security-Policy", csp);
   return response;
 }
 

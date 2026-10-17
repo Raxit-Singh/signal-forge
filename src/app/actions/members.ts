@@ -39,7 +39,7 @@ export async function inviteMemberAction(_: InviteState, formData: FormData): Pr
     p_workspace_id: parsed.data.workspaceId, p_email: parsed.data.email, p_role: parsed.data.role, p_token_hash: tokenHash,
   });
   if (error) {
-    if (error.code === "42501" || error.code === "23505") return failure(error.message);
+    if (error.code === "42501" || error.code === "23505" || error.hint === "limit:invitations") return failure(error.message);
     logServerError("invite", error);
     return failure("Couldn't create the invitation. Try again.");
   }

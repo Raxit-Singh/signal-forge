@@ -1483,6 +1483,16 @@ select t.throws($$select * from public.email_log$$, 'users cannot read the email
 reset role;
 select t.ok(public.svc_purge_email_log() >= 0, 'email log purge runs for the service role');
 
+-- Invitation abuse limit: 30 per workspace per day.
+insert into public.workspace_invitations (workspace_id, email, role, token_hash, created_at)
+select (select v from ids where k = 'ws_a'), 'bulk' || g || '@example.test', 'viewer', lpad(to_hex(g), 64, 'c'), now() - interval '1 hour'
+  from generate_series(1, 30) g;
+select t.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+select t.throws(format($$select public.create_invitation(%L, 'one-more@example.test', 'viewer', repeat('7', 64))$$, (select v from ids where k = 'ws_a')),
+  'a workspace can send at most 30 invitations a day', '30 invitations');
+reset role;
+
 -- ===================================================================== summary
 do $$
 declare passed int; failed int;
