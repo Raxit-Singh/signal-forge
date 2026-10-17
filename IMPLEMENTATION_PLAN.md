@@ -115,6 +115,9 @@ Tracking products per competitor; share of voice, volume and sentiment on source
 Re-scoped after 4B: code reading, file retrieval and repository knowledge are done by the customer's own Claude (developer agent). Product Insights adds feature evaluation (cited, with measured demand), existing-issue search on GitHub, and issue drafts the user files on GitHub themselves (no repository writes).
 **Acceptance:** useful, evidence-based reports with zero unauthorized repository writes.
 
-### M6 Monetization & launch
+### M6 Monetization & launch — *built 2026-10-18; external services not yet connected* (see PROGRESS.md, SECURITY.md)
+Done in code and tested without the external services: Stripe Checkout / billing portal / verified webhooks (test mode, setup script), Resend email (invitations, weekly reports, one-click unsubscribe), weekly reports, member invitations, Google Play and Discord connectors (App Store via Apple's public feed), staff cost dashboard, retention purges, security review (CSP, rate limits). Waiting on accounts: Stripe test → live keys, Resend domain, Discord application, GitHub App, production hosting + Supabase Cron.
+
+Original scope:
 Stripe Checkout + Billing Portal (create products/prices for Pro $100 and Scale $300 then set `plans.stripe_price_id`), verified webhooks (idempotent via `billing_events`) that write `subscriptions.current_period_start/end` (usage periods follow them automatically) and call `release_held_mentions` after an upgrade if the customer opts in, plan changes, dunning; email notifications + weekly report email; App Store Connect, Google Play and Discord connectors; admin cost dashboard; retention purge job; member invitations; security review; production deploy.
 **Acceptance:** a customer can subscribe, stay within limits, and receive reliable recurring monitoring.
