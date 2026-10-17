@@ -212,3 +212,11 @@ Create an application at https://discord.com/developers/applications:
 ## Google Play source
 
 Nothing to configure on the server. Each customer connects their own Play Console on the Integrations page with a Google Cloud service account JSON key invited in Play Console with "View app information", and sets the product's Google Play URL.
+
+## Stripe (subscriptions)
+
+Test mode first:
+1. Stripe Dashboard (test mode) → Developers → API keys: copy the secret key into `STRIPE_SECRET_KEY=sk_test_…`.
+2. `node scripts/stripe-setup.ts` (dry run), then `node scripts/stripe-setup.ts --apply` — creates the Pro and Scale prices from the plans table and the billing portal configuration.
+3. Webhooks: locally `stripe listen --forward-to localhost:3000/api/stripe/webhook` prints a `whsec_…` secret for `STRIPE_WEBHOOK_SECRET`; deployed, add an endpoint `https://<site>/api/stripe/webhook` with events `checkout.session.completed`, `customer.subscription.created/updated/deleted/paused/resumed` and use its signing secret.
+4. Pay with test card 4242 4242 4242 4242. Going live repeats this with live keys (`--apply --live`) — only after the founder approves.

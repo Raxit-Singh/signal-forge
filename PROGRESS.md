@@ -16,6 +16,15 @@ Legend: ✅ verified by an automated check that ran · 🟡 written, not yet exe
 
 Test users created for the walk-through were removed afterwards via the app's own deletion path.
 
+## Stripe billing — built for test mode, not yet run against Stripe (2026-10-18)
+
+Migration `20261018000006`; `stripe@22.6.2` (pinned; API 2026-08-26.dahlia).
+- **Checkout** (workspace owners): Stripe Checkout in subscription mode for a public plan with a `stripe_price_id`; the workspace's Stripe customer is created once (idempotency key) and linked; workspace id in `client_reference_id` and subscription metadata. A workspace with an active Stripe subscription changes plans in the **billing portal** (plan switching between SignalForge prices, card updates, invoices, cancel at period end).
+- **Webhook** `/api/stripe/webhook` (outside the session proxy): signature verified over the raw body (5-minute tolerance) — nothing else is trusted; idempotent per event id (`billing_events`); subscriptions written only by `svc_apply_subscription` (service role), which applies events in Stripe's order (late events ignored), refuses unknown prices, mixed-plan subscriptions and other subscriptions overwriting the active one, and returns deleted subscriptions to Free (data kept). Billing period from the subscription item (current API) with a fallback for older shapes. Past due keeps the plan while Stripe retries; the owner sees a banner with "Update payment method".
+- `scripts/stripe-setup.ts`: dry run by default; `--apply` creates/reuses one Product + monthly Price per paid public plan from the plans table (lookup keys), records the Price ids, and creates a tagged billing portal configuration. Refuses live keys without `--live`.
+- Tests: unit `stripe-map.test.ts` (4); DB +8 (→ 391); browser `e2e/stripe-webhook.spec.ts` (events signed exactly like Stripe's with a development-only secret: forged signature refused, applied, duplicate, stale, past-due banner, unknown price, deleted → Free, unhandled ignored); `billing.spec.ts` updated.
+- **Not verified**: Checkout, portal and real webhook delivery need Stripe test keys (`STRIPE_SECRET_KEY=sk_test_…`, `STRIPE_WEBHOOK_SECRET` from the endpoint or `stripe listen`).
+
 ## Connected sources: Google Play and Discord; App Store, Bluesky and DEV verified (2026-10-18)
 
 - **Verified live**: Apple App Store reviews (public feed: all 50 entries of a live app normalized), Bluesky and DEV (collected real mentions on 2026-10-17). Catalog now says "available".

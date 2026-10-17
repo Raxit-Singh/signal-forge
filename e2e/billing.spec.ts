@@ -26,7 +26,7 @@ async function setUsage(consumed: number, allowance: number) {
   });
 }
 
-test("pricing: Free $0, Pro $100, Scale $300 with keyword and mention allowances; no checkout", async ({ page }) => {
+test("pricing: Free $0, Pro $100, Scale $300 with keyword and mention allowances; checkout only when Stripe is set up", async ({ page }) => {
   await page.goto(await signInPath(user!.email, "/settings/billing"));
   await expect(page.getByText("Current plan: Free")).toBeVisible();
   const free = page.getByLabel("Free plan");
@@ -42,9 +42,14 @@ test("pricing: Free $0, Pro $100, Scale $300 with keyword and mention allowances
   await expect(scale).toContainText("40 keywords");
   await expect(scale).toContainText("50,000 mentions / month");
   for (const old of ["$9", "$19", "$29", "$49", "Starter", "Business"]) await expect(page.getByText(old, { exact: true })).toHaveCount(0);
-  await expect(pro.getByRole("button", { name: "Upgrade — coming soon" })).toBeDisabled();
   await expect(free.getByRole("button", { name: "Current plan" })).toBeDisabled();
-  await expect(page.getByText("Online payment isn't available yet")).toBeVisible();
+  if (process.env.STRIPE_SECRET_KEY) {
+    // With Stripe (test mode) the owner can start checkout for a priced plan.
+    await expect(pro.getByRole("button", { name: /Upgrade/ })).toBeEnabled();
+  } else {
+    await expect(pro.getByRole("button", { name: "Upgrade" })).toBeDisabled();
+    await expect(page.getByText("Online payment isn't set up on this server yet")).toBeVisible();
+  }
 
   // Current period usage.
   const mentions = page.getByRole("region", { name: "Mention allowance" });

@@ -1442,6 +1442,39 @@ delete from public.workspaces where id = '00000000-0000-0000-0000-0000000000aa';
 select t.ok((select count(*) from public.ai_usage_records where cost_microusd = 4321 and workspace_id is null) = 1,
   'deleting a workspace keeps its AI spend (detached) for the monthly limit');
 
+-- ===================================================================== Stripe subscriptions (service role only)
+create temp table sub_r (k text primary key, v text);
+grant all on sub_r to authenticated;
+insert into sub_r select 'apply', public.svc_apply_subscription((select v from ids where k = 'ws_d'), 'pro', 'active', 'cus_1', 'sub_1', '2026-10-05 00:00Z', '2026-11-05 00:00Z', false, '2026-10-05 10:00Z');
+select t.ok((select v from sub_r where k = 'apply') = 'applied'
+  and (select plan_id from public.subscriptions where workspace_id = (select v from ids where k = 'ws_d')) = 'pro'
+  and (select current_period_start from public.subscriptions where workspace_id = (select v from ids where k = 'ws_d')) = '2026-10-05 00:00Z'::timestamptz,
+  'a verified subscription event sets plan, status and billing period');
+select t.ok(public.svc_apply_subscription((select v from ids where k = 'ws_d'), 'free', 'active', 'cus_1', 'sub_1',
+  null, null, false, '2026-10-05 09:00Z') = 'stale'
+  and (select plan_id from public.subscriptions where workspace_id = (select v from ids where k = 'ws_d')) = 'pro',
+  'an older event delivered late is ignored');
+select t.ok(public.svc_apply_subscription((select v from ids where k = 'ws_d'), 'scale', 'active', 'cus_1', 'sub_OTHER',
+  null, null, false, '2026-10-06 00:00Z') = 'other_subscription', 'another subscription cannot overwrite the active one');
+select t.ok(public.svc_apply_subscription((select v from ids where k = 'ws_d'), 'nope', 'active', 'cus_1', 'sub_1',
+  null, null, false, '2026-10-06 00:00Z') = 'unknown_plan', 'an unknown price/plan changes nothing');
+select t.ok(public.svc_apply_subscription((select v from ids where k = 'ws_d'), 'pro', 'past_due', 'cus_1', 'sub_1',
+  null, null, true, '2026-10-07 00:00Z') = 'applied'
+  and private.effective_plan_id((select v from ids where k = 'ws_d')) = 'pro', 'past due keeps the plan (grace while Stripe retries)');
+insert into sub_r select 'delete', public.svc_apply_subscription((select v from ids where k = 'ws_d'), 'pro', 'canceled', 'cus_1', 'sub_1', null, null, false, '2026-10-08 00:00Z', true);
+select t.ok((select v from sub_r where k = 'delete') = 'downgraded'
+  and (select plan_id from public.subscriptions where workspace_id = (select v from ids where k = 'ws_d')) = 'free'
+  and (select provider_subscription_id from public.subscriptions where workspace_id = (select v from ids where k = 'ws_d')) is null
+  and (select provider_customer_id from public.subscriptions where workspace_id = (select v from ids where k = 'ws_d')) = 'cus_1',
+  'a deleted subscription returns the workspace to Free and keeps the customer');
+select t.ok(public.svc_apply_subscription(gen_random_uuid(), 'pro', 'active', 'c', 's', null, null, false, now()) = 'unknown_workspace', 'unknown workspaces are reported');
+select t.as_user('00000000-0000-0000-0000-00000000000d');
+set role authenticated;
+select t.throws(format($$select public.svc_apply_subscription(%L, 'scale', 'active', 'c', 's', null, null, false, now())$$, (select v from ids where k = 'ws_d')),
+  'users cannot write their own subscription', 'permission denied');
+reset role;
+update public.subscriptions set last_webhook_event_at = null where workspace_id = (select v from ids where k = 'ws_d');
+
 -- ===================================================================== summary
 do $$
 declare passed int; failed int;

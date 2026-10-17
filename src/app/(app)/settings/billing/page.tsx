@@ -8,7 +8,8 @@ import { formatInterval } from "@/lib/sources/adaptive";
 import { Button } from "@/components/ui/button";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
-import { ReleaseHeldForm } from "./release-form";
+import { CheckoutButton, PortalButton, ReleaseHeldForm } from "./release-form";
+import { stripeEnabled, stripeMode } from "@/lib/server/billing/stripe";
 
 export const metadata: Metadata = { title: "Plan & billing" };
 
@@ -22,14 +23,20 @@ const FEATURE_LABELS: Record<string, string> = {
 
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 
-export default async function BillingSettings() {
+export default async function BillingSettings({ searchParams }: { searchParams: Promise<{ checkout?: string }> }) {
   const { workspace } = await requireWorkspace();
+  const checkout = (await searchParams).checkout;
   const supabase = await createClient();
-  const [{ plan: current, status, internalGrant }, usage, { data: rows }] = await Promise.all([
+  const [{ plan: current, status, internalGrant }, usage, { data: rows }, { data: sub }] = await Promise.all([
     getWorkspacePlan(workspace.id),
     getWorkspaceUsage(workspace.id),
     supabase.from("plans").select("*").eq("is_public", true).order("sort_order"),
+    supabase.from("subscriptions").select("provider, provider_customer_id, cancel_at_period_end, current_period_end").eq("workspace_id", workspace.id).maybeSingle(),
   ]);
+  const online = stripeEnabled();
+  const isOwner = workspace.role === "owner";
+  const subscribed = sub?.provider === "stripe";
+  const priced = new Set((rows ?? []).filter((r) => r.stripe_price_id).map((r) => r.id as string));
   const plans = (rows ?? []).map((r) => planFromRow(r as PlanRow)).filter((p) => !p.retired);
   const paidOn = paidCollectionEnabled();
   const level = usage ? mentionUsageLevel(usage.mentionsConsumed, usage.mentionAllowance) : null;
@@ -37,6 +44,14 @@ export default async function BillingSettings() {
 
   return (
     <>
+      {checkout === "success" && <p role="status" className="rounded-md border border-positive/30 px-3 py-2 text-[13px] text-positive">Payment received. Your plan updates as soon as Stripe confirms it (usually a few seconds) — refresh if it hasn&apos;t yet.</p>}
+      {checkout === "cancelled" && <p role="status" className="rounded-md border px-3 py-2 text-[13px] text-muted-foreground">Checkout cancelled; nothing was charged.</p>}
+      {status === "past_due" && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/40 px-3 py-2 text-[13px]">
+          <span>Your last payment failed. Stripe will retry; update your card to keep your plan.</span>
+          {isOwner && <div className="w-40"><PortalButton workspaceId={workspace.id} label="Update payment method" variant="default" /></div>}
+        </div>
+      )}
       <Card>
         <CardHeader>
           <CardTitle className="flex flex-wrap items-center gap-2">
@@ -152,18 +167,37 @@ export default async function BillingSettings() {
               <div className="mt-auto pt-4">
                 {isCurrent ? (
                   <Button size="sm" variant="secondary" disabled className="w-full">Current plan</Button>
-                ) : (
+                ) : !online || !isOwner || internalGrant ? (
                   <Button size="sm" disabled className="w-full" aria-describedby="checkout-note">
-                    {p.priceCentsMonthly > current.priceCentsMonthly ? "Upgrade" : "Change plan"} — coming soon
+                    {p.priceCentsMonthly > current.priceCentsMonthly ? "Upgrade" : "Change plan"}
                   </Button>
+                ) : subscribed ? (
+                  <PortalButton workspaceId={workspace.id} label={p.priceCentsMonthly === 0 ? "Cancel subscription" : p.priceCentsMonthly > current.priceCentsMonthly ? "Upgrade" : "Change plan"} />
+                ) : p.priceCentsMonthly > 0 && priced.has(p.id) ? (
+                  <CheckoutButton workspaceId={workspace.id} planId={p.id} label={`Upgrade to ${p.name}`} />
+                ) : (
+                  <Button size="sm" disabled className="w-full" aria-describedby="checkout-note">{p.priceCentsMonthly === 0 ? "Included" : "Not available yet"}</Button>
                 )}
               </div>
             </Card>
           );
         })}
       </div>
+      {online && isOwner && subscribed && (
+        <div className="flex flex-wrap items-center justify-between gap-2 text-[13px]">
+          <span className="text-muted-foreground">
+            {sub?.cancel_at_period_end && sub.current_period_end ? `Your subscription ends on ${day(sub.current_period_end as string)}; you keep your plan until then. ` : ""}
+            Invoices, payment method and cancellation are in Stripe&apos;s billing portal.
+          </span>
+          <div className="w-44"><PortalButton workspaceId={workspace.id} /></div>
+        </div>
+      )}
       <p id="checkout-note" className="text-xs text-muted-foreground">
-        Online payment isn&apos;t available yet, so plans can&apos;t be purchased or changed in the app. Prices are in USD, billed monthly; no annual
+        {!online
+          ? "Online payment isn't set up on this server yet, so plans can't be purchased or changed in the app. "
+          : !isOwner ? "Only the workspace owner can change the plan. "
+          : stripeMode() === "test" ? "Payments are in Stripe test mode: use a test card (4242 4242 4242 4242); nothing is charged. " : ""}
+        Payments are handled by Stripe; SignalForge never sees card details. Prices are in USD, billed monthly; no annual
         plans for now. Refresh intervals and keyword refresh targets are scheduling targets, not guaranteed discovery times; platforms that only
         support polling are never real-time.
         {paidOn ? "" : " Paid platforms (Reddit, X, LinkedIn, TikTok, Instagram, Facebook, Substack, Google web/news, Trustpilot) are not switched on for this server yet."}
