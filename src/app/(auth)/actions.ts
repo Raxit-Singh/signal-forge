@@ -39,7 +39,8 @@ export async function signUpAction(_: ActionState, formData: FormData): Promise<
   const { error } = await supabase.auth.signUp({
     email: parsed.data.email,
     password: parsed.data.password,
-    options: { emailRedirectTo: `${site()}/auth/confirm?next=/onboarding` },
+    // After confirming: onboarding, or where the visitor was headed (e.g. an invitation link).
+    options: { emailRedirectTo: `${site()}/auth/confirm?next=${encodeURIComponent(safeRedirectPath(String(formData.get("next") ?? ""), "/onboarding"))}` },
   });
   if (error) {
     if (error.status === 429) return failure("Too many sign-up attempts. Try again later.");

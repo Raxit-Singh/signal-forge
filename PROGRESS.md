@@ -16,6 +16,16 @@ Legend: ✅ verified by an automated check that ran · 🟡 written, not yet exe
 
 Test users created for the walk-through were removed afterwards via the app's own deletion path.
 
+## Member invitations and member management (2026-10-18)
+
+Migration `20261018000003`.
+- **Invitations**: a link for one email address and role, valid 7 days, single use; re-inviting the same address replaces the open link. Only the SHA-256 hash of the token is stored (the token is generated server-side and shown to the inviter once); hashes aren't readable through the API. Admins invite members/viewers/admins — **only owners invite admins**; nobody is invited as owner; existing members aren't re-invited.
+- **Accepting** (`/invite/[token]`) requires being signed in with the invited address; other accounts see whom it's for and can switch. Expired / used / revoked links say so. Signed-out visitors go through sign-in or sign-up and come back (sign-up now carries `next` through the confirmation email).
+- **Members**: owners manage everyone (including making owners); admins manage members and viewers; anyone can leave; the last owner can't leave or be demoted (existing trigger).
+- No seat limit: plans don't define one, and pricing/limits weren't changed — a decision for the founder.
+- Email delivery of invitations waits for Resend (M6); for now the inviter copies the link.
+- Tests: DB +25 (→ 380); browser `e2e/members.spec.ts` (invite → wrong account blocked → accept → single use → viewer has no invite tools → role change → remove → revoke; sign up from an invitation link).
+
 ## Reports (2026-10-18)
 
 - **Weekly reports**, made in the scheduler's daily maintenance for the last complete UTC week (Monday–Sunday) for every active product that doesn't have one; nothing is stored when nothing was monitored. **Last 7 days** reports on demand (members). No API or AI calls: every number comes from the same SQL as the dashboards (`buzz_totals`, `buzz_coverage`, `buzz_series`, `feedback_daily`, issues with posts in the period, spikes, competitor share of voice, most engaged posts), compared with the previous period. Week-over-week change is only stated when monitoring covered at least half of both periods.

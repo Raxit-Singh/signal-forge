@@ -25,10 +25,11 @@ export function SignInForm({ next }: { next?: string }) {
   );
 }
 
-export function SignUpForm() {
+export function SignUpForm({ next }: { next?: string }) {
   const [state, action] = useFormAction(signUpAction, idle);
   return (
     <form action={action} className="grid gap-4" noValidate>
+      {next && <input type="hidden" name="next" value={next} />}
       <FormMessage state={state} />
       <Field name="email" label="Work email" type="email" autoComplete="email" required autoFocus state={state} />
       <Field

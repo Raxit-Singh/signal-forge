@@ -43,7 +43,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       <SignInForm next={next} />
       <p className="text-center text-[13px] text-muted-foreground">
         New here?{" "}
-        <Link href="/signup" className="font-medium text-foreground hover:underline">
+        <Link href={next ? `/signup?next=${encodeURIComponent(next)}` : "/signup"} className="font-medium text-foreground hover:underline">
           Create an account
         </Link>
       </p>

@@ -1345,6 +1345,87 @@ select t.ok((select count(*) from public.products where id = (select v from ids 
 reset role;
 update public.subscriptions set plan_id = 'free' where workspace_id = (select v from ids where k = 'ws_d');
 
+-- ===================================================================== invitations
+-- ws_a: alice owner. Erin and Frank are new users; Dave belongs elsewhere.
+insert into auth.users (id, email) values ('00000000-0000-0000-0000-00000000000e', 'erin@example.test'), ('00000000-0000-0000-0000-00000000000f', 'frank@example.test');
+insert into public.workspace_members (workspace_id, user_id, role) select v, '00000000-0000-0000-0000-00000000000f', 'viewer' from ids where k = 'ws_a';
+select t.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+select public.create_invitation((select v from ids where k = 'ws_a'), ' Erin@Example.TEST ', 'member', repeat('1', 64));
+select t.ok((select email from public.workspace_invitations where workspace_id = (select v from ids where k = 'ws_a')) = 'erin@example.test',
+  'owner invites; the address is normalised');
+select t.throws(format($$select public.create_invitation(%L, 'x@example.test', 'owner', repeat('9', 64))$$, (select v from ids where k = 'ws_a')),
+  'nobody is invited as owner', 'owner');
+select t.throws(format($$select public.create_invitation(%L, 'alice@example.test', 'member', repeat('9', 64))$$, (select v from ids where k = 'ws_a')),
+  'existing members are not invited again', 'already a member');
+select public.create_invitation((select v from ids where k = 'ws_a'), 'erin@example.test', 'member', repeat('2', 64));
+select t.ok((select count(*) from public.workspace_invitations where workspace_id = (select v from ids where k = 'ws_a') and revoked_at is null and accepted_at is null) = 1,
+  're-inviting replaces the open invitation');
+select public.create_invitation((select v from ids where k = 'ws_a'), 'someone@example.test', 'viewer', repeat('3', 64));
+select public.create_invitation((select v from ids where k = 'ws_a'), 'dave@example.test', 'admin', repeat('4', 64));
+select t.ok(true, 'an owner can invite an admin');
+select t.throws($$select token_hash from public.workspace_invitations$$, 'token hashes are never readable', 'permission denied');
+reset role;
+
+select t.as_user('00000000-0000-0000-0000-00000000000f');
+set role authenticated;
+select t.ok((select count(*) from public.workspace_invitations) = 0, 'viewers do not see invitations');
+select t.throws(format($$select public.create_invitation(%L, 'v@example.test', 'viewer', repeat('5', 64))$$, (select v from ids where k = 'ws_a')),
+  'viewers cannot invite', 'not allowed');
+reset role;
+
+select t.as_user('00000000-0000-0000-0000-00000000000e');
+set role authenticated;
+select t.ok((select state from public.get_invitation(repeat('2', 64))) = 'open'
+  and (select workspace_name from public.get_invitation(repeat('2', 64))) = 'Alice Labs',
+  'the link holder sees which workspace and role');
+select t.throws($$select public.accept_invitation(repeat('1', 64))$$, 'a replaced invitation link no longer works', 'no longer valid');
+select t.throws($$select public.accept_invitation(repeat('3', 64))$$, 'an invitation for another address cannot be accepted', 'different email');
+select t.ok(public.accept_invitation(repeat('2', 64)) = (select v from ids where k = 'ws_a'), 'erin accepts');
+select t.ok((select role::text from public.workspace_members where user_id = auth.uid() and workspace_id = (select v from ids where k = 'ws_a')) = 'member',
+  'erin joins with the invited role');
+select t.throws($$select public.accept_invitation(repeat('2', 64))$$, 'links are single use', 'no longer valid');
+reset role;
+update public.workspace_invitations set created_at = now() - interval '8 days', expires_at = now() - interval '1 day' where token_hash = repeat('4', 64);
+select t.as_user('00000000-0000-0000-0000-00000000000d');
+set role authenticated;
+select t.throws($$select public.accept_invitation(repeat('4', 64))$$, 'expired links do not work', 'no longer valid');
+select t.ok((select state from public.get_invitation(repeat('4', 64))) = 'expired', 'an expired link says so');
+reset role;
+
+-- Roles and removal.
+select t.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+select public.set_member_role((select v from ids where k = 'ws_a'), '00000000-0000-0000-0000-00000000000e', 'admin');
+select t.ok((select role::text from public.workspace_members where user_id = '00000000-0000-0000-0000-00000000000e' and workspace_id = (select v from ids where k = 'ws_a')) = 'admin',
+  'owner promotes a member to admin');
+reset role;
+select t.as_user('00000000-0000-0000-0000-00000000000e');
+set role authenticated;
+select public.set_member_role((select v from ids where k = 'ws_a'), '00000000-0000-0000-0000-00000000000f', 'member');
+select t.ok((select role::text from public.workspace_members where user_id = '00000000-0000-0000-0000-00000000000f' and workspace_id = (select v from ids where k = 'ws_a')) = 'member',
+  'admins change members and viewers');
+select t.throws(format($$select public.set_member_role(%L, '00000000-0000-0000-0000-00000000000a', 'member')$$, (select v from ids where k = 'ws_a')),
+  'admins cannot demote owners', 'only an owner');
+select t.throws(format($$select public.create_invitation(%L, 'new@example.test', 'admin', repeat('6', 64))$$, (select v from ids where k = 'ws_a')),
+  'admins cannot invite admins', 'only an owner');
+select t.ok((select count(*) from public.workspace_invitations where workspace_id = (select v from ids where k = 'ws_a')) >= 4, 'admins see the invitations');
+select public.remove_member((select v from ids where k = 'ws_a'), '00000000-0000-0000-0000-00000000000f');
+select t.ok((select count(*) from public.workspace_members where user_id = '00000000-0000-0000-0000-00000000000f' and workspace_id = (select v from ids where k = 'ws_a')) = 0,
+  'admins remove members');
+select public.remove_member((select v from ids where k = 'ws_a'), auth.uid());
+select t.ok((select count(*) from public.workspace_members where user_id = auth.uid() and workspace_id = (select v from ids where k = 'ws_a')) = 0, 'anyone can leave');
+reset role;
+select t.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+select t.throws(format($$select public.remove_member(%L, auth.uid())$$, (select v from ids where k = 'ws_a')), 'the last owner cannot leave', 'at least one owner');
+reset role;
+select t.as_user('00000000-0000-0000-0000-00000000000d');
+set role authenticated;
+select t.throws(format($$select public.remove_member(%L, '00000000-0000-0000-0000-00000000000a')$$, (select v from ids where k = 'ws_a')),
+  'outsiders cannot remove members', 'not found');
+reset role;
+
 -- ===================================================================== summary
 do $$
 declare passed int; failed int;
