@@ -13,15 +13,12 @@ import { pageCount, pageHref, pageItems, pageRange, parsePage } from "@/lib/pagi
 import { CoverageNotice, EmptyState, PageHeader } from "@/components/page";
 import { Badge, Card } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
-import { StartScanButton } from "@/components/scan/scan-controls";
 import { cn } from "@/lib/utils";
 import { categoryLabel } from "@/lib/ai/cluster";
 import type { FeedbackCategory } from "@/lib/ai/types";
 import { ExpandableText, MentionFilters, NewMentionsNotice, RelevanceButtons } from "./mention-client";
 
 export const metadata: Metadata = { title: "Mentions" };
-// "Scan now" keeps working after the action responds.
-export const maxDuration = 60;
 
 const PAGE_SIZE = 20;
 
@@ -167,7 +164,6 @@ export default async function MentionsPage({ searchParams }: { searchParams: Pro
       <PageHeader
         title="Mentions"
         description={<>Conversations matching {product.name}&apos;s keywords · {range.label}</>}
-        actions={canScan && !neverCollected ? <StartScanButton productId={product.id} kind="manual" variant="secondary" size="sm" /> : undefined}
       />
       <CoverageNotice />
 

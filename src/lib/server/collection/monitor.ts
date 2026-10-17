@@ -28,6 +28,8 @@ const PAID_MAX_SCHEDULED_LOOKBACK_MS = 7 * 86_400_000;
 const AUDIT_LOOKBACK_MS = 7 * 86_400_000;
 /** A continuation of an overflowing window runs this soon after the run that left it. */
 const CONTINUATION_DELAY_MS = 30_000;
+/** How often a search runs while the workspace's monthly mention allowance is used up. */
+const OVER_LIMIT_INTERVAL_MINUTES = 360;
 const INGEST_CHUNK = 250;
 /** A shared fetch serves sibling queries that haven't been refreshed for this long. */
 const SHARED_FRESH_MS = 30 * 60_000;
@@ -563,14 +565,20 @@ async function finishMember(
       confidence: p.assessment.confidence,
     }
     : { intervalMinutes: m.q.interval_minutes ?? m.ctx.plan_min_minutes, reasons: ["Kept the current interval (ranking unavailable)"], confidence: r.complete ? "medium" : "low" };
-  if (gap) d.reasons.unshift("More results than one check can read: the rest of the window is being collected by follow-up checks");
+  if (overLimit) {
+    // The allowance is used up: re-reading the same window would only fetch posts that can't be
+    // stored. No follow-up checks, and regular checks slow down until the allowance renews or grows
+    // (the checkpoint held, so nothing is skipped when they resume).
+    d.intervalMinutes = Math.max(d.intervalMinutes, OVER_LIMIT_INTERVAL_MINUTES);
+    d.reasons.unshift("Monthly mention limit reached: checking less often until the allowance renews");
+  } else if (gap) d.reasons.unshift("More results than one check can read: the rest of the window is being collected by follow-up checks");
   await admin.from("monitoring_queries").update({
     interval_minutes: d.intervalMinutes,
     interval_reasons: d.reasons,
     coverage_confidence: d.confidence,
-    next_run_at: (rotation && platformInterval && !g?.outOfTurn ? rotationNextRun(now, platformInterval, rotation) : nextRunAt(now, d.intervalMinutes, 0)).toISOString(),
+    next_run_at: (rotation && platformInterval && !g?.outOfTurn && !overLimit ? rotationNextRun(now, platformInterval, rotation) : nextRunAt(now, d.intervalMinutes, 0)).toISOString(),
   }).eq("id", m.q.id);
-  if (gap) {
+  if (gap && !overLimit) {
     // Continue the unread window shortly (own idempotency key: the scheduler's bucket key would collide).
     await admin.rpc("svc_enqueue_job", {
       p_kind: "monitor.query", p_idempotency_key: `mq-cont:${m.q.id}:${until}:${cursor.continuations}`,
@@ -584,7 +592,7 @@ async function finishMember(
     saturated: Boolean(search.saturated), paidRequests: extra.paidRequests, sharedWith: extra.sharedWith, expansions: extra.expansions,
     decision: d, observedSpan: span, continuation: extra.continuation,
     detail: [extra.audit ? `Completeness audit: ${r.auditMissed} missed mention(s) found.` : null, r.reasons.join(" ") || null, resume.lost?.reason ?? null,
-      gap ? "Continuing the rest of the window in a follow-up check." : null].filter(Boolean).join(" ") || null,
+      gap && !overLimit ? "Continuing the rest of the window in a follow-up check." : null].filter(Boolean).join(" ") || null,
   });
   await emitEvent(admin, m.q.workspace_id, m.q.product_id, r.inserted > 0 ? "mentions" : "monitoring", { inserted: r.inserted, platform: provider });
   return d;

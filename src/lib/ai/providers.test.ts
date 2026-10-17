@@ -50,6 +50,7 @@ test("structured request: JSON schema, system instruction, key in a header (neve
   const cfg = s.body!.generationConfig as Record<string, unknown>;
   assert.equal(cfg.responseMimeType, "application/json");
   assert.ok(cfg.responseJsonSchema, "the JSON Schema is sent");
+  assert.ok(!JSON.stringify(cfg.responseJsonSchema).includes("maxItems"), "Gemini rejects array-length keywords (live 400); Zod still enforces them");
   assert.equal(cfg.temperature, 0);
   assert.match(JSON.stringify(s.body!.systemInstruction), /untrusted/);
   assert.equal(s.body!.tools, undefined, "no tools are ever offered");
@@ -79,7 +80,7 @@ test("invalid output: wrong shape, non-JSON, cut-off and safety blocks are error
 
 test("HTTP errors map to retryable / permanent kinds", async () => {
   const err = (status: number) => ({ error: { code: status, message: `status ${status}`, status: "X" } });
-  const kinds: Array<[number, string, boolean]> = [[401, "auth", false], [403, "auth", false], [429, "rate_limited", true], [400, "bad_request", false], [503, "unavailable", true]];
+  const kinds: Array<[number, string, boolean]> = [[401, "auth", false], [403, "auth", false], [402, "budget", false], [429, "rate_limited", true], [400, "bad_request", false], [503, "unavailable", true]];
   for (const [status, kind, retryable] of kinds) {
     const { f } = fakeFetch(status, err(status));
     await assert.rejects(geminiClient("k", models, { fetch: f }).generate(call()), (e) => e instanceof AiError && e.kind === kind && e.retryable === retryable, `${status}`);
@@ -95,6 +96,10 @@ test("embeddings: requested dimension, one vector per text, usage estimated and 
   assert.ok(r.usage.inputTokens > 0);
   assert.match(seen[0]!.url, /gemini-embedding-2:(batchEmbedContents|embedContent)/);
   assert.match(JSON.stringify(seen[0]!.body), new RegExp(`"outputDimensionality":${EMBEDDING_DIMENSIONS}`));
+  const sent = JSON.stringify(seen[0]!.body);
+  assert.ok(sent.includes("first text") && sent.includes("second text"));
+  const requests = (seen[0]!.body as { requests?: unknown[] }).requests;
+  assert.equal(requests?.length, 2, "one embedding request per text, not one combined content");
   const short = fakeFetch(200, { embeddings: [{ values: vec }] });
   await assert.rejects(geminiClient("k", models, { fetch: short.f }).embed(["a", "b"]), (e) => e instanceof AiError && e.kind === "invalid_output");
   await assert.rejects(geminiClient("k", { cheap: "x" }).embed(["a"]), (e) => e instanceof AiError && e.kind === "not_configured");

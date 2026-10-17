@@ -33,7 +33,7 @@ Full setup (Supabase auth settings, email templates, Google OAuth, keys): [ENVIR
 | `npm run test:e2e` | Playwright (21 tests): onboarding incl. historical search selection; realtime updates, new-mentions notice and Realtime workspace isolation; backfill progress; overflow risk and spike confidence; plans, usage warnings and keyword allowance; effective keyword refresh intervals; mentions numbered pagination, filters, Read more, relevance, mobile; Buzz Analytics; automatic Smart Monitoring ranking, keyword coverage, explanations, Launch Boost, mobile (deterministic fixtures) | `.env.local`, `npx playwright install chromium` |
 | `npm run audit:keywords -- [--product <id>] [--keywords "a:exact_name,b:domain"]` | Read-only: configured keywords, query groups per platform, what isn't searched and why, estimated monthly requests and API Direct cost | `.env.local` |
 | `npm run test:apidirect-live -- --confirm --max-usd 0.05 --provider-limit-confirmed` | **Paid.** Live check of API Direct connectors with a cumulative per-session cap enforced through `api_cost_ledger` (`--plan` prints the plan and worst case without sending). Never runs in CI | `API_DIRECT_API_KEY`, your authorization |
-| `npm run dev:cron` | Calls the scheduler every 120 s during local development | `JOBS_TICK_SECRET` |
+| `npm run dev:cron` | Calls the scheduler every 120 s for a server not started with `npm run dev` (which ticks itself) | `JOBS_TICK_SECRET` |
 
 ## Docs
 

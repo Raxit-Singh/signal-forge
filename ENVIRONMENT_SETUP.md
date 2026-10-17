@@ -136,8 +136,7 @@ SignalForge pays for this; customers never connect an AI provider for it.
 
 ```bash
 npm install
-npm run dev          # http://localhost:3000
-npm run dev:cron     # second terminal: calls the scheduler every 120 s (local stand-in for Supabase Cron)
+npm run dev          # http://localhost:3000 — also runs the job scheduler every 120 s (src/instrumentation.ts)
 npm run check        # typecheck + lint + unit tests
 npm run test:db      # self-contained: throwaway Postgres 17 from the embedded-postgres dev dependency
 npm run test:e2e     # Playwright; uses .env.local's Supabase project with throwaway sf-e2e-* accounts it deletes
@@ -189,9 +188,7 @@ $$);
 
 Every two minutes is ~21,600 calls/month: inside Vercel Hobby's included invocations, and each call returns in milliseconds when nothing is due.
 
-**Development:** `npm run dev:cron`.
-
-**Initial scans** don't wait for the scheduler: starting a scan processes its jobs immediately in the background of that request (`after()`); anything left is picked up by the next tick.
+**Development:** `npm run dev` ticks the scheduler itself every 120 s (`src/instrumentation.ts`, development only; `DEV_SCHEDULER=off` disables it). `npm run dev:cron` remains for driving a server started some other way (e.g. `next start`). There is no manual scan button: collection runs only on each keyword's schedule.
 
 ## Realtime dashboard updates (2026-10-16)
 
@@ -199,4 +196,4 @@ Migration `20261016000007` adds `public.workspace_events` to the `supabase_realt
 
 ## Historical search (2026-10-16)
 
-Customers choose the period at onboarding (step 5) or on **Smart Monitoring → Historical search**. Steps run from the scheduler (`/api/jobs/tick` also schedules due backfill tasks), so `npm run dev:cron` (or Supabase Cron in production) must be running for a search to progress beyond its first batch. Paid platforms wait ("paused") while `PAID_SOURCES_ENABLED` is not `true`; every step goes through the same budget reservation and mention allowance as monitoring.
+Customers choose the period at onboarding (step 5) or on **Smart Monitoring → Historical search**. Steps run from the scheduler (`/api/jobs/tick` also schedules due backfill tasks), so the scheduler (the dev server's own ticker locally, Supabase Cron in production) must be running for a search to progress beyond its first batch. Paid platforms wait ("paused") while `PAID_SOURCES_ENABLED` is not `true`; every step goes through the same budget reservation and mention allowance as monitoring.

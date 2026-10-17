@@ -34,11 +34,24 @@ function mapError(e: unknown, usage: AiUsage | null = null): AiError {
   if (e instanceof AiError) return e;
   if (e instanceof ApiError) {
     if (e.status === 401 || e.status === 403) return new AiError("auth", `Gemini rejected SignalForge's API key (${e.status}).`);
+    // Prepaid Gemini billing with no credit left: nothing runs until credits are added, so don't retry.
+    if (e.status === 402) return new AiError("budget", "SignalForge's Gemini account is out of prepaid credit, so nothing is being classified.");
     if (e.status === 429) return new AiError("rate_limited", "Gemini is rate limiting requests.", 60, usage);
     if (e.status === 400 || e.status === 404) return new AiError("bad_request", e.message.slice(0, 300), null, usage);
     return new AiError("unavailable", `Gemini error ${e.status}.`, null, usage);
   }
   return new AiError("unavailable", e instanceof Error ? e.message.slice(0, 300) : "Couldn't reach Gemini.", null, usage);
+}
+
+/**
+ * The JSON Schema sent to Gemini. Gemini rejects array-length keywords with a bare
+ * 400 "invalid argument" (verified live 2026-10-17); the full Zod schema still
+ * validates every answer locally, so those limits are enforced either way.
+ */
+export function geminiSchema(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(geminiSchema);
+  if (!schema || typeof schema !== "object") return schema;
+  return Object.fromEntries(Object.entries(schema).filter(([k]) => k !== "maxItems" && k !== "minItems").map(([k, v]) => [k, geminiSchema(v)]));
 }
 
 export function geminiClient(apiKey: string, models: GeminiModels, opts: { fetch?: FetchLike; baseUrl?: string } = {}): AiProviderClient {
@@ -62,7 +75,7 @@ export function geminiClient(apiKey: string, models: GeminiModels, opts: { fetch
           config: {
             systemInstruction: call.system,
             responseMimeType: "application/json",
-            responseJsonSchema: z.toJSONSchema(call.schema as z.ZodType),
+            responseJsonSchema: geminiSchema(z.toJSONSchema(call.schema as z.ZodType)),
             maxOutputTokens: call.maxTokens,
             temperature: 0,
             httpOptions: { timeout: TIMEOUT_MS[call.tier] },
@@ -99,7 +112,9 @@ export function geminiClient(apiKey: string, models: GeminiModels, opts: { fetch
       try {
         res = await ai.models.embedContent({
           model: models.embedding,
-          contents: texts,
+          // One Content per text: a bare string list is read as parts of ONE content and
+          // gemini-embedding-2 returns a single combined vector (verified live 2026-10-17).
+          contents: texts.map((text) => ({ role: "user", parts: [{ text }] })),
           config: { outputDimensionality: models.embeddingDimensions ?? EMBEDDING_DIMENSIONS, httpOptions: { timeout: 60_000 } },
         });
       } catch (e) {

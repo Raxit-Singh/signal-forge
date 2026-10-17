@@ -85,6 +85,7 @@ async function onFailure(admin: SupabaseClient, id: number, model: string, e: un
   if (err.usage) await settle(admin, id, model, err.usage, false, err.kind, null);
   else await admin.rpc("svc_ai_release", { p_id: id, p_error: err.kind });
   if (err.kind === "auth") console.error(`[ai] SignalForge's Gemini key was rejected: ${err.message}`);
+  if (err.kind === "budget") console.error(`[ai] Gemini refused the call for billing: ${err.message}`);
   throw err;
 }
 
@@ -129,7 +130,8 @@ export async function cacheGet(admin: SupabaseClient, keys: string[]): Promise<M
 export async function cachePut(admin: SupabaseClient, workspaceId: string, purpose: string, model: string, entries: Array<{ key: string; output: unknown }>) {
   if (!entries.length) return;
   const { error } = await admin.from("ai_cache").upsert(
-    entries.map((e) => ({ cache_key: e.key, workspace_id: workspaceId, purpose, model, output: e.output })),
+    // One row per key: identical posts in a batch share a key, and an upsert can't touch a row twice.
+    [...new Map(entries.map((e) => [e.key, e])).values()].map((e) => ({ cache_key: e.key, workspace_id: workspaceId, purpose, model, output: e.output })),
     { onConflict: "cache_key" },
   );
   if (error) console.error(`[ai] cache write failed (${error.code ?? "db"})`);

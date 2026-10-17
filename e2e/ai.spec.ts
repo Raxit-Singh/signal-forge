@@ -36,8 +36,10 @@ test.afterEach(async () => {
 
 async function useTestClassifier(page: import("@playwright/test").Page) {
   await page.goto(await signInPath(user!.email, "/settings/ai"));
-  await expect(page.getByTestId("ai-status")).toContainText("Not running");
-  await expect(page.getByTestId("ai-status")).toContainText("isn't switched on yet");
+  if (process.env.SIGNALFORGE_AI_ENABLED !== "true") {
+    await expect(page.getByTestId("ai-status")).toContainText("Not running");
+    await expect(page.getByTestId("ai-status")).toContainText("isn't switched on yet");
+  }
   await page.getByRole("button", { name: "Use test classifier" }).click();
   await expect(page.getByTestId("ai-status")).toContainText("Test classifier (not AI)");
 }
