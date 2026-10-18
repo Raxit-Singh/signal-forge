@@ -82,7 +82,7 @@ export async function AgentIssueControls({ workspaceId, clusterId }: { workspace
       {inv && (inv.status === "awaiting_connection" || inv.status === "awaiting_repository") && (
         <p className="text-xs text-muted-foreground">
           {inv.status === "awaiting_connection" ? "Connect Claude to SignalForge first" : "Link this product's GitHub repository first"} in{" "}
-          <Link href="/settings/agent" className="underline underline-offset-2">Settings → Developer agent</Link>, then start again.
+          <Link href="/settings/agent" className="underline underline-offset-2">Settings → Claude</Link>, then start again.
         </p>
       )}
       {[inv, impl].filter((t): t is Task => !!t && !isTerminal(t.status) && t.execution === "manual" && ["not_started", "investigating", "implementing"].includes(t.status)).map((t) => (

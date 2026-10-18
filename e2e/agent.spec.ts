@@ -114,8 +114,22 @@ test("Claude connection → investigation → approval → implementation → pu
   test.setTimeout(180_000);
   await page.goto(await signInPath(user!.email, "/settings/agent"));
   const main = page.locator("#main");
-  await expect(main.getByTestId("agent-readiness")).toContainText("Not connected");
-  await expect(main.getByText("The SignalForge GitHub App isn't configured on this server yet")).toBeVisible();
+  // Simple card: one state and a Connect button; technical details only under "Having trouble connecting?".
+  await expect(main.getByTestId("claude-state")).toHaveText("Not connected");
+  await expect(main.getByTestId("claude-fallback")).not.toHaveAttribute("open", "");
+  await expect(main.getByText("claude mcp add", { exact: false })).toBeHidden();
+  await expect(main.getByText("Routine instructions")).toBeHidden();
+  await main.getByRole("button", { name: "Connect Claude" }).click();
+  const dialog = page.getByRole("dialog", { name: "Connect Claude" });
+  await expect(dialog.getByLabel("SignalForge address for Claude")).toHaveValue(`${BASE}/api/mcp`);
+  await expect(dialog.getByRole("link", { name: "Open Claude" })).toHaveAttribute("href", "https://claude.ai/customize/connectors");
+  await expect(dialog.getByRole("status")).toContainText("Waiting for Claude");
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await main.getByTestId("claude-fallback").locator("summary").click();
+  await expect(main.getByTestId("claude-fallback")).toContainText("claude mcp add --transport http signalforge");
+  await expect(main.getByTestId("github-state")).toHaveText("Unavailable");
+  await expect(main.getByText("Repository connection isn't available yet.")).toBeVisible();
+  await expect(main.getByTestId("routine-state")).toHaveText("Not set up");
   await classify(page);
 
   // --- Connect Claude (OAuth 2.1 + PKCE), then the MCP server.
@@ -132,6 +146,9 @@ test("Claude connection → investigation → approval → implementation → pu
   const code2 = await getFreshCode();
   const t2 = await form("/api/oauth/token", { grant_type: "authorization_code", code: code2, client_id: client.client_id, redirect_uri: CALLBACK, code_verifier: verifier });
   let access = t2.json.access_token!;
+  // Approved, but Claude hasn't called SignalForge yet: "Connecting", never "Connected".
+  await page.goto("/settings/agent");
+  await expect(main.getByTestId("claude-state")).toHaveText("Connecting");
   expect((await mcp(tok.json.access_token!, "tools/list")).status, "the reused code's tokens were revoked").toBe(401);
 
   const tools = (await mcp(access, "tools/list")).data as Array<{ name: string }>;
@@ -161,18 +178,21 @@ test("Claude connection → investigation → approval → implementation → pu
 
   // --- Connection status, repository (simulated App install: not configured here), routine.
   await page.goto("/settings/agent");
-  await expect(main.getByTestId("mcp-state")).toContainText("Connected — last used");
-  await expect(main.getByTestId("agent-readiness")).toContainText("Repository access required");
+  await expect(main.getByTestId("claude-state")).toHaveText("Connected");
+  await expect(main.getByRole("button", { name: "Connect Claude" })).toHaveCount(0);
+  await expect(main.getByTestId("agent-readiness")).toContainText("Claude has connected");
   await adminInsert("github_installations", { workspace_id: ids.workspaceId, installation_id: 4242, account_login: "e2e-org" });
   await adminInsert("agent_repositories", { workspace_id: ids.workspaceId, product_id: ids.productId, installation_id: 4242, repo_id: 99, full_name: "e2e-org/app", default_branch: "main", private: true });
   await page.reload();
-  await expect(main.getByText("e2e-org/app")).toBeVisible();
-  await expect(main.getByTestId("agent-readiness")).toContainText("Coding-agent execution unavailable");
+  await expect(main.getByText("e2e-org/app").first()).toBeVisible();
+  await expect(main.getByTestId("github-state")).toHaveText("Connected");
+  await expect(main.getByTestId("routine-state")).toHaveText("Not set up");
+  await main.getByText("Set up automatic investigations").click();
   await main.getByLabel("Routine API trigger URL").fill(`${BASE}/api/dev/mock-routine/trig_E2EROUTINE01/fire`);
   await main.getByLabel("Routine token").fill(`sk-ant-oat01-${b64url(randomBytes(24))}`);
   await main.getByRole("button", { name: "Save routine" }).click();
   await expect(main.getByText("Routine saved")).toBeVisible();
-  await expect(main.getByTestId("agent-readiness")).toContainText("Ready for investigation");
+  await expect(main.getByTestId("routine-state")).toHaveText("Set up, not used yet");
   const conn = await adminSelect<Array<{ secret_id: string; fire_url: string }>>(`agent_connections?workspace_id=eq.${ids.workspaceId}&select=secret_id,fire_url`);
   const [stored] = await adminSelect<Array<{ ciphertext: string }>>(`credential_secrets?id=eq.${conn[0]!.secret_id}&select=ciphertext`);
   expect(stored!.ciphertext, "the routine token is stored encrypted").not.toContain("sk-ant-oat01");
@@ -262,6 +282,16 @@ test("Claude connection → investigation → approval → implementation → pu
   expect(after.status, "revoked in SignalForge → Claude loses access at once").toBe(401);
   const reuse = await form("/api/oauth/token", { grant_type: "refresh_token", refresh_token: rotated.json.refresh_token!, client_id: client.client_id });
   expect(reuse.json.error).toBe("invalid_grant");
+
+  // Reconnect, then Disconnect: every connection of this workspace stops working at once.
+  const code3 = await getFreshCode();
+  const t3 = await form("/api/oauth/token", { grant_type: "authorization_code", code: code3, client_id: client.client_id, redirect_uri: CALLBACK, code_verifier: verifier });
+  expect((await mcp(t3.json.access_token!, "get_product_context")).status).toBe(200);
+  await page.goto("/settings/agent");
+  await expect(main.getByTestId("claude-state")).toHaveText("Connected");
+  await main.getByRole("button", { name: "Disconnect" }).first().click();
+  await expect(main.getByTestId("claude-state")).toHaveText("Not connected");
+  expect((await mcp(t3.json.access_token!, "get_product_context")).status, "disconnect revokes access").toBe(401);
 });
 
 test("OAuth consent: denial, foreign redirect URIs and unregistered clients", async ({ page }) => {

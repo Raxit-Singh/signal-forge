@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CheckCircle2, Circle, ExternalLink } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getActiveProduct, hasRole, requireWorkspace } from "@/lib/server/session";
-import { githubAppConfig, readiness, type ReadinessState } from "@/lib/server/agent/tasks";
+import { githubAppConfig, readiness } from "@/lib/server/agent/tasks";
+import { CLAUDE_STATE_LABEL, claudeState, publiclyReachable, type ClaudeState } from "@/lib/agent/connection-state";
+import { CLAUDE_CONNECTORS_URL, ConnectClaude } from "@/components/agent/connect-claude";
 import { site } from "@/lib/server/agent/http";
 import { installationToken, listInstallationRepos, type RepoInfo } from "@/lib/agent/github-app";
 import { resourceUrl } from "@/lib/agent/oauth";
@@ -14,37 +16,26 @@ import { Button } from "@/components/ui/button";
 import { ActionForm } from "@/components/ai/action-form";
 import { CopyBlock } from "@/components/agent/copy-block";
 import { RoutineForm } from "@/components/agent/routine-form";
-import { removeRepositoryAction, removeRoutineAction, revokeClaudeAccessAction, selectRepositoryAction } from "@/app/actions/agent";
+import { disconnectClaudeAction, removeRepositoryAction, removeRoutineAction, revokeClaudeAccessAction, selectRepositoryAction } from "@/app/actions/agent";
 import { formatUtc } from "@/lib/format";
 
-export const metadata: Metadata = { title: "Developer agent" };
+export const metadata: Metadata = { title: "Claude" };
 
-const STATE: Record<ReadinessState, { label: string; tone: "positive" | "warning" | "negative" | "neutral" | "info" }> = {
-  not_connected: { label: "Not connected", tone: "neutral" },
-  setup_required: { label: "Setup required", tone: "warning" },
-  mcp_connected: { label: "Connected to SignalForge MCP", tone: "info" },
-  repository_required: { label: "Repository access required", tone: "warning" },
-  execution_unavailable: { label: "Coding-agent execution unavailable — manual handoff", tone: "warning" },
-  ready: { label: "Ready for investigation", tone: "positive" },
-  error: { label: "Error", tone: "negative" },
+const TONE: Record<ClaudeState, "positive" | "warning" | "negative" | "neutral" | "info"> = {
+  not_connected: "neutral", connecting: "info", connected: "positive", needs_attention: "warning", unavailable: "neutral",
 };
 
 const GITHUB_MSG: Record<string, string> = {
-  installed: "GitHub App installed. Choose the repository below.",
-  not_configured: "The SignalForge GitHub App isn't configured on this server yet.",
+  installed: "GitHub access granted. Choose the repository below.",
+  not_configured: "Repository connection isn't available yet.",
   unverified: "GitHub didn't confirm you can access that installation, so it wasn't linked.",
   forbidden: "Only workspace admins can connect repositories.",
   failed: "The GitHub connection didn't complete. Try again.",
   invalid: "Invalid request.",
 };
 
-function Step({ done, title, children }: { done: boolean; title: string; children: React.ReactNode }) {
-  return (
-    <li className="grid grid-cols-[1.25rem_1fr] gap-2">
-      {done ? <CheckCircle2 className="mt-0.5 size-4 text-positive" aria-label="Done" /> : <Circle className="mt-0.5 size-4 text-muted-foreground" aria-label="Not done" />}
-      <div className="grid gap-2"><span className="font-medium">{title}</span>{children}</div>
-    </li>
-  );
+function Detail({ label, value }: { label: string; value: React.ReactNode }) {
+  return <div className="flex flex-wrap justify-between gap-2 py-1"><dt className="text-muted-foreground">{label}</dt><dd>{value}</dd></div>;
 }
 
 export default async function AgentSettings({ searchParams }: { searchParams: Promise<{ github?: string }> }) {
@@ -57,6 +48,11 @@ export default async function AgentSettings({ searchParams }: { searchParams: Pr
   const r = await readiness(admin, workspace.id, product?.id ?? null);
   const mcp = resourceUrl(site());
   const app = githubAppConfig();
+  const publicSite = publiclyReachable(site());
+  // A development server isn't reachable by Claude's apps, but Claude Code on the same computer can connect to it.
+  const reachable = publicSite || process.env.NODE_ENV !== "production";
+  const state = claudeState({ authorized: r.mcp.authorized, used: r.mcp.used, routineError: r.routine.status === "error" ? r.routine.lastError ?? "The Claude Code routine stopped working." : null, reachable });
+  const claudeOn = state === "connected" || state === "needs_attention";
 
   const [{ data: grants }, { data: installs }, { data: tasks }] = await Promise.all([
     isAdmin ? supabase.from("oauth_grants").select("id, client_id, user_id, scopes, created_at, last_used_at").eq("workspace_id", workspace.id).is("revoked_at", null).order("created_at", { ascending: false }) : Promise.resolve({ data: [] }),
@@ -76,113 +72,167 @@ export default async function AgentSettings({ searchParams }: { searchParams: Pr
       repos = repos.concat((list ?? []).map((x) => ({ ...x, installationId: i.installation_id as number })));
     }
   }
+  const routineLabel = !r.routine.saved ? "Not set up" : r.routine.status === "error" ? "Needs attention" : r.routine.status === "ready" ? "Working" : "Set up, not used yet";
 
   return (
     <div className="grid gap-4">
-      <Card>
+      <Card data-testid="claude-card">
         <CardHeader>
-          <CardTitle>Developer agent (Claude)</CardTitle>
+          <CardTitle className="flex flex-wrap items-center gap-2">
+            Claude
+            <Badge tone={TONE[state]} data-testid="claude-state">{CLAUDE_STATE_LABEL[state]}</Badge>
+          </CardTitle>
           <CardDescription>
-            Lets your own Claude read SignalForge&apos;s issues for this workspace, investigate them in your codebase, and —
-            only after you approve a specific plan — implement it and open a pull request for review. It runs on your Claude
-            subscription, never on SignalForge&apos;s AI, and SignalForge never merges or deploys anything.
+            Connect Claude to investigate bugs and feature requests discovered by SignalForge. Claude works on your own Claude plan, and
+            changes code only after you approve a plan — SignalForge never merges or deploys.
           </CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 text-[13px]">
-          <div className="flex flex-wrap items-center gap-2" data-testid="agent-readiness">
-            <span className="font-medium">Status</span>
-            <Badge tone={STATE[r.state].tone}>{STATE[r.state].label}</Badge>
-            {r.routine.lastError && <span className="text-xs text-negative">{r.routine.lastError}</span>}
-          </div>
-          {sp.github && GITHUB_MSG[sp.github] && <p className="rounded-md border p-2 text-xs" role="status">{GITHUB_MSG[sp.github]}</p>}
+        <CardContent className="grid gap-3 text-[13px]">
+          {state === "unavailable" && (
+            <p className="text-muted-foreground">
+              Claude can&apos;t reach this SignalForge server yet: it needs a public HTTPS address. Claude Code on this computer can still connect — see below.
+            </p>
+          )}
+          {!publicSite && state !== "unavailable" && !claudeOn && (
+            <p className="text-xs text-muted-foreground">Development server: Claude&apos;s apps can&apos;t reach {site()}, so connect with Claude Code on this computer (see “Having trouble connecting?”).</p>
+          )}
+          {state === "connecting" && <p className="text-muted-foreground">You approved access. Waiting for Claude to connect — this page updates on its own.</p>}
+          {state === "needs_attention" && r.routine.lastError && <p className="text-warning">{r.routine.lastError}</p>}
+          {claudeOn && r.mcp.lastUsedAt && <p className="text-xs text-muted-foreground">Last used {formatUtc(r.mcp.lastUsedAt)}.</p>}
 
-          <ol className="grid gap-5">
-            <Step done={r.mcp.used} title="1. Connect Claude to SignalForge">
-              <p className="text-muted-foreground">
-                In Claude, add SignalForge as a custom connector with this URL, then sign in to SignalForge and approve when asked.
-                Claude chooses this connection itself; SignalForge never asks for your Claude password.
-              </p>
-              <CopyBlock label="Connector URL" text={mcp} />
-              <p className="text-xs text-muted-foreground">
-                claude.ai or the Claude apps: Settings → Connectors → Add custom connector. Claude Code:{" "}
-                <code className="font-mono">claude mcp add --transport http signalforge {mcp}</code>
-              </p>
-              <p className="text-xs text-muted-foreground" data-testid="mcp-state">
-                {r.mcp.used ? `Connected — last used ${formatUtc(r.mcp.lastUsedAt!)}.` : r.mcp.authorized ? "Authorized, but Claude hasn't called SignalForge yet." : "Not connected yet."}
-              </p>
-              {isAdmin && (grants ?? []).length > 0 && (
-                <ul className="divide-y rounded-md border text-xs" aria-label="Claude connections">
-                  {(grants ?? []).map((g) => (
-                    <li key={g.id as string} className="flex flex-wrap items-center gap-2 p-2">
-                      <span className="font-medium">{clientName.get(g.client_id as string) ?? "Claude"}</span>
-                      <span className="text-muted-foreground">authorized {formatUtc(g.created_at as string)} · {g.last_used_at ? `last used ${formatUtc(g.last_used_at as string)}` : "not used yet"}</span>
-                      <ActionForm action={revokeClaudeAccessAction} fields={{ workspaceId: workspace.id, grantId: g.id as string }} label="Revoke" variant="ghost" className="ml-auto" />
+          <div className="flex flex-wrap items-center gap-2">
+            {!claudeOn && state !== "unavailable" && <ConnectClaude address={mcp} state={state} />}
+            {(claudeOn || state === "connecting") && isAdmin && (
+              <a href="#manage" className="inline-flex h-8 items-center rounded-md border px-3 text-[13px] hover:bg-muted">Manage connection</a>
+            )}
+            {(claudeOn || state === "connecting") && isAdmin && (
+              <ActionForm action={disconnectClaudeAction} fields={{ workspaceId: workspace.id }} label="Disconnect" variant="ghost" />
+            )}
+          </div>
+
+          <details className="rounded-md border p-3 text-xs" data-testid="claude-fallback">
+            <summary className="cursor-pointer text-[13px] font-medium">Having trouble connecting?</summary>
+            <div className="mt-3 grid gap-3">
+              <CopyBlock label="Connector URL (MCP)" text={mcp} />
+              <ul className="grid list-disc gap-1 pl-4 text-muted-foreground">
+                <li>In Claude: <a className="underline underline-offset-2" href={CLAUDE_CONNECTORS_URL} target="_blank" rel="noreferrer noopener">Customize → Connectors</a> → Add → Custom connector, paste the URL. Leave the advanced OAuth settings empty.</li>
+                <li>Team and Enterprise plans: an owner first adds the connector for the organization; then each member connects it.</li>
+                <li>Free Claude plans can add one custom connector.</li>
+                <li>Claude Code: <code className="font-mono">claude mcp add --transport http signalforge {mcp}</code>, then run <code className="font-mono">/mcp</code> to sign in.</li>
+                <li>Claude apps connect from Anthropic&apos;s cloud, so SignalForge must be at a public HTTPS address{publicSite ? " (it is)" : " (this server isn't)"}.</li>
+              </ul>
+            </div>
+          </details>
+        </CardContent>
+      </Card>
+
+      <Card data-testid="github-card">
+        <CardHeader>
+          <CardTitle className="flex flex-wrap items-center gap-2">
+            GitHub repository
+            <Badge tone={r.repository ? "positive" : "neutral"} data-testid="github-state">{r.repository ? "Connected" : !app ? "Unavailable" : "Not connected"}</Badge>
+          </CardTitle>
+          <CardDescription>
+            Lets SignalForge link {product ? `${product.name}'s` : "your"} repository and check the pull requests Claude opens. Read-only: SignalForge can&apos;t push code.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 text-[13px]">
+          {sp.github && GITHUB_MSG[sp.github] && <p className="rounded-md border p-2 text-xs" role="status">{GITHUB_MSG[sp.github]}</p>}
+          {r.repository ? (
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="font-mono">{r.repository.fullName}</span>
+              <Badge tone="neutral">{r.repository.private ? "private" : "public"}</Badge>
+              {isAdmin && product && <ActionForm action={removeRepositoryAction} fields={{ workspaceId: workspace.id, productId: product.id }} label="Disconnect" variant="ghost" className="ml-auto" />}
+            </div>
+          ) : !app ? (
+            <p className="text-muted-foreground">Repository connection isn&apos;t available yet. Claude can still investigate using the repository you open in Claude Code.</p>
+          ) : !product ? (
+            <p className="text-muted-foreground">Add a product first.</p>
+          ) : (
+            <>
+              {!claudeOn && <p className="text-xs text-muted-foreground">Connect Claude first, then connect the repository.</p>}
+              {isAdmin ? <Button asChild size="sm" variant={claudeOn ? "default" : "secondary"} className="w-fit"><a href={`/api/github/install?product=${product.id}`}>Connect repository</a></Button>
+                : <p className="text-muted-foreground">Ask a workspace admin to connect the repository.</p>}
+              {repos.length > 0 && isAdmin && (
+                <ul className="divide-y rounded-md border text-xs" aria-label="Repositories">
+                  {repos.map((x) => (
+                    <li key={x.id} className="flex flex-wrap items-center gap-2 p-2">
+                      <span className="font-mono">{x.fullName}</span>
+                      <ActionForm action={selectRepositoryAction} fields={{ workspaceId: workspace.id, productId: product.id, installationId: String(x.installationId), repoId: String(x.id) }} label="Use for this product" variant="ghost" className="ml-auto" />
                     </li>
                   ))}
                 </ul>
               )}
-            </Step>
-
-            <Step done={!!r.repository} title={`2. Authorize ${product ? `${product.name}'s` : "your"} GitHub repository`}>
-              {r.repository ? (
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <span className="font-mono">{r.repository.fullName}</span>
-                  <Badge tone="neutral">{r.repository.private ? "private" : "public"}</Badge>
-                  <span className="text-muted-foreground">default branch {r.repository.defaultBranch}</span>
-                  {isAdmin && product && <ActionForm action={removeRepositoryAction} fields={{ workspaceId: workspace.id, productId: product.id }} label="Unlink" variant="ghost" className="ml-auto" />}
-                </div>
-              ) : !app ? (
-                <p className="text-muted-foreground">The SignalForge GitHub App isn&apos;t configured on this server yet, so repositories can&apos;t be linked.</p>
-              ) : !product ? (
-                <p className="text-muted-foreground">Add a product first.</p>
-              ) : (
-                <>
-                  <p className="text-muted-foreground">
-                    Install the SignalForge GitHub App on the repository (read-only: metadata, code and pull requests). SignalForge uses it
-                    to link the repository and to check the pull requests Claude reports; it can&apos;t push code.
-                  </p>
-                  {isAdmin && <Button asChild variant="secondary" size="sm" className="w-fit"><a href={`/api/github/install?product=${product.id}`}>Install GitHub App</a></Button>}
-                  {repos.length > 0 && isAdmin && (
-                    <ul className="divide-y rounded-md border text-xs" aria-label="Repositories">
-                      {repos.map((x) => (
-                        <li key={x.id} className="flex flex-wrap items-center gap-2 p-2">
-                          <span className="font-mono">{x.fullName}</span>
-                          <ActionForm action={selectRepositoryAction} fields={{ workspaceId: workspace.id, productId: product.id, installationId: String(x.installationId), repoId: String(x.id) }} label="Use for this product" variant="ghost" className="ml-auto" />
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </>
-              )}
-              <p className="text-xs text-muted-foreground">Claude itself works in the repository through your own Claude GitHub connection, which you set up in Claude Code.</p>
-            </Step>
-
-            <Step done={r.routine.saved} title="3. Let SignalForge start Claude Code (optional)">
-              <p className="text-muted-foreground">
-                With a Claude Code routine, “Investigate with Claude” starts a cloud session for you. Without one, SignalForge gives
-                you a request to paste into Claude Code yourself. Routines need a Claude Pro, Max, Team or Enterprise plan with Claude
-                Code on the web; runs count against that subscription.
-              </p>
-              <ol className="list-decimal pl-5 text-xs text-muted-foreground">
-                <li>At <a href="https://claude.ai/code/routines" target="_blank" rel="noreferrer noopener" className="underline underline-offset-2">claude.ai/code/routines <ExternalLink className="inline size-3" aria-hidden /></a>, create a routine with your repository, the SignalForge connector, and the prompt below.</li>
-                <li>Edit the routine, add an <span className="font-medium">API</span> trigger, copy its URL and generate a token.</li>
-                <li>Paste both here. Protect your default branch on GitHub so changes can only arrive through pull requests.</li>
-              </ol>
-              <CopyBlock label="Routine prompt" text={ROUTINE_PROMPT} />
-              {r.routine.saved && (
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <span>Routine <span className="font-mono">{r.routine.routineId}</span></span>
-                  <Badge tone={r.routine.status === "ready" ? "positive" : r.routine.status === "error" ? "negative" : "neutral"}>
-                    {r.routine.status === "ready" ? "working" : r.routine.status === "error" ? "error" : "saved, not used yet"}
-                  </Badge>
-                  {isAdmin && <ActionForm action={removeRoutineAction} fields={{ workspaceId: workspace.id }} label="Remove" variant="ghost" className="ml-auto" />}
-                </div>
-              )}
-              {isAdmin && <RoutineForm workspaceId={workspace.id} saved={r.routine.saved} />}
-            </Step>
-          </ol>
+            </>
+          )}
         </CardContent>
       </Card>
+
+      <Card data-testid="routine-card">
+        <CardHeader>
+          <CardTitle className="flex flex-wrap items-center gap-2">
+            Automatic investigations <span className="text-xs font-normal text-muted-foreground">optional</span>
+            <Badge tone={r.routine.status === "error" ? "warning" : r.routine.status === "ready" ? "positive" : "neutral"} data-testid="routine-state">{routineLabel}</Badge>
+          </CardTitle>
+          <CardDescription>
+            {r.routine.saved
+              ? "“Investigate with Claude” starts a Claude Code session for you."
+              : "Not set up: “Investigate with Claude” gives you a ready-made request to paste into Claude Code. Set this up to have SignalForge start Claude Code for you."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 text-[13px]">
+          {r.routine.saved && isAdmin && (
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              {r.routine.lastError && <span className="text-warning">{r.routine.lastError}</span>}
+              <ActionForm action={removeRoutineAction} fields={{ workspaceId: workspace.id }} label="Remove" variant="ghost" className="ml-auto" />
+            </div>
+          )}
+          {isAdmin && (
+            <details className="rounded-md border p-3 text-xs">
+              <summary className="cursor-pointer text-[13px] font-medium">{r.routine.saved ? "Replace the Claude Code routine" : "Set up automatic investigations"}</summary>
+              <div className="mt-3 grid gap-3">
+                <p className="text-muted-foreground">
+                  Needs a Claude plan with Claude Code on the web (Pro, Max, Team or Enterprise); runs count against it. Claude doesn&apos;t let
+                  other apps create routines for you, so this is done once in Claude:
+                </p>
+                <ol className="list-decimal pl-5 text-muted-foreground">
+                  <li>At <a href="https://claude.ai/code/routines" target="_blank" rel="noreferrer noopener" className="underline underline-offset-2">claude.ai/code/routines <ExternalLink className="inline size-3" aria-hidden /></a>, create a routine with your repository, the SignalForge connector, and the instructions below.</li>
+                  <li>Add an <span className="font-medium">API</span> trigger, copy its URL and generate a token, and paste both here.</li>
+                </ol>
+                <CopyBlock label="Routine instructions" text={ROUTINE_PROMPT} />
+                <RoutineForm workspaceId={workspace.id} saved={r.routine.saved} />
+              </div>
+            </details>
+          )}
+        </CardContent>
+      </Card>
+
+      {isAdmin && (claudeOn || state === "connecting" || (grants ?? []).length > 0) && (
+        <Card id="manage">
+          <CardHeader>
+            <CardTitle>Manage connection</CardTitle>
+            <CardDescription>Each Claude account that was approved for this workspace. Revoking stops it at once.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 text-[13px]">
+            <ul className="divide-y rounded-md border text-xs" aria-label="Claude connections">
+              {(grants ?? []).map((g) => (
+                <li key={g.id as string} className="flex flex-wrap items-center gap-2 p-2">
+                  <span className="font-medium">{clientName.get(g.client_id as string) ?? "Claude"}</span>
+                  <span className="text-muted-foreground">approved {formatUtc(g.created_at as string)} · {g.last_used_at ? `last used ${formatUtc(g.last_used_at as string)}` : "not used yet"}</span>
+                  <ActionForm action={revokeClaudeAccessAction} fields={{ workspaceId: workspace.id, grantId: g.id as string }} label="Revoke" variant="ghost" className="ml-auto" />
+                </li>
+              ))}
+            </ul>
+            <dl className="divide-y text-xs" aria-label="Connection details" data-testid="agent-readiness">
+              <Detail label="Claude access approved" value={r.mcp.authorized ? "Yes" : "No"} />
+              <Detail label="Claude has connected" value={r.mcp.used ? `Yes · ${formatUtc(r.mcp.lastUsedAt!)}` : "Not yet"} />
+              <Detail label="Repository" value={r.repository ? r.repository.fullName : app ? "Not connected" : "Unavailable on this server"} />
+              <Detail label="Automatic investigations" value={routineLabel} />
+              <Detail label="Implementation" value="Only after you approve a plan; Claude opens a pull request for review" />
+            </dl>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

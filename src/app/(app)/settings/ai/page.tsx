@@ -79,7 +79,7 @@ export default async function IntelligenceSettings() {
             SignalForge&apos;s own AI analyses collected mentions: whether each is about your product, sentiment toward it,
             bugs, feature requests, complaints and other feedback, grouped into prioritised issues. It is included in
             your plan — you don&apos;t connect or pay for an AI provider. (Claude for your codebase is separate: see{" "}
-            <Link href="/settings/agent" className="underline underline-offset-2">Developer agent</Link>.)
+            <Link href="/settings/agent" className="underline underline-offset-2">Claude</Link>.)
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">

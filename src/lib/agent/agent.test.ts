@@ -250,3 +250,19 @@ test("installation token, repositories, pull request state and PRs opened during
   ]);
   assert.deepEqual(await pullRequestsSince("ghs_inst", "acme/app", "2026-10-17T09:00:00Z", prs.f), [{ number: 9, headRef: "claude/sneaky", createdAt: "2026-10-17T10:00:00Z" }]);
 });
+
+test("Claude connection: one simple state, Connected only after a real MCP call", async () => {
+  const { claudeState, publiclyReachable } = await import("./connection-state.ts");
+  const base = { authorized: false, used: false, routineError: null, reachable: true };
+  assert.equal(claudeState(base), "not_connected");
+  assert.equal(claudeState({ ...base, authorized: true }), "connecting", "approved, but Claude hasn't called yet");
+  assert.equal(claudeState({ ...base, authorized: true, used: true }), "connected");
+  assert.equal(claudeState({ ...base, authorized: true, used: true, routineError: "Routine token rejected" }), "needs_attention");
+  assert.equal(claudeState({ ...base, reachable: false }), "unavailable");
+  // Claude Code on the same machine can still connect to a local server: then the real state wins.
+  assert.equal(claudeState({ ...base, reachable: false, authorized: true, used: true }), "connected");
+  assert.equal(publiclyReachable("https://app.signalforge.example"), true);
+  for (const u of ["http://localhost:3000", "https://localhost:3000", "http://app.example.com", "https://192.168.1.4", "https://app.test", "not a url"]) {
+    assert.equal(publiclyReachable(u), false, u);
+  }
+});

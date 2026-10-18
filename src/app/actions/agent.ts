@@ -25,6 +25,21 @@ async function role(workspaceId: string, min: "member" | "admin") {
   }
 }
 
+/** Disconnect Claude: revokes every active Claude connection of this workspace (tokens stop working at once). */
+export async function disconnectClaudeAction(_: ActionState, formData: FormData): Promise<ActionState> {
+  const workspaceId = z.uuid().safeParse(formData.get("workspaceId"));
+  if (!workspaceId.success) return failure("Invalid request.");
+  const r = await role(workspaceId.data, "admin");
+  if ("error" in r) return r.error!;
+  const admin = createAdminClient();
+  const { data: grants } = await admin.from("oauth_grants").select("id").eq("workspace_id", workspaceId.data).is("revoked_at", null);
+  let n = 0;
+  for (const g of grants ?? []) if (await revokeGrantForWorkspace(admin, g.id as string, workspaceId.data)) n++;
+  revalidatePath("/settings/agent");
+  return n ? { status: "success", message: "Claude disconnected. It can no longer read this workspace. You can also remove the SignalForge connector in Claude." }
+    : failure("Claude isn't connected to this workspace.");
+}
+
 const routinePayload = z.object({ workspaceId: z.uuid(), fireUrl: z.string().trim().max(300), token: z.string().trim().max(400) });
 
 /** Saves the customer's Claude Code routine API trigger (URL + token; the token is encrypted). */

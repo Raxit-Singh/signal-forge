@@ -8,7 +8,7 @@ const ITEMS = [
   { href: "/settings/workspace", label: "Workspace" },
   { href: "/settings/products", label: "Products" },
   { href: "/settings/ai", label: "SignalForge Intelligence" },
-  { href: "/settings/agent", label: "Developer agent" },
+  { href: "/settings/agent", label: "Claude" },
   { href: "/settings/billing", label: "Plan & billing" },
   { href: "/settings/account", label: "Account" },
 ];
