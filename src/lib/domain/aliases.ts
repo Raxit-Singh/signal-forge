@@ -205,3 +205,29 @@ export function suggestAliases(input: AliasInput): AliasSuggestion[] {
 
   return out;
 }
+
+interface BrandAlias { term: string; kind: string; isAmbiguous: boolean; contextTerms: string[]; negativeTerms: string[]; enabled: boolean; source: string }
+
+/**
+ * The product name is always a monitored brand term: added if missing and
+ * switched on if it was off — except an ambiguous name without context words,
+ * which stays off until context is added (it would match unrelated posts).
+ */
+export function ensureBrandTerm<T extends BrandAlias>(aliases: T[], productName: string): { aliases: T[]; changed: boolean } {
+  const name = productName.trim();
+  if (name.length < 2) return { aliases, changed: false };
+  const i = aliases.findIndex((a) => a.term.trim().toLowerCase() === name.toLowerCase());
+  if (i === -1) {
+    const ambiguous = isAmbiguousTerm(name);
+    const brand = { term: name, kind: "exact_name", isAmbiguous: ambiguous, contextTerms: [], negativeTerms: [], enabled: !ambiguous, source: "suggested" } as unknown as T;
+    return { aliases: [brand, ...aliases], changed: true };
+  }
+  const a = aliases[i]!;
+  const usable = !(a.isAmbiguous && a.contextTerms.length === 0);
+  if (a.enabled || !usable) return { aliases, changed: false };
+  return { aliases: aliases.map((x, j) => (j === i ? { ...x, enabled: true } : x)), changed: true };
+}
+
+export function isBrandTerm(term: string, productName: string): boolean {
+  return term.trim().toLowerCase() === productName.trim().toLowerCase();
+}

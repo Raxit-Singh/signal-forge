@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ensureBrandTerm } from "@/lib/domain/aliases";
 import { notFound, redirect } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
@@ -51,7 +52,7 @@ export default async function ProductKeywordsPage({ params }: { params: Promise<
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <KeywordEditor productId={product.id as string} initial={initial} mode="settings" allowance={allowance} />
+          <KeywordEditor productId={product.id as string} initial={ensureBrandTerm(initial, product.name as string).aliases} mode="settings" allowance={allowance} productName={product.name as string} />
         </CardContent>
       </Card>
     </>

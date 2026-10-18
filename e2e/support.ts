@@ -99,6 +99,8 @@ export interface FixtureMention {
   status?: "relevant" | "irrelevant" | "pending";
   type?: "post" | "comment" | "reply";
   linkedUrl?: string;
+  /** Keywords the mention matched (default: the product name). */
+  terms?: string[];
 }
 
 /** Inserts synthetic mentions through the same ingest path the worker uses, plus a coverage window. */
@@ -113,7 +115,7 @@ export async function seedMentions(productId: string, workspaceId: string, items
       published_at: new Date(now - i.hoursAgo * 3_600_000).toISOString(),
       engagement: { comments: 1 },
       engagement_score: 1,
-      matched_terms: ["FixtureFlow"],
+      matched_terms: i.terms ?? ["FixtureFlow"],
       relevance_score: 0.9,
       relevance_status: i.status ?? "relevant",
       author_external_id: i.author ?? null,

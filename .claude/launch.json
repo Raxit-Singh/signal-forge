@@ -1,6 +1,7 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "web", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev"], "port": 3000 }
+    { "name": "web", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev"], "port": 3000 },
+    { "name": "web-quiet", "runtimeExecutable": "env", "runtimeArgs": ["DEV_SCHEDULER=off", "npm", "run", "dev"], "port": 3000 }
   ]
 }

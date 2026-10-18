@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { productSchema, aliasListSchema, uuidSchema } from "@/lib/validation/schemas";
+import { ensureBrandTerm } from "@/lib/domain/aliases";
 import { planLimitMessage } from "@/lib/domain/plans";
 import { failure, invalid, logServerError, type ActionState } from "@/lib/server/action-result";
 import {
@@ -114,12 +115,14 @@ const aliasPayload = z.object({
 export async function saveAliasesAction(_: ActionState, formData: FormData): Promise<ActionState> {
   const parsed = aliasPayload.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return invalid(parsed.error);
-  const { productId, aliases, mode } = parsed.data;
+  const { productId, mode } = parsed.data;
 
   const supabase = await createClient();
   const { data: product } = await supabase
-    .from("products").select("workspace_id, onboarding_step").eq("id", productId).maybeSingle();
+    .from("products").select("workspace_id, onboarding_step, name").eq("id", productId).maybeSingle();
   if (!product) return failure("Product not found.");
+  // The product name is always monitored (added or switched back on if needed).
+  const { aliases } = ensureBrandTerm(parsed.data.aliases, product.name as string);
   try {
     await requireWorkspaceRole(product.workspace_id as string, "admin");
   } catch (e) {
@@ -140,7 +143,9 @@ export async function saveAliasesAction(_: ActionState, formData: FormData): Pro
   });
   if (error) {
     logServerError("saveAliases", error);
-    return failure(error.code === "23505" ? "Each keyword can only appear once." : planLimitMessage(error) ?? "Couldn't save keywords.");
+    const limit = planLimitMessage(error);
+    return failure(error.code === "23505" ? "Each keyword can only appear once."
+      : limit ? `${limit} Your product name is always monitored and counts as one keyword.` : "Couldn't save keywords.");
   }
   await resyncQueries(productId);
 

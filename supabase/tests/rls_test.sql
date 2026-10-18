@@ -1493,6 +1493,31 @@ select t.throws(format($$select public.create_invitation(%L, 'one-more@example.t
   'a workspace can send at most 30 invitations a day', '30 invitations');
 reset role;
 
+-- Keyword × platform counts (Smart Monitoring rankings): case-insensitive keyword match, current keywords only, unknown terms and non-relevant mentions ignored, RLS applies.
+insert into public.mentions (workspace_id, product_id, source, external_id, source_url, published_at, matched_terms, relevance_status)
+values
+  ((select v from ids where k = 'ws_a'), (select v from ids where k = 'p_a'), 'hackernews', 'kpc-1', 'https://example.test/kpc-1', now() - interval '3 hours', '{focusflow}', 'relevant'),
+  ((select v from ids where k = 'ws_a'), (select v from ids where k = 'p_a'), 'hackernews', 'kpc-2', 'https://example.test/kpc-2', now() - interval '3 hours', '{FocusFlow,focusflow.example}', 'relevant'),
+  ((select v from ids where k = 'ws_a'), (select v from ids where k = 'p_a'), 'github', 'kpc-3', 'https://example.test/kpc-3', now() - interval '3 hours', '{FocusFlow}', 'user_relevant'),
+  ((select v from ids where k = 'ws_a'), (select v from ids where k = 'p_a'), 'github', 'kpc-4', 'https://example.test/kpc-4', now() - interval '3 hours', '{FocusFlow}', 'irrelevant'),
+  ((select v from ids where k = 'ws_a'), (select v from ids where k = 'p_a'), 'github', 'kpc-5', 'https://example.test/kpc-5', now() - interval '3 hours', '{"not a keyword"}', 'relevant');
+select t.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+create temp table kpc as
+select keyword, platform, mentions from public.keyword_platform_counts((select v from ids where k = 'p_a'), now() - interval '4 hours', now() - interval '2 hours');
+select t.ok((select mentions from kpc where keyword = 'FocusFlow' and platform = 'hackernews') = 2, 'keyword counts match matched terms case-insensitively');
+select t.ok((select count(*) from kpc where keyword = 'focusflow.example') = 0, 'a matched term that is no longer a keyword is not reported (the mention still counts for FocusFlow)');
+select t.ok((select mentions from kpc where keyword = 'FocusFlow' and platform = 'github') = 1, 'irrelevant mentions are not counted; user-confirmed ones are');
+select t.ok((select count(*) from kpc where keyword not in ('FocusFlow', 'focusflow.example')) = 0, 'terms that are not current keywords are not reported');
+reset role;
+select t.as_user('00000000-0000-0000-0000-00000000000d');
+set role authenticated;
+select t.ok((select count(*) from public.keyword_platform_counts((select v from ids where k = 'p_a'), now() - interval '4 hours', now() - interval '2 hours')) = 0,
+  'keyword × platform counts respect RLS (security invoker)');
+reset role;
+select t.throws($$set role anon; select * from public.keyword_platform_counts(gen_random_uuid(), now() - interval '1 day', now())$$, 'anonymous users cannot call keyword counts', 'permission denied');
+reset role;
+
 -- ===================================================================== summary
 do $$
 declare passed int; failed int;

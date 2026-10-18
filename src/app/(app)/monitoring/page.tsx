@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { PackagePlus, Rocket, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, ChevronDown, Minus, PackagePlus, Rocket } from "lucide-react";
+import { createClient } from "@/lib/supabase/server";
 import { getActiveProduct, getWorkspaceUsage, hasRole, requireWorkspace } from "@/lib/server/session";
 import { getBackfillStatus } from "@/lib/server/collection/backfill-status";
 import { loadHistoryFormProps } from "@/lib/server/history-form";
@@ -11,6 +12,9 @@ import { formatInterval } from "@/lib/sources/adaptive";
 import { formatRelative, formatUtc } from "@/lib/format";
 import { EmptyState, PageHeader } from "@/components/page";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
+import { getKeywordRankings, type KeywordRankings } from "@/lib/server/collection/keyword-rankings";
+import { parseRange } from "@/lib/domain/date-range";
+import { COVERAGE_LABEL, type CoverageStatus, type KeywordPerformance } from "@/lib/analytics/keyword-ranking";
 import { BoostForm, CancelBoost, RankingTable, SourceToggle, type RankingRow } from "./monitoring-client";
 
 export const metadata: Metadata = { title: "Smart Monitoring" };
@@ -73,7 +77,7 @@ function toRow(p: PlatformMonitoring, now: number, planName: string, planMin: nu
   };
 }
 
-export default async function MonitoringPage() {
+export default async function MonitoringPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const { workspace } = await requireWorkspace();
   const product = await getActiveProduct(workspace.id);
   if (!product) {
@@ -87,11 +91,13 @@ export default async function MonitoringPage() {
     );
   }
   const canEdit = hasRole(workspace.role, "admin");
+  const range = parseRange(await searchParams, new Date());
   const [o, backfill, usage] = await Promise.all([
     getMonitoringOverview(product.id, workspace.id),
     getBackfillStatus(product.id),
     getWorkspaceUsage(workspace.id),
   ]);
+  const k = await getKeywordRankings(await createClient(), product.id, o, range);
   const backfillActive = Boolean(backfill && ["queued", "searching", "paused"].includes(backfill.status));
   const historyForm = canEdit && !backfillActive ? await loadHistoryFormProps(product.id) : null;
   const now = requestTime();
@@ -106,119 +112,141 @@ export default async function MonitoringPage() {
   const conflicts = active.filter((p) => p.keywordConflict).map((p) => ({ id: p.id, text: p.keywordConflict! }));
   const pausedKeywords = o.keywordCoverage.filter((k) => k.paused).length;
 
+  const lastScan = active.map((p) => p.lastScanAt).filter((x): x is string => Boolean(x)).sort().at(-1) ?? null;
+  const nextScan = active.map((p) => p.nextScanAt).filter((x): x is string => Boolean(x)).sort()[0] ?? null;
+  const unsearchable = o.keywordCoverage.flatMap((kw) => kw.platforms.filter((p) => p.intervalMinutes === null).map((p) => `“${kw.term}” can't be searched on ${p.name}: ${p.detail}`));
+  const warnings = [
+    ...(o.allowancePausedUntil ? [`This month's mention allowance is used up: paid platforms are paused and free ones are checked at most daily until ${formatUtc(o.allowancePausedUntil)}. New mentions are held, not discarded.`] : []),
+    ...active.filter((p) => p.state === "failing" || p.state === "partial").map((p) => `${p.name}: ${p.stateDetail ?? (p.state === "failing" ? "checks are failing" : "not every result could be read")}`),
+    ...conflicts.map((c) => c.text),
+    ...(pausedKeywords > 0 ? [`${pausedKeywords} keyword${pausedKeywords === 1 ? " is" : "s are"} paused: over your ${o.plan.name} plan's keyword allowance (${o.plan.maxKeywords} active per workspace).`] : []),
+    ...unsearchable,
+  ];
+  const monitoredKeywords = o.keywordCoverage.filter((kw) => !kw.paused).length;
+  const periodLabel = range.label.toLowerCase();
+
   return (
     <>
       <PageHeader
         title="Smart Monitoring"
-        description="SignalForge automatically prioritizes platforms based on where your product is being discussed."
+        description="Every keyword is searched on every platform that supports it. Platforms are ranked by how many mentions they bring in, and busier keyword × platform searches are checked more often."
       />
       <div className="grid gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex flex-wrap items-center gap-2">
-              <Sparkles className="size-4 text-primary" aria-hidden />
-              Smart Monitoring — Automatic
-              <Badge tone="positive">On</Badge>
-            </CardTitle>
-            <CardDescription>
-              Nothing to configure. SignalForge learns, for this product alone, how fast relevant mentions arrive on each platform and
-              how fast results fill each search, then checks each platform often enough to find new mentions promptly and before results
-              overflow what one check can read. Quiet platforms are still checked regularly. Intervals speed up at once when activity
-              rises and slow down only gradually, never while coverage is incomplete. Your {o.plan.name} plan checks each platform at most every {formatInterval(o.plan.minIntervalMinutes)}
-              {" "}and targets searching every keyword within {formatInterval(o.plan.keywordTargetMinutes)} (a scheduling target, not a guaranteed discovery time).
-              {o.paid.includedInPlan ? " Paid sources are included in your plan." : ""}
-              {paidNote ? ` ${paidNote}` : ""}
-            </CardDescription>
-            {o.allowancePausedUntil && (
-              <p className="mt-1 text-[13px] text-warning" role="status">
-                This month&apos;s mention allowance is used up. Paid platforms are paused and free platforms are checked at most daily until it
-                renews on {formatUtc(o.allowancePausedUntil)}. New mentions found meanwhile are held, not discarded. <Link href="/settings/billing" className="underline">Plan &amp; usage</Link>
-              </p>
-            )}
-            {o.plan.devFloorMinutes !== null && (
-              <p className="mt-1 text-xs text-warning">
-                Development entitlement active on this server: this workspace may be checked as often as every {formatInterval(o.plan.devFloorMinutes)}.
-                API budgets, paid allowances and rate limits still apply. Not available in production.
-              </p>
-            )}
-          </CardHeader>
-        </Card>
-
         <section aria-labelledby="summary" className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-          <h2 id="summary" className="sr-only">Monitoring summary, last 7 days</h2>
-          <Stat label="Active platforms" value={String(o.summary.activePlatforms)} />
-          <Stat label="Checks completed (7 days)" value={eff.checks.toLocaleString("en-US")} />
-          <Stat
-            label="Checks avoided vs hourly"
-            value={eff.percentFewer === null ? "—" : `${eff.percentFewer}%`}
-            hint={eff.percentFewer === null
-              ? "Shown after 24 h and 3 checks of monitoring history"
-              : `${eff.avoided.toLocaleString("en-US")} of ${eff.hourlyBaseline.toLocaleString("en-US")} hourly checks, over the time each platform was monitored`}
-          />
-          <Stat
-            label="Avg. discovery delay"
-            value={o.summary.avgDiscoveryMinutes === null ? "—" : `~${formatInterval(o.summary.avgDiscoveryMinutes)}`}
-            hint="Typical time before a new public mention appears (estimate)"
-          />
-          <Stat label="Interval adjustments (7 days)" value={String(o.summary.intervalChanges7d)} />
-          <Stat
-            label="Incomplete coverage"
-            value={String(o.summary.incompleteCoverage)}
-            hint={o.summary.incompleteCoverage === 1 ? "platform not fully covered" : "platforms not fully covered"}
-          />
+          <h2 id="summary" className="sr-only">Monitoring summary</h2>
+          <Stat label={`Total mentions · ${periodLabel}`} value={k.totalMentions.toLocaleString("en-US")} hint="Relevant, duplicates excluded" />
+          <Stat label="Active platforms" value={String(active.length)} />
+          <Stat label="Keywords monitored" value={String(monitoredKeywords)} hint={pausedKeywords ? `${pausedKeywords} paused` : undefined} />
+          <Stat label="Last scan" value={lastScan ? formatRelative(new Date(lastScan), new Date(now)) : "Not yet"} hint={lastScan ? formatUtc(lastScan) : undefined} />
+          <Stat label="Next scan" value={!nextScan ? "—" : new Date(nextScan).getTime() <= now ? "Due now" : formatRelative(new Date(nextScan), new Date(now))} hint={nextScan ? formatUtc(nextScan) : undefined} />
+          <Stat label="Coverage warnings" value={String(warnings.length)} hint={warnings.length ? "See below" : "None"} />
         </section>
 
+        {warnings.length > 0 && (
+          <div className="rounded-md border border-warning/40 bg-warning/5 p-3 text-[13px]" role="note" aria-labelledby="warnings-title">
+            <p id="warnings-title" className="mb-1 flex items-center gap-1.5 font-medium"><AlertTriangle className="size-4 text-warning" aria-hidden />Coverage warnings</p>
+            <ul className="grid gap-1 text-xs" aria-label="Coverage warnings">
+              {warnings.slice(0, 8).map((w) => <li key={w}>{w}</li>)}
+              {warnings.length > 8 && <li className="text-muted-foreground">…and {warnings.length - 8} more in Advanced details.</li>}
+            </ul>
+            {o.allowancePausedUntil && <Link href="/settings/billing" className="mt-1 inline-block text-xs underline">Plan &amp; usage</Link>}
+          </div>
+        )}
+
         <Card>
           <CardHeader>
-            <CardTitle>Platform ranking</CardTitle>
+            <CardTitle>Keyword performance</CardTitle>
             <CardDescription>
-              Ranked by each platform&apos;s share of this product&apos;s relevant mentions over the last 4 weeks — relative to this product,
-              not to other products. Open a platform for the reasons behind its rank and interval.
+              Relevant mentions per keyword, {periodLabel}, ranked by count. Open a keyword to see its platforms ranked by mentions.
+              {k.observedOnly && " Based on observed mentions: some platforms are still being scanned or weren't fully covered."}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {rows.length === 0 ? (
-              <p className="text-[13px] text-muted-foreground">
-                Nothing is monitored yet. Add keywords in <Link href="/settings/products" className="underline">product settings</Link>.
-              </p>
-            ) : (
-              <RankingTable rows={rows} productId={product.id} canEdit={canEdit} />
-            )}
+            {k.keywords.length === 0 ? (
+              <p className="text-[13px] text-muted-foreground">No keywords yet. Add them in <Link href="/settings/products" className="underline">product settings</Link>.</p>
+            ) : <KeywordList rows={k.keywords} />}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Keyword coverage</CardTitle>
+            <CardTitle>Overall platform performance</CardTitle>
             <CardDescription>
-              Every keyword on every monitored platform that can search it. Where a platform can&apos;t run all its searches each check,
-              keywords take turns and keep their own checkpoints, so each turn re-searches everything since the last one. Refresh times are per keyword.
-              {" "}Your {o.plan.name} plan targets every keyword within {formatInterval(o.plan.keywordTargetMinutes)} and includes {o.plan.maxKeywords} active
-              keyword{o.plan.maxKeywords === 1 ? "" : "s"} per workspace.
+              Platforms ranked by unique relevant mentions, {periodLabel}. A mention that matches several keywords counts once here.
+              Growth compares with the period of the same length just before and doesn&apos;t affect rank. Change the period with the date range at the top.
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-3">
-            {conflicts.length > 0 && (
-              <div className="rounded-md border border-warning/40 bg-warning/5 p-3 text-xs" role="note">
-                <p className="mb-1 font-medium">Where the keyword refresh target can&apos;t be met</p>
-                <ul className="grid gap-1" aria-label="Keyword schedule conflicts">
-                  {conflicts.map((c) => <li key={c.id}>{c.text}</li>)}
-                </ul>
-              </div>
-            )}
-            {pausedKeywords > 0 && (
-              <p className="text-xs text-warning">
-                {pausedKeywords} keyword{pausedKeywords === 1 ? " is" : "s are"} paused: over your {o.plan.name} plan&apos;s keyword allowance
-                ({o.plan.maxKeywords} active per workspace). They are kept; turn others off or <Link href="/settings/billing" className="underline">change plan</Link> to monitor them.
+          <CardContent>
+            {k.platforms.length === 0 ? (
+              <p className="text-[13px] text-muted-foreground">
+                Nothing is monitored yet. Add keywords in <Link href="/settings/products" className="underline">product settings</Link>.
               </p>
-            )}
-            {o.keywordCoverage.length === 0 ? (
-              <p className="text-[13px] text-muted-foreground">No keywords yet. Add them in <Link href="/settings/products" className="underline">product settings</Link>.</p>
-            ) : (
-              <KeywordCoverageList rows={o.keywordCoverage} />
-            )}
+            ) : <PlatformTable rows={k.platforms} now={now} />}
           </CardContent>
         </Card>
+
+        <details className="group rounded-lg border bg-surface" id="advanced">
+          <summary className="flex cursor-pointer items-center justify-between gap-2 p-4 text-[13px] font-medium [&::-webkit-details-marker]:hidden">
+            Advanced details
+            <ChevronDown className="size-4 transition-transform group-open:rotate-180" aria-hidden />
+          </summary>
+          <div className="grid gap-6 border-t p-4">
+            <div className="grid gap-1 text-xs text-muted-foreground">
+              <p>
+                How checks are scheduled: SignalForge measures, for this product alone, how fast relevant mentions arrive on each keyword × platform
+                search and how fast each search fills one check&apos;s results. Busier searches are checked more often; quiet ones are still checked
+                at least once a day, so new mentions there are found too. Intervals shorten at once when activity rises and lengthen only gradually, never
+                while coverage is incomplete. Your {o.plan.name} plan checks each platform at most every {formatInterval(o.plan.minIntervalMinutes)} and
+                targets searching every keyword within {formatInterval(o.plan.keywordTargetMinutes)}.
+                {o.paid.includedInPlan ? " Paid sources are included in your plan." : ""}{paidNote ? ` ${paidNote}` : ""}
+              </p>
+              {o.plan.devFloorMinutes !== null && (
+                <p className="text-warning">
+                  Development entitlement active on this server: this workspace may be checked as often as every {formatInterval(o.plan.devFloorMinutes)}.
+                  API budgets, paid allowances and rate limits still apply. Not available in production.
+                </p>
+              )}
+            </div>
+
+            <section aria-labelledby="diag-summary" className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <h3 id="diag-summary" className="sr-only">Scheduling, last 7 days</h3>
+              <Stat label="Checks completed (7 days)" value={eff.checks.toLocaleString("en-US")} />
+              <Stat
+                label="Checks avoided vs hourly"
+                value={eff.percentFewer === null ? "—" : `${eff.percentFewer}%`}
+                hint={eff.percentFewer === null
+                  ? "Shown after 24 h and 3 checks of monitoring history"
+                  : `${eff.avoided.toLocaleString("en-US")} of ${eff.hourlyBaseline.toLocaleString("en-US")} hourly checks, over the time each platform was monitored`}
+              />
+              <Stat
+                label="Avg. discovery delay"
+                value={o.summary.avgDiscoveryMinutes === null ? "—" : `~${formatInterval(o.summary.avgDiscoveryMinutes)}`}
+                hint="Typical time before a new public mention appears (estimate)"
+              />
+              <Stat label="Interval adjustments (7 days)" value={String(o.summary.intervalChanges7d)} />
+            </section>
+
+            <div className="grid gap-2">
+              <h3 className="text-[13px] font-medium">Platform diagnostics</h3>
+              <p className="text-xs text-muted-foreground">Rank here uses the last 4 weeks of relevant mentions. Open a platform for the reasons behind its interval.</p>
+              {rows.length === 0 ? <p className="text-[13px] text-muted-foreground">Nothing is monitored yet.</p> : <RankingTable rows={rows} productId={product.id} canEdit={canEdit} />}
+            </div>
+
+            <div className="grid gap-2">
+              <h3 className="text-[13px] font-medium">Keyword schedule</h3>
+              <p className="text-xs text-muted-foreground">
+                Where a platform can&apos;t run all its searches each check, keywords take turns and keep their own checkpoints, so each turn
+                re-searches everything since the last one. Your {o.plan.name} plan includes {o.plan.maxKeywords} active keyword{o.plan.maxKeywords === 1 ? "" : "s"} per workspace.
+              </p>
+              {conflicts.length > 0 && (
+                <ul className="grid gap-1 rounded-md border border-warning/40 bg-warning/5 p-3 text-xs" aria-label="Keyword schedule conflicts">
+                  {conflicts.map((c) => <li key={c.id}>{c.text}</li>)}
+                </ul>
+              )}
+              {o.keywordCoverage.length > 0 && <KeywordCoverageList rows={o.keywordCoverage} />}
+            </div>
+          </div>
+        </details>
 
         <Card id="history">
           <CardHeader>
@@ -387,5 +415,136 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
       <span className="text-xl font-semibold tabular">{value}</span>
       {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
     </Card>
+  );
+}
+
+const STATUS_TONE: Record<CoverageStatus, "positive" | "info" | "warning" | "neutral"> = {
+  monitored: "positive", learning: "info", partial: "warning", not_scanned: "neutral",
+};
+
+function StatusBadge({ status }: { status: CoverageStatus }) {
+  return <Badge tone={STATUS_TONE[status]}>{COVERAGE_LABEL[status]}</Badge>;
+}
+
+function Growth({ pct }: { pct: number | null }) {
+  if (pct === null) return <span className="text-xs text-muted-foreground" title="No comparable earlier period (not monitored then, or nothing found)">—</span>;
+  const Icon = pct > 0 ? ArrowUpRight : pct < 0 ? ArrowDownRight : Minus;
+  return (
+    <span className="inline-flex items-center gap-0.5 text-xs tabular text-muted-foreground">
+      <Icon className="size-3.5" aria-hidden />{pct > 0 ? "+" : ""}{pct}%
+    </span>
+  );
+}
+
+/** One single-hue magnitude bar: length = this platform's share of the keyword's mentions. */
+function ShareBar({ pct }: { pct: number | null }) {
+  return (
+    <span className="block h-1.5 w-full rounded-full bg-muted" aria-hidden>
+      <span className="block h-1.5 rounded-full bg-primary" style={{ width: `${pct ?? 0}%` }} />
+    </span>
+  );
+}
+
+function KeywordList({ rows }: { rows: KeywordPerformance[] }) {
+  return (
+    <ul className="divide-y rounded-md border" aria-label="Keyword performance">
+      {rows.map((kw) => {
+        const scanned = kw.platforms.filter((p) => p.mentions !== null && p.mentions > 0);
+        const distribution = scanned.slice(0, 3).map((p) => `${p.name} ${p.sharePct}%`).join(" · ") + (scanned.length > 3 ? ` · +${scanned.length - 3} more` : "");
+        return (
+          <li key={kw.term}>
+            <details className="group">
+              <summary className="grid cursor-pointer grid-cols-[1.5rem_1fr_auto] items-center gap-x-3 gap-y-0.5 px-3 py-2.5 text-[13px] [&::-webkit-details-marker]:hidden sm:grid-cols-[1.5rem_minmax(8rem,1fr)_6rem_minmax(8rem,1fr)_4rem_1rem]">
+                <span className="tabular text-xs text-muted-foreground">{kw.rank ?? "–"}</span>
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="truncate font-medium">{kw.term}</span>
+                  {kw.kind === "exact_name" && <Badge>Brand</Badge>}
+                  {kw.paused && <Badge tone="warning">Paused</Badge>}
+                </span>
+                <span className="text-right tabular">
+                  {kw.paused ? "—" : kw.mentions === null ? <span className="text-xs text-muted-foreground">Not scanned yet</span> : `${kw.mentions.toLocaleString("en-US")} mentions`}
+                </span>
+                <span className="col-span-2 col-start-2 truncate text-xs text-muted-foreground sm:col-span-1 sm:col-start-auto">
+                  {kw.paused ? "Over your plan's keyword allowance" : kw.best ? <>Best: <span className="text-foreground">{kw.best.name}</span>{distribution ? ` · ${distribution}` : ""}</> : kw.mentions === 0 ? "No mentions found yet" : "Waiting for first scan"}
+                </span>
+                <span className="hidden text-right sm:block"><Growth pct={kw.growthPct} /></span>
+                <ChevronDown className="hidden size-4 text-muted-foreground transition-transform group-open:rotate-180 sm:block" aria-hidden />
+              </summary>
+              {kw.paused ? (
+                <p className="px-3 pb-3 text-xs text-muted-foreground">Kept, not searched. Turn another keyword off or change plan to monitor it.</p>
+              ) : kw.platforms.length === 0 ? (
+                <p className="px-3 pb-3 text-xs text-muted-foreground">No monitored platform can search this keyword. See Advanced details.</p>
+              ) : (
+                <ol className="grid gap-1.5 px-3 pb-3" aria-label={`${kw.term} platform ranking`}>
+                  {kw.platforms.map((p) => (
+                    <li key={p.id} className="grid grid-cols-[1.5rem_minmax(6rem,10rem)_1fr_auto] items-center gap-3 text-xs">
+                      <span className="tabular text-muted-foreground">{p.rank ? `${p.rank}.` : "–"}</span>
+                      <span className="truncate font-medium">{p.name}</span>
+                      <ShareBar pct={p.sharePct} />
+                      <span className="flex items-center justify-end gap-2 tabular">
+                        {p.mentions === null ? <StatusBadge status="not_scanned" /> : <>{p.mentions.toLocaleString("en-US")}{p.status !== "monitored" && <StatusBadge status={p.status} />}</>}
+                        <Growth pct={p.growthPct} />
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </details>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function PlatformTable({ rows, now }: { rows: KeywordRankings["platforms"]; now: number }) {
+  const next = (p: KeywordRankings["platforms"][number]["platform"]) =>
+    !p.nextScanAt ? "—" : new Date(p.nextScanAt).getTime() <= now ? "Due now" : formatRelative(new Date(p.nextScanAt), new Date(now));
+  return (
+    <>
+      <table className="hidden w-full text-[13px] md:table" aria-label="Overall platform performance">
+        <thead className="text-left text-xs text-muted-foreground">
+          <tr>
+            <th scope="col" className="w-8 py-1.5 font-medium">#</th>
+            <th scope="col" className="font-medium">Platform</th>
+            <th scope="col" className="text-right font-medium">Mentions</th>
+            <th scope="col" className="w-40 pl-4 font-medium">Share</th>
+            <th scope="col" className="text-right font-medium">Growth</th>
+            <th scope="col" className="pl-4 font-medium">Refresh</th>
+            <th scope="col" className="font-medium">Next scan</th>
+            <th scope="col" className="font-medium">Coverage</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.id} className="border-t">
+              <td className="py-2 tabular text-muted-foreground">{r.rank ?? "–"}</td>
+              <td className="font-medium">{r.name}</td>
+              <td className="text-right tabular">{r.mentions === null ? "—" : r.mentions.toLocaleString("en-US")}</td>
+              <td className="pl-4"><span className="flex items-center gap-2"><ShareBar pct={r.sharePct} /><span className="w-9 shrink-0 text-right text-xs tabular text-muted-foreground">{r.sharePct === null ? "" : `${r.sharePct}%`}</span></span></td>
+              <td className="text-right"><Growth pct={r.growthPct} /></td>
+              <td className="pl-4 tabular">{r.platform.intervalMinutes ? `every ${formatInterval(r.platform.intervalMinutes)}` : "—"}</td>
+              <td className="tabular" title={r.platform.nextScanAt ? formatUtc(r.platform.nextScanAt) : undefined}>{next(r.platform)}</td>
+              <td><StatusBadge status={r.status} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <ul className="grid gap-2 md:hidden" aria-label="Overall platform performance">
+        {rows.map((r) => (
+          <li key={r.id} className="grid gap-1.5 rounded-md border p-3 text-[13px]">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium"><span className="mr-1.5 tabular text-muted-foreground">{r.rank ?? "–"}</span>{r.name}</span>
+              <StatusBadge status={r.status} />
+            </div>
+            <div className="flex items-center gap-2"><ShareBar pct={r.sharePct} /><span className="shrink-0 tabular">{r.mentions === null ? "—" : r.mentions.toLocaleString("en-US")}{r.sharePct !== null && ` · ${r.sharePct}%`}</span></div>
+            <div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
+              <Growth pct={r.growthPct} />
+              <span>{r.platform.intervalMinutes ? `Every ${formatInterval(r.platform.intervalMinutes)}` : "Not scheduled"} · next {next(r.platform)}</span>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }

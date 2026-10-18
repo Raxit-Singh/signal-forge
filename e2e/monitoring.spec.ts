@@ -28,35 +28,100 @@ test.afterEach(async () => {
 
 const ranking = (page: import("@playwright/test").Page) => page.getByRole("table", { name: "Platform ranking" });
 
-test("automatic monitoring: no mode choice, honest summary before history exists", async ({ page }) => {
+/** Scheduling diagnostics live behind "Advanced details". */
+async function openAdvanced(page: import("@playwright/test").Page) {
+  const adv = page.locator("details#advanced");
+  if (!(await adv.evaluate((d: HTMLDetailsElement) => d.open))) await adv.locator("summary").first().click();
+}
+
+test("simple view: summary, keywords and platforms ranked by mention count, no technical settings up front", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Smart Monitoring", level: 1 })).toBeVisible();
-  await expect(page.getByText("SignalForge automatically prioritizes platforms based on where your product is being discussed.")).toBeVisible();
-  await expect(page.getByText("Smart Monitoring — Automatic")).toBeVisible();
   for (const mode of ["Eco", "Balanced", "Priority"]) await expect(page.getByRole("radio", { name: new RegExp(mode) })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Save mode" })).toHaveCount(0);
-  await expect(page.getByText("Your Free plan checks each platform at most every 24 h", { exact: false }).first()).toBeVisible();
+  // Formula-level detail is hidden until "Advanced details" is opened.
+  await expect(page.getByText("Checks avoided vs hourly", { exact: true })).toBeHidden();
 
-  // No checks have run for this product: no efficiency percentage is claimed.
+  const stat = (label: string) => page.locator("div", { has: page.getByText(label, { exact: true }) }).last();
+  await expect(stat("Total mentions · last 30 days")).toContainText("13");
+  await expect(stat("Active platforms")).toContainText("3");
+  await expect(stat("Keywords monitored")).toContainText("1");
+
+  // Platforms: ranked by unique relevant mentions; Stack Overflow was never scanned, so it has no rank (not "0").
+  const table = page.getByRole("table", { name: "Overall platform performance" });
+  const rows = table.getByRole("row");
+  await expect(rows.nth(1)).toContainText("Hacker News");
+  await expect(rows.nth(1)).toContainText("12");
+  await expect(rows.nth(1)).toContainText("92%");
+  await expect(rows.nth(2)).toContainText("GitHub");
+  await expect(rows.nth(3)).toContainText("Stack Overflow");
+  await expect(rows.nth(3)).toContainText("Not scanned yet");
+  await expect(rows.nth(3).getByRole("cell").first()).toHaveText("–");
+
+  // Keyword: total, best platform; expanding shows that keyword's own platform ranking.
+  const keywords = page.getByRole("list", { name: "Keyword performance" });
+  await expect(keywords).toContainText("FixtureFlow");
+  await expect(keywords).toContainText("13 mentions");
+  await expect(keywords).toContainText("Best: Hacker News");
+  await keywords.getByText("FixtureFlow", { exact: true }).click();
+  const perPlatform = page.getByRole("list", { name: "FixtureFlow platform ranking" });
+  await expect(perPlatform.getByRole("listitem").nth(0)).toContainText("1.Hacker News");
+  await expect(perPlatform.getByRole("listitem").nth(1)).toContainText("2.GitHub");
+  await expect(perPlatform.getByRole("listitem").nth(2)).toContainText("Not scanned yet");
+
+  // The reporting period changes the window: a 7-day view only counts what was published in it.
+  await page.goto("/monitoring?range=7d");
+  await expect(stat("Total mentions · last 7 days")).toContainText("13");
+
+  // Scheduling detail is still available for those who want it.
+  await openAdvanced(page);
+  await expect(page.getByText("Your Free plan checks each platform at most every 24 h", { exact: false }).first()).toBeVisible();
   const avoided = page.locator("div", { has: page.getByText("Checks avoided vs hourly", { exact: true }) }).last();
   await expect(avoided).toContainText("—");
-  await expect(avoided).toContainText("Shown after 24 h and 3 checks of monitoring history");
-
-  // Keyword-level coverage: the product name is searched on every monitored platform, with its real refresh.
   const coverage = page.getByRole("list", { name: "Keyword coverage" });
-  await expect(coverage).toContainText("FixtureFlow");
   await expect(coverage).toContainText("Searched on 3 of 3 platforms");
-  await expect(coverage).toContainText("Every 24 h");
   await coverage.getByText("FixtureFlow", { exact: true }).click();
   const byPlatform = page.getByRole("list", { name: "FixtureFlow by platform" });
   await expect(byPlatform.getByRole("listitem").filter({ hasText: "Hacker News" })).toContainText("every 24 h");
   await expect(byPlatform.getByRole("listitem").filter({ hasText: "Stack Overflow" })).toContainText("Searched every check");
-
-  // Free sources are ranked/learning; paid ones are listed separately with the reason they're off.
-  await expect(ranking(page)).toContainText("Hacker News");
-  await expect(ranking(page)).toContainText("GitHub");
   const other = page.getByRole("list", { name: "Other platforms" });
   await expect(other).toContainText("Reddit");
   await expect(other).toContainText(/Not configured on this server|switched off/);
+});
+
+test("each keyword has its own platform ranking; growth is shown but doesn't change rank", async ({ page }) => {
+  await adminInsert("internal_plan_grants", {
+    workspace_id: ids.workspaceId, plan_id: "pro", reason: "development", granted_by: "e2e-monitoring", expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+  });
+  await adminInsert("product_aliases", { workspace_id: ids.workspaceId, product_id: ids.productId, term: "Flowctl", kind: "custom", enabled: true, source: "user" });
+  // Flowctl: GitHub 3 > Hacker News 1. FixtureFlow: Hacker News 12 > GitHub 1 (fixtures). Two posts match both keywords.
+  await seedMentions(ids.productId, ids.workspaceId, [
+    { source: "github", externalId: "e2e-k-gh-1", title: "flowctl crash", hoursAgo: 5, terms: ["Flowctl"] },
+    { source: "github", externalId: "e2e-k-gh-2", title: "flowctl and FixtureFlow", hoursAgo: 6, terms: ["Flowctl", "FixtureFlow"] },
+    { source: "github", externalId: "e2e-k-gh-3", title: "flowctl docs", hoursAgo: 7, terms: ["flowctl"] },
+    { source: "hackernews", externalId: "e2e-k-hn-1", title: "Show HN: flowctl", hoursAgo: 8, terms: ["Flowctl"] },
+    // Previous 30 days: GitHub grew from 1, Hacker News had 10 (so HN shrank) — ranks still follow counts.
+    { source: "hackernews", externalId: "e2e-k-hn-old", title: "old", hoursAgo: 24 * 40, terms: ["FixtureFlow"] },
+  ], 70);
+  await page.reload();
+
+  const keywords = page.getByRole("list", { name: "Keyword performance" });
+  await keywords.getByText("Flowctl", { exact: true }).click();
+  const flow = page.getByRole("list", { name: "Flowctl platform ranking" });
+  await expect(flow.getByRole("listitem").nth(0)).toContainText("1.GitHub");
+  await expect(flow.getByRole("listitem").nth(0)).toContainText("3");
+  await expect(flow.getByRole("listitem").nth(1)).toContainText("2.Hacker News");
+
+  // FixtureFlow keeps Hacker News first; the shared post counts for both keywords...
+  await expect(keywords.getByRole("listitem").filter({ hasText: "FixtureFlow" }).first()).toContainText("14 mentions");
+  await expect(keywords.getByRole("listitem").filter({ hasText: "Flowctl" }).first()).toContainText("4 mentions");
+  // ...but only once in the platform totals (12 + 1 + 4 new GitHub/HN posts = 17 unique).
+  const stat = (label: string) => page.locator("div", { has: page.getByText(label, { exact: true }) }).last();
+  await expect(stat("Total mentions · last 30 days")).toContainText("17");
+  // Hacker News: 13 now vs 1 before (+1200%); GitHub: 4 vs 0 (no growth figure). Hacker News still ranks by count.
+  const rows = page.getByRole("table", { name: "Overall platform performance" }).getByRole("row");
+  await expect(rows.nth(1)).toContainText("Hacker News");
+  await expect(rows.nth(1)).toContainText("+1200%");
+  await expect(rows.nth(2)).toContainText("GitHub");
 });
 
 test("ranking from stored activity, explanations, and a Launch Boost that returns to automatic intervals", async ({ page }) => {
@@ -84,6 +149,7 @@ test("ranking from stored activity, explanations, and a Launch Boost that return
   ).then((r) => r.map((x) => `${x.platform}:${x.phase}:${x.rank}:${x.mentions_7d}:${x.interval_minutes}`).join(" "))).toContain("hackernews:ranked:1:12:360");
 
   await page.reload();
+  await openAdvanced(page);
   const hn = ranking(page).getByRole("row").filter({ hasText: "Hacker News" });
   await expect(hn).toContainText("#1");
   await expect(hn).toContainText("%"); // share of this product's relevant mentions
@@ -117,6 +183,7 @@ test("ranking from stored activity, explanations, and a Launch Boost that return
   );
   assert(changes.some((c) => c.from_minutes === 360 && c.to_minutes === 1440 && c.reasons.length > 0), "interval change recorded with reasons");
   await page.reload();
+  await openAdvanced(page);
   await expect(ranking(page).getByRole("row").filter({ hasText: "Hacker News" })).toContainText("24 h");
   await expect(page.locator("div", { has: page.getByText("Interval adjustments (7 days)", { exact: true }) }).last()).toContainText("1");
 });
@@ -133,6 +200,7 @@ test("dashboard shows each keyword's actual scheduled refresh, not only the plat
     interval_minutes: 2880, params: { terms: ["FixtureFlow"], role: "brand", rotation: { position: 0, rotating: 2, slots: 1 } },
   });
   await page.reload();
+  await openAdvanced(page);
   const so = ranking(page).getByRole("row").filter({ hasText: "Stack Overflow" });
   await expect(so).toContainText("24 h");
   await expect(so).toContainText("keywords every 2 days");
@@ -148,9 +216,12 @@ test("dashboard shows each keyword's actual scheduled refresh, not only the plat
   await expect(page.getByRole("list", { name: "Keyword schedule conflicts" })).toContainText("not met on Stack Overflow");
 });
 
-test("mobile: ranking becomes cards with no horizontal overflow", async ({ page }) => {
+test("mobile: rankings become cards with no horizontal overflow", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.reload();
+  await expect(page.getByRole("list", { name: "Overall platform performance" })).toBeVisible();
+  await expect(page.getByRole("table", { name: "Overall platform performance" })).toBeHidden();
+  await openAdvanced(page);
   const cards = page.getByRole("list", { name: "Platform ranking" });
   await expect(cards).toBeVisible();
   await expect(page.getByRole("table", { name: "Platform ranking" })).toBeHidden();

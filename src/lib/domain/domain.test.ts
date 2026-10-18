@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   normalizeWebsiteUrl, parseGithubRepo, parseAppStoreUrl, parsePlayStoreUrl, safeRedirectPath,
 } from "./urls.ts";
-import { suggestAliases, isAmbiguousTerm, isAmbiguousCustomTerm, splitWords, contextKeywords } from "./aliases.ts";
+import { suggestAliases, isAmbiguousTerm, isAmbiguousCustomTerm, splitWords, contextKeywords, ensureBrandTerm } from "./aliases.ts";
 import { checkKeywordLimit, checkProductLimit, effectivePlanId, formatPrice, mentionUsageLevel, planFromRow, planLimitMessage, usageFromRpc } from "./plans.ts";
 import { fitSuggestionsToAllowance } from "./keyword-allowance.ts";
 import { checkKeyShape, keyHint } from "./ai-providers.ts";
@@ -228,4 +228,22 @@ test("internal testing grants: take precedence while active, never a subscriptio
   assert.equal(effectivePlanId({ plan_id: "free", status: "active" }, grant), "pro");
   assert.equal(effectivePlanId({ plan_id: "free", status: "active" }, { ...grant, revoked_at: "2026-10-16T00:00:00Z" }), "free", "revoked → subscription");
   assert.equal(effectivePlanId(null, { ...grant, expires_at: "2020-01-01T00:00:00Z" }), "free", "expired → free");
+});
+
+test("the product name is always a monitored brand term", () => {
+  const base = { kind: "custom", isAmbiguous: false, contextTerms: [] as string[], negativeTerms: [] as string[], source: "user" };
+  const added = ensureBrandTerm([{ ...base, term: "acme cli", enabled: true }], "FixtureFlow");
+  assert.equal(added.changed, true);
+  assert.deepEqual(added.aliases.map((a) => [a.term, a.kind, a.enabled]), [["FixtureFlow", "exact_name", true], ["acme cli", "custom", true]]);
+
+  const reenabled = ensureBrandTerm([{ ...base, term: "fixtureflow", enabled: false }], "FixtureFlow");
+  assert.deepEqual(reenabled.aliases.map((a) => a.enabled), [true]);
+
+  const kept = ensureBrandTerm([{ ...base, term: "FixtureFlow", enabled: true }], "FixtureFlow");
+  assert.equal(kept.changed, false);
+
+  // Ambiguous names without context stay off (they would match unrelated posts).
+  const amb = ensureBrandTerm([{ ...base, term: "Notion", isAmbiguous: true, enabled: false }], "Notion");
+  assert.equal(amb.changed, false);
+  assert.equal(amb.aliases[0]!.enabled, false);
 });

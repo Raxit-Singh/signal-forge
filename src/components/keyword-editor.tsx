@@ -7,7 +7,7 @@ import { Badge, Input } from "@/components/ui/primitives";
 import { FormMessage, SubmitButton } from "@/components/ui/form";
 import { idle } from "@/lib/action-state";
 import { saveAliasesAction } from "@/app/actions/product";
-import { isAmbiguousCustomTerm, type AliasKind } from "@/lib/domain/aliases";
+import { isAmbiguousCustomTerm, isBrandTerm, type AliasKind } from "@/lib/domain/aliases";
 import { overAllowanceReason as overReason, type KeywordAllowance } from "@/lib/domain/keyword-allowance";
 import { cn } from "@/lib/utils";
 
@@ -36,8 +36,8 @@ function parseTerms(s: string) {
 }
 
 export function KeywordEditor({
-  productId, initial, mode, allowance,
-}: { productId: string; initial: EditableAlias[]; mode: "onboarding" | "settings"; allowance?: KeywordAllowance }) {
+  productId, initial, mode, allowance, productName,
+}: { productId: string; initial: EditableAlias[]; mode: "onboarding" | "settings"; allowance?: KeywordAllowance; productName?: string }) {
   const [aliases, setAliases] = useState<EditableAlias[]>(initial);
   const [draft, setDraft] = useState("");
   const [state, action] = useActionState(saveAliasesAction, idle);
@@ -83,6 +83,8 @@ export function KeywordEditor({
         )}
         {aliases.map((a, i) => {
           const needsContext = a.isAmbiguous && a.contextTerms.length === 0;
+          // The product name is always monitored: it can't be removed or switched off (only given context words).
+          const brand = productName !== undefined && isBrandTerm(a.term, productName);
           return (
             <li key={a.term} className={cn("grid gap-2 p-3", !a.enabled && "bg-surface-2")}>
               <div className="flex flex-wrap items-center gap-2">
@@ -91,7 +93,7 @@ export function KeywordEditor({
                     type="checkbox"
                     className="size-4 accent-[var(--primary)]"
                     checked={a.enabled}
-                    disabled={needsContext || (!a.enabled && atLimit)}
+                    disabled={needsContext || (!a.enabled && atLimit) || (brand && a.enabled)}
                     title={!a.enabled && atLimit && allowance ? overReason(allowance) : undefined}
                     onChange={(e) => update(i, { enabled: e.target.checked })}
                     aria-label={`Listen for ${a.term}`}
@@ -99,6 +101,7 @@ export function KeywordEditor({
                   <span className={cn("truncate font-mono text-[13px]", !a.enabled && "text-muted-foreground")}>{a.term}</span>
                 </label>
                 <Badge>{KIND_LABEL[a.kind]}</Badge>
+                {brand && <Badge tone="info">Always monitored</Badge>}
                 {a.isAmbiguous && (
                   <Badge tone="warning">
                     <AlertTriangle className="size-3" aria-hidden /> Ambiguous
@@ -123,6 +126,8 @@ export function KeywordEditor({
                     type="button"
                     variant="ghost"
                     size="icon"
+                    disabled={brand}
+                    title={brand ? "Your product name is always monitored" : undefined}
                     aria-label={`Remove ${a.term}`}
                     onClick={() => setAliases((l) => l.filter((_, j) => j !== i))}
                   >

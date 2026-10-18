@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
-import { suggestAliases, type AliasSuggestion } from "@/lib/domain/aliases";
+import { ensureBrandTerm, suggestAliases, type AliasSuggestion } from "@/lib/domain/aliases";
 import { normalizeWebsiteUrl } from "@/lib/domain/urls";
 import { Card, CardContent } from "@/components/ui/primitives";
 import { KeywordEditor, type EditableAlias } from "@/components/keyword-editor";
@@ -69,7 +69,7 @@ export default async function KeywordsStep({ params }: { params: Promise<{ produ
       />
       <Card>
         <CardContent>
-          <KeywordEditor productId={product.id} initial={initial} mode="onboarding" allowance={allowance} />
+          <KeywordEditor productId={product.id} initial={ensureBrandTerm(initial, product.name).aliases} mode="onboarding" allowance={allowance} productName={product.name} />
         </CardContent>
       </Card>
     </>

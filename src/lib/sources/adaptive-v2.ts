@@ -110,7 +110,7 @@ export function importanceShares(counts: Record<string, number>): Record<string,
   return Object.fromEntries(keys.map((k) => [k, (Math.max(0, counts[k]!) + 1) / Math.max(1, total)]));
 }
 
-/** Ranks by importance share (product-relative), ties by platform id. */
+/** Ranks by a per-platform number, highest first (mention counts or importance shares — same order), ties by platform id. */
 export function rankByImportance(shares: Record<string, number>, eligible: (p: string) => boolean = () => true): Map<string, number> {
   const ordered = Object.keys(shares).filter(eligible).sort((a, b) => shares[b]! - shares[a]! || a.localeCompare(b));
   return new Map(ordered.map((p, i) => [p, i + 1]));

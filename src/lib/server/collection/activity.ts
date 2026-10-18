@@ -253,7 +253,12 @@ export async function refreshActivity(
     }
   }
 
-  const ranks = rankByImportance(shares, (pl) => decided.some((d) => d.s.platform === pl && !d.model.learning));
+  // Rank = relevant mentions over the last 28 days, highest first (ties by platform id). Growth, engagement and
+  // the arrival model never change it. Platforms not checked yet aren't ranked (unknown is not zero).
+  const ranks = rankByImportance(
+    Object.fromEntries(scored.map((s) => [s.platform, s.row.n28])),
+    (pl) => scored.some((s) => s.platform === pl && s.row.completed_checks > 0),
+  );
   const upserts: Array<Record<string, unknown>> = [];
   const changes: Array<Record<string, unknown>> = [];
   for (const { s, p, decision, model, turns, conflict, paced, mine, floor } of decided) {
@@ -337,7 +342,10 @@ async function applySchedules(
     }
     if (runnable && q.consecutive_failures === 0 && rotation) {
       // New or re-timed rotating search: move to its own time slot so turns stay fair.
-      if (q.interval_minutes !== interval || !last) next = rotationNextRun(now, d.decision.interval, rotation);
+      // Never searched yet: run it now. The first scan covers every keyword (a baseline for each
+      // keyword × platform); turns only start after it. Rate limits and budgets still apply per run.
+      if (!last) next = next < now ? next : now;
+      else if (q.interval_minutes !== interval) next = rotationNextRun(now, d.decision.interval, rotation);
       if (isOverdue(last, interval, now) && next > now) {
         next = now;
         reasons.push("Catching up on a missed check");
