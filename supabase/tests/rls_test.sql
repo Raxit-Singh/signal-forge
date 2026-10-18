@@ -1518,6 +1518,34 @@ reset role;
 select t.throws($$set role anon; select * from public.keyword_platform_counts(gen_random_uuid(), now() - interval '1 day', now())$$, 'anonymous users cannot call keyword counts', 'permission denied');
 reset role;
 
+-- Stop scan / Resume scanning.
+insert into public.monitoring_queries (workspace_id, product_id, provider, stream, query, params, enabled, next_run_at)
+values ((select v from ids where k = 'ws_a'), (select v from ids where k = 'p_a'), 'hackernews', 'default', 'FocusFlow stop-scan test', '{"terms":["FocusFlow"]}', true, now() + interval '1 hour')
+on conflict do nothing;
+select t.as_user('00000000-0000-0000-0000-00000000000d');
+set role authenticated;
+select t.throws(format($$select public.set_product_scanning(%L, true)$$, (select v from ids where k = 'p_a')),
+  'non-members cannot stop another workspace''s scanning', 'Only workspace admins');
+reset role;
+select t.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+select t.ok(public.set_product_scanning((select v from ids where k = 'p_a'), true) is not null, 'an admin can stop scanning');
+reset role;
+select t.ok((select scan_paused_at is not null from public.products where id = (select v from ids where k = 'p_a'))
+  and not exists (select 1 from public.monitoring_queries where product_id = (select v from ids where k = 'p_a') and next_run_at <> 'infinity'),
+  'stopping parks every search of the product (never due)');
+select t.ok(not exists (select 1 from public.backfill_runs where product_id = (select v from ids where k = 'p_a') and status in ('queued', 'searching', 'paused')),
+  'stopping ends a running historical search');
+select t.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+select t.ok(public.set_product_scanning((select v from ids where k = 'p_a'), false) is null, 'an admin can resume scanning');
+reset role;
+select t.ok((select scan_paused_at is null from public.products where id = (select v from ids where k = 'p_a'))
+  and not exists (select 1 from public.monitoring_queries where product_id = (select v from ids where k = 'p_a') and enabled and next_run_at > now()),
+  'resuming makes every enabled search due now');
+select t.throws($$set role anon; select public.set_product_scanning(gen_random_uuid(), true)$$, 'anonymous users cannot stop scanning', 'permission denied');
+reset role;
+
 -- ===================================================================== summary
 do $$
 declare passed int; failed int;

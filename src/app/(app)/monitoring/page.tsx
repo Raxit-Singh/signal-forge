@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, ChevronDown, Minus, PackagePlus, Rocket } from "lucide-react";
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, ChevronDown, Minus, PackagePlus, Pause, Rocket } from "lucide-react";
+import { StopScan } from "@/components/scan/stop-scan";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveProduct, getWorkspaceUsage, hasRole, requireWorkspace } from "@/lib/server/session";
 import { getBackfillStatus } from "@/lib/server/collection/backfill-status";
@@ -97,7 +98,12 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
     getBackfillStatus(product.id),
     getWorkspaceUsage(workspace.id),
   ]);
-  const k = await getKeywordRankings(await createClient(), product.id, o, range);
+  const sb = await createClient();
+  const [k, { data: scan }] = await Promise.all([
+    getKeywordRankings(sb, product.id, o, range),
+    sb.from("products").select("scan_paused_at").eq("id", product.id).maybeSingle(),
+  ]);
+  const stoppedAt = (scan?.scan_paused_at as string | null) ?? null;
   const backfillActive = Boolean(backfill && ["queued", "searching", "paused"].includes(backfill.status));
   const historyForm = canEdit && !backfillActive ? await loadHistoryFormProps(product.id) : null;
   const now = requestTime();
@@ -130,15 +136,23 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
       <PageHeader
         title="Smart Monitoring"
         description="Every keyword is searched on every platform that supports it. Platforms are ranked by how many mentions they bring in, and busier keyword × platform searches are checked more often."
+        actions={canEdit ? <StopScan productId={product.id} productName={product.name} stopped={Boolean(stoppedAt)} /> : undefined}
       />
       <div className="grid gap-6">
+        {stoppedAt && (
+          <div className="flex flex-wrap items-center gap-2 rounded-md border border-warning/40 bg-warning/5 p-3 text-[13px]" role="status" data-testid="scan-stopped">
+            <Pause className="size-4 text-warning" aria-hidden />
+            <span><span className="font-medium">Scanning is stopped</span> since {formatUtc(stoppedAt)}. No platform is searched for {product.name} or its competitors; collected data is kept.
+              {!canEdit && " A workspace admin can resume it."}</span>
+          </div>
+        )}
         <section aria-labelledby="summary" className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
           <h2 id="summary" className="sr-only">Monitoring summary</h2>
           <Stat label={`Total mentions · ${periodLabel}`} value={k.totalMentions.toLocaleString("en-US")} hint="Relevant, duplicates excluded" />
           <Stat label="Active platforms" value={String(active.length)} />
           <Stat label="Keywords monitored" value={String(monitoredKeywords)} hint={pausedKeywords ? `${pausedKeywords} paused` : undefined} />
           <Stat label="Last scan" value={lastScan ? formatRelative(new Date(lastScan), new Date(now)) : "Not yet"} hint={lastScan ? formatUtc(lastScan) : undefined} />
-          <Stat label="Next scan" value={!nextScan ? "—" : new Date(nextScan).getTime() <= now ? "Due now" : formatRelative(new Date(nextScan), new Date(now))} hint={nextScan ? formatUtc(nextScan) : undefined} />
+          <Stat label="Next scan" value={stoppedAt ? "Stopped" : !nextScan ? "—" : new Date(nextScan).getTime() <= now ? "Due now" : formatRelative(new Date(nextScan), new Date(now))} hint={nextScan ? formatUtc(nextScan) : undefined} />
           <Stat label="Coverage warnings" value={String(warnings.length)} hint={warnings.length ? "See below" : "None"} />
         </section>
 
@@ -181,7 +195,7 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
               <p className="text-[13px] text-muted-foreground">
                 Nothing is monitored yet. Add keywords in <Link href="/settings/products" className="underline">product settings</Link>.
               </p>
-            ) : <PlatformTable rows={k.platforms} now={now} />}
+            ) : <PlatformTable rows={k.platforms} now={now} stopped={Boolean(stoppedAt)} />}
           </CardContent>
         </Card>
 
@@ -497,9 +511,9 @@ function KeywordList({ rows }: { rows: KeywordPerformance[] }) {
   );
 }
 
-function PlatformTable({ rows, now }: { rows: KeywordRankings["platforms"]; now: number }) {
+function PlatformTable({ rows, now, stopped }: { rows: KeywordRankings["platforms"]; now: number; stopped: boolean }) {
   const next = (p: KeywordRankings["platforms"][number]["platform"]) =>
-    !p.nextScanAt ? "—" : new Date(p.nextScanAt).getTime() <= now ? "Due now" : formatRelative(new Date(p.nextScanAt), new Date(now));
+    stopped ? "Stopped" : !p.nextScanAt ? "—" : new Date(p.nextScanAt).getTime() <= now ? "Due now" : formatRelative(new Date(p.nextScanAt), new Date(now));
   return (
     <>
       <table className="hidden w-full text-[13px] md:table" aria-label="Overall platform performance">

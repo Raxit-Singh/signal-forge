@@ -1,4 +1,5 @@
 import "server-only";
+import { scanStopped } from "./scan-pause";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   assessActivity, isOverdue,
@@ -107,6 +108,8 @@ export async function refreshActivity(
   opts: { exceptQueryId?: string; now?: Date } = {},
 ): Promise<Map<PublicSourceId, PlatformDecision>> {
   const now = opts.now ?? new Date();
+  // Stop scan: leave the parked schedule alone (no rescheduling or catch-up runs).
+  if (await scanStopped(admin, productId)) return new Map();
   const since28 = new Date(now.getTime() - 28 * 86_400_000).toISOString();
   const [{ data: stats, error }, { data: ctx }, { data: boosts }, { data: prevRows }, { data: queryRows }, { data: arrivalRows }, { data: hours }] = await Promise.all([
     admin.rpc("svc_platform_activity_stats", { p_product_id: productId }),

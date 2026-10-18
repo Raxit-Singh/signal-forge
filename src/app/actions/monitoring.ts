@@ -167,3 +167,35 @@ export async function cancelBoostAction(_: ActionState, formData: FormData): Pro
   revalidatePath("/monitoring");
   return { status: "success", message: "Boost canceled. Normal monitoring resumes from each source's next check." };
 }
+
+/** Stop scan / Resume scanning for a product (and its competitors). Admins only; enforced again in SQL. */
+export async function setScanningAction(_: ActionState, formData: FormData): Promise<ActionState> {
+  const p = z.object({ productId: z.uuid(), stop: z.enum(["true", "false"]) }).safeParse(Object.fromEntries(formData));
+  if (!p.success) return failure("Invalid request.");
+  let supabase;
+  try {
+    ({ supabase } = await authorizeProduct(p.data.productId));
+  } catch (e) {
+    return failure(e instanceof AuthorizationError ? e.message : "Not allowed.");
+  }
+  const stop = p.data.stop === "true";
+  const { error } = await supabase.rpc("set_product_scanning", { p_product_id: p.data.productId, p_stop: stop });
+  if (error) {
+    logServerError("setScanning", error);
+    return failure(stop ? "Couldn't stop scanning." : "Couldn't resume scanning.");
+  }
+  if (!stop) {
+    try {
+      await refreshActivity(createAdminClient(), p.data.productId);
+    } catch (e) {
+      logServerError("setScanning.refresh", e);
+    }
+  }
+  revalidatePath("/", "layout");
+  return {
+    status: "success",
+    message: stop
+      ? "Scanning stopped. No platform is searched for this product or its competitors until you resume. Collected data is kept."
+      : "Scanning resumed. Every search runs again now, within your plan and budgets.",
+  };
+}

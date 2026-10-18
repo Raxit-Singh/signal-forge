@@ -16,6 +16,19 @@ Legend: ✅ verified by an automated check that ran · 🟡 written, not yet exe
 
 Test users created for the walk-through were removed afterwards via the app's own deletion path.
 
+## Stop scan; founder test setup with paid sources and Gemini on (2026-10-18)
+
+- **Stop scan / Resume scanning** on Smart Monitoring (workspace admins; migration `20261019000002`):
+  - Stopping parks every search of the product and its competitors (`next_run_at = infinity`, so the scheduler never picks them) and ends a running historical search (unfinished platforms show "Stopped").
+  - Jobs already queued check the flag and exit without calling any source. Interval recalculation leaves stopped products alone, and starting a historical search is refused while stopped.
+  - Resuming makes every enabled search due at once. Collected data, keywords and settings are kept.
+  - Tests: DB +7 (→ 407), browser `monitoring.spec.ts` "Stop scan…".
+- **Founder test setup (development project only, by request):**
+  - Non-public internal plan `internal_unlimited` (50 products, 50 keywords, 10M mentions/month, 730 days of history, 15 min floor, no price, never offered), granted to a new **Demo** workspace under the founder's login.
+  - Spending caps chosen by the founder: API Direct $50/month (global + provider budget rows), Gemini $20/month (`ai_global_budget`, was $1).
+  - `PAID_SOURCES_ENABLED=true` in `.env.local`. Automatic classification is on for the Demo workspace.
+  - To undo: revoke the grant (`scripts/grant-internal-plan.ts --revoke`), lower or delete the budget rows, and set `PAID_SOURCES_ENABLED=false`.
+
 ## Product correction: keyword-first monitoring, Connect Claude, spike graph (2026-10-18)
 
 Commits `7fbf7e5`, `381ed83`, `aad13f9`. Migration `20261019000001` (read-only function; applied to the development project after a dry run). No paid API or AI calls were made: browser tests use fixtures and the test classifier, and the dev server ran with the scheduler off.

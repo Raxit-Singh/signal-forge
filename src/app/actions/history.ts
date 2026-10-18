@@ -23,8 +23,9 @@ export async function startHistoricalSearchAction(_: ActionState, formData: Form
   if (!user) return failure("Your session has expired. Sign in again.");
 
   const supabase = await createClient();
-  const { data: product } = await supabase.from("products").select("id, workspace_id, archived_at").eq("id", productId.data).maybeSingle();
+  const { data: product } = await supabase.from("products").select("id, workspace_id, archived_at, scan_paused_at").eq("id", productId.data).maybeSingle();
   if (!product || product.archived_at) return failure("Product not found.");
+  if (product.scan_paused_at) return failure("Scanning is stopped for this product. Resume scanning on Smart Monitoring first.");
   try {
     await requireWorkspaceRole(product.workspace_id as string, "admin");
   } catch (e) {

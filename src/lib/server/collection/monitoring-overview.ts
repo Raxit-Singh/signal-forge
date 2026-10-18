@@ -238,7 +238,7 @@ export async function getMonitoringOverview(productId: string, workspaceId: stri
     const fastest = mine.find((q) => q.interval_minutes === interval) ?? mine[0];
     const confs = mine.map((q) => q.coverage_confidence).filter((c): c is "high" | "medium" | "low" => Boolean(c));
     const lastScans = mine.map((q) => q.last_success_at).filter(Boolean) as string[];
-    const nexts = mine.map((q) => q.next_run_at).filter(Boolean);
+    const nexts = mine.map((q) => q.next_run_at).filter((x) => x && x !== "infinity");
     const saturatedRecently = mine.some((q) => q.last_saturated_at && nowMs - new Date(q.last_saturated_at).getTime() < 3 * 86_400_000);
     const e = enablement.get(id);
     const toggle = isLegacySource(id) ? null : {

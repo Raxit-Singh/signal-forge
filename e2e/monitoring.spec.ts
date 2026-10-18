@@ -216,6 +216,27 @@ test("dashboard shows each keyword's actual scheduled refresh, not only the plat
   await expect(page.getByRole("list", { name: "Keyword schedule conflicts" })).toContainText("not met on Stack Overflow");
 });
 
+test("Stop scan parks every search and ends a running historical search; Resume makes them due again", async ({ page }) => {
+  await page.getByRole("button", { name: "Stop scan" }).click();
+  const dialog = page.getByRole("dialog", { name: "Stop scanning FixtureFlow?" });
+  await dialog.getByRole("button", { name: "Stop scan" }).click();
+  await expect(page.getByTestId("scan-stopped")).toContainText("Scanning is stopped");
+  const summary = page.locator('section[aria-labelledby="summary"]');
+  await expect(summary.locator("div", { has: page.getByText("Next scan", { exact: true }) }).last()).toContainText("Stopped");
+  const runs = await adminSelect<Array<{ next_run_at: string }>>(`monitoring_queries?product_id=eq.${ids.productId}&select=next_run_at`);
+  expect(runs.length).toBeGreaterThan(0);
+  expect(runs.every((r) => r.next_run_at === "infinity"), "no search ever comes due while stopped").toBe(true);
+  // Starting a historical search is refused while stopped.
+  await page.getByRole("button", { name: "Start historical search" }).click();
+  await expect(page.getByText("Scanning is stopped for this product")).toBeVisible();
+
+  await page.getByRole("button", { name: "Resume scanning" }).click();
+  await expect(page.getByTestId("scan-stopped")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Stop scan" })).toBeVisible();
+  const after = await adminSelect<Array<{ next_run_at: string }>>(`monitoring_queries?product_id=eq.${ids.productId}&enabled=eq.true&select=next_run_at`);
+  expect(after.every((r) => r.next_run_at !== "infinity" && Date.parse(r.next_run_at) <= Date.now() + 25 * 3_600_000)).toBe(true);
+});
+
 test("mobile: rankings become cards with no horizontal overflow", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.reload();

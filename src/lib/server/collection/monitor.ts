@@ -1,4 +1,5 @@
 import "server-only";
+import { NEVER, scanStopped } from "./scan-pause";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { auditDue, expansionsPerRun, formatInterval, nextRunAt, type Confidence } from "@/lib/sources/adaptive";
 import { escalationPages, pagesToRequest, updateEstimate, upperRate, type GroupEstimate } from "@/lib/sources/arrival";
@@ -51,7 +52,7 @@ export interface JobRow {
 export interface MonitorResult {
   provider: PublicSourceId;
   stream?: string;
-  skipped?: "query_disabled" | "product_archived" | "not_configured" | "covered_by_shared";
+  skipped?: "query_disabled" | "product_archived" | "not_configured" | "covered_by_shared" | "scan_stopped";
   windowStart?: string;
   windowEnd?: string;
   fetched?: number;
@@ -220,6 +221,11 @@ export async function runMonitorQuery(
   const provider = q.provider;
   const adapter = adapters[provider];
   if (!q.enabled) return { provider, stream: q.stream, skipped: "query_disabled" };
+  // Stop scan: no source is called; the search stays parked until scanning resumes.
+  if (await scanStopped(admin, q.product_id)) {
+    await admin.from("monitoring_queries").update({ next_run_at: NEVER }).eq("id", q.id);
+    return { provider, stream: q.stream, skipped: "scan_stopped" };
+  }
 
   const started = new Date();
   const ctx = await loadContext(admin, q.product_id, provider).catch(() => null);

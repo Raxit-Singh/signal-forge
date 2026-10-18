@@ -1,4 +1,5 @@
 import "server-only";
+import { NEVER, scanStopped } from "./scan-pause";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { pagesToRequest, upperRate } from "@/lib/sources/arrival";
 import { collectionProfile } from "@/lib/sources/collection-profile";
@@ -98,6 +99,10 @@ export async function runBackfillTask(admin: SupabaseClient, job: JobRow, adapte
     await admin.from("backfill_tasks").update({ ...patch, status }).eq("id", t.id);
     await refreshRun(admin, t.run_id);
   };
+  if (await scanStopped(admin, t.product_id)) {
+    await finish({ next_run_at: NEVER, note: "Stopped with Stop scan; what was collected is kept." }, "partial");
+    return { taskId, status: "partial", skipped: "scan_stopped" };
+  }
 
   const { data: q } = t.query_id
     ? await admin.from("monitoring_queries").select("id, workspace_id, product_id, provider, stream, query, params, managed_by, enabled").eq("id", t.query_id).maybeSingle()
