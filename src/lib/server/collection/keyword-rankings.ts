@@ -37,7 +37,9 @@ export async function getKeywordRankings(
   sb: SupabaseClient, productId: string, o: MonitoringOverview, range: { from: Date; to: Date; label: string },
 ): Promise<KeywordRankings> {
   // The selected reporting period, compared with the period of the same length just before it.
-  const { from, to } = range;
+  // The database compares at most 400 days at a time; longer custom ranges use their most recent 400 days.
+  const to = range.to;
+  const from = new Date(Math.max(range.from.getTime(), to.getTime() - 400 * 86_400_000));
   const prevFrom = new Date(from.getTime() - (to.getTime() - from.getTime()));
   const active = o.platforms.filter((p) => p.groups > 0 && p.state !== "not_configured" && p.state !== "not_enabled");
   const ids = active.map((p) => p.id);

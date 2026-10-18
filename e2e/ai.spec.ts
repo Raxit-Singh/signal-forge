@@ -145,25 +145,36 @@ test("spike explanations: product and keyword spikes cite posts and show measure
 
   await useTestClassifier(page);
   await page.goto("/buzz?range=30d");
-  // Direct children only: an explanation contains its own list of findings.
-  const spikes = page.getByRole("list", { name: "Detected spikes" }).locator(":scope > li");
-  await expect(spikes).toHaveCount(3);
-  const product = spikes.filter({ hasText: "All platforms" }).filter({ hasText: "Confirmed" });
-  const keyword = spikes.filter({ hasText: "Keyword “FixtureFlow”" });
-  const quiet = spikes.filter({ hasText: "Possible" });
-  // One at a time: each request refreshes the page when its result is ready.
-  await product.getByRole("button", { name: "Explain this spike" }).click();
-  await expect(product.getByTestId("investigation-result")).toBeVisible({ timeout: 45_000 });
-  await keyword.getByRole("button", { name: "Explain this spike" }).click();
-  await expect(keyword.getByTestId("investigation-result")).toBeVisible({ timeout: 45_000 });
-  await quiet.getByRole("button", { name: "Explain this spike" }).click();
-  await expect(quiet.getByTestId("investigation-insufficient")).toBeVisible({ timeout: 45_000 });
-
+  // Each spike is a marker on the graph; its panel has "Explain with AI" (never automatic).
+  const panelFor = async (kind: "confirmed" | "possible") => {
+    await page.getByTestId(`spike-marker-${kind}`).first().click();
+    return page.getByRole("dialog", { name: kind === "confirmed" ? "Confirmed spike" : "Possible spike" });
+  };
+  const explain = async (kind: "confirmed" | "possible", resultId: string) => {
+    const panel = await panelFor(kind);
+    await panel.getByRole("button", { name: "Explain with AI" }).click();
+    await expect(async () => {
+      if (!(await page.getByRole("dialog").isVisible())) await panelFor(kind);
+      await expect(page.getByRole("dialog").getByTestId(resultId)).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 45_000 });
+    return page.getByRole("dialog");
+  };
+  await expect(page.getByTestId("spike-marker-confirmed")).toHaveCount(1);
+  await expect(page.getByTestId("spike-marker-possible")).toHaveCount(1);
+  const product = await explain("confirmed", "investigation-result");
   await expect(product.getByTestId("investigation-result")).toContainText("Test classifier — not AI analysis");
   await expect(product.getByTestId("spike-facts")).toContainText("Measured in collected posts");
   await expect(product.getByTestId("spike-facts")).toContainText("By platform:");
-  await expect(keyword.getByTestId("spike-facts")).toContainText("Keyword: “FixtureFlow”");
+  await page.keyboard.press("Escape");
+
+  const quiet = await explain("possible", "investigation-insufficient");
   await expect(quiet.getByTestId("investigation-insufficient")).toContainText("Fewer than 3 collected posts");
+  await page.keyboard.press("Escape");
+
+  await page.getByLabel("Show", { exact: true }).selectOption("keyword:FixtureFlow");
+  await expect(page).toHaveURL(/keyword=FixtureFlow/);
+  const keyword = await explain("confirmed", "investigation-result");
+  await expect(keyword.getByTestId("spike-facts")).toContainText("Keyword: “FixtureFlow”");
 
   const usage = await adminSelect<Array<{ purpose: string }>>(`ai_usage_records?workspace_id=eq.${ids.workspaceId}&purpose=eq.spike_explanation&select=purpose`);
   expect(usage.length, "only the two spikes with enough posts used a model call").toBe(2);

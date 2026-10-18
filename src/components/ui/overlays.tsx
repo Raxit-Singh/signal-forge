@@ -113,3 +113,28 @@ export function DialogContent({
     </D.Portal>
   );
 }
+
+// ---- Side panel (details beside the page; full width on phones) --------------
+export function SidePanelContent({
+  className, children, title, description, ...props
+}: React.ComponentProps<typeof D.Content> & { title: string; description?: string }) {
+  return (
+    <D.Portal>
+      <D.Overlay className="fixed inset-0 z-40 bg-black/30" />
+      <D.Content
+        className={cn("fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l bg-surface shadow-xl outline-none", className)}
+        {...props}
+      >
+        <div className="border-b p-4 pr-10">
+          <D.Title className="text-base font-semibold">{title}</D.Title>
+          {description ? <D.Description className="mt-0.5 text-[13px] text-muted-foreground">{description}</D.Description>
+            : <D.Description className="sr-only">{title}</D.Description>}
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
+        <D.Close className="absolute right-3 top-3 rounded p-1 text-muted-foreground hover:bg-muted" aria-label="Close">
+          <X className="size-4" />
+        </D.Close>
+      </D.Content>
+    </D.Portal>
+  );
+}

@@ -9,14 +9,13 @@ import { isValidTimeZone, type Growth } from "@/lib/analytics/buzz";
 import { parseRange } from "@/lib/domain/date-range";
 import { integrationInfo } from "@/lib/domain/integrations";
 import { isPublicSource } from "@/lib/sources/registry";
-import { formatCount, formatUtc } from "@/lib/format";
+import { formatCount } from "@/lib/format";
 import { CoverageNotice, EmptyState, PageHeader } from "@/components/page";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
-import { BuzzChart, PlatformFilter, TimeZoneSync } from "./buzz-client";
-import { ActionForm } from "@/components/ai/action-form";
-import { InvestigationResult, type InvestigationView } from "@/components/ai/investigation-result";
-import { explainSpikeAction } from "@/app/actions/ai";
+import { TimeZoneSync } from "./buzz-client";
+import { SpikeGraph, type GraphPoint, type GraphSpike } from "./spike-graph";
+import type { InvestigationView } from "@/components/ai/investigation-result";
 import { spikeSubject } from "@/lib/server/ai/investigate";
 import { hasRole } from "@/lib/server/session";
 
@@ -60,6 +59,41 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
   const canExplain = hasRole(workspace.role, "member");
 
   const sources = d.sources.map((id) => ({ id, name: nameOf(id) }));
+
+  // One graph: the selected scope (all activity, one platform or one keyword) over the selected range.
+  const { data: aliasRows } = await supabase.from("product_aliases").select("term").eq("product_id", product.id).eq("enabled", true).order("term");
+  const keywords = [...new Set((aliasRows ?? []).map((a) => a.term as string))];
+  const keyword = sp.keyword ? keywords.find((k) => k.toLowerCase() === sp.keyword!.toLowerCase()) ?? null : null;
+  let points: GraphPoint[] = d.series.map((x) => ({ start: x.start, value: x.relevant, coverage: x.coverage }));
+  if (keyword && d.series.length) {
+    const { data: kw } = await supabase.rpc("keyword_series", {
+      p_product_id: product.id, p_from: d.series[0]!.start, p_to: range.to.toISOString(), p_bucket: d.bucket, p_tz: tz,
+    });
+    const counts = new Map(((kw ?? []) as Array<{ bucket_start: string; keyword: string; relevant: number }>)
+      .filter((r) => r.keyword === keyword.toLowerCase()).map((r) => [new Date(r.bucket_start).getTime(), Number(r.relevant)]));
+    points = d.series.map((x) => ({ start: x.start, coverage: x.coverage, value: x.coverage === "none" ? null : counts.get(new Date(x.start).getTime()) ?? 0 }));
+  }
+  const scope = keyword ? { kind: "keyword" as const, value: keyword, label: `“${keyword}”` }
+    : source ? { kind: "platform" as const, value: source, label: nameOf(source) } : { kind: "all" as const, value: null, label: "all activity" };
+  const graphFrom = d.series.length ? new Date(d.series[0]!.start).getTime() : range.from.getTime();
+  const graphSpikes: GraphSpike[] = d.spikes
+    .filter((x) => {
+      const t = new Date(x.period_start).getTime();
+      if (t < graphFrom || t >= range.to.getTime()) return false;
+      if (scope.kind === "keyword") return (x.keyword ?? "").toLowerCase() === keyword!.toLowerCase();
+      if (x.keyword) return false;
+      return scope.kind === "platform" ? x.platform === source : !x.platform;
+    })
+    .map((x) => {
+      const key = spikeSubject({ granularity: x.granularity as "hour" | "day", platform: x.keyword ? null : x.platform, periodStart: x.period_start, keyword: x.keyword ?? null });
+      return {
+        id: x.id, start: x.period_start, end: x.period_end, granularity: x.granularity as "hour" | "day",
+        observed: Number(x.observed), expected: Number(x.expected), ratio: x.ratio === null ? null : Number(x.ratio),
+        confidence: x.confidence, severity: x.severity, note: x.note, platform: x.keyword ? null : x.platform, keyword: x.keyword ?? null,
+        scopeLabel: x.keyword ? `Keyword “${x.keyword}”` : x.platform ? nameOf(x.platform) : "All platforms",
+        explanation: explanations.get(key) ?? null,
+      };
+    });
   const nothingMonitored = d.sources.length === 0;
   const t = d.totals;
   const totalTyped = t.posts + t.comments;
@@ -70,7 +104,6 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
       <PageHeader
         title="Buzz Analytics"
         description={<>How much attention {product.name} gets, where, and whether it&apos;s rising · {range.label} · days in {tz}</>}
-        actions={<PlatformFilter sources={sources} />}
       />
       <CoverageNotice />
 
@@ -101,14 +134,22 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
 
           <Card>
             <CardHeader>
-              <CardTitle>Mentions over time</CardTitle>
+              <CardTitle>Mentions and spikes</CardTitle>
               <CardDescription>
-                By publication time ({d.bucket === "hour" ? "hourly" : "daily"}, {tz}). Grey periods weren&apos;t monitored — they are gaps, not zeros.
+                Mentions by publication time ({d.bucket === "hour" ? "hourly" : "daily"}, {tz}) with detected spikes marked. Shaded periods weren&apos;t
+                (fully) monitored — gaps, not zeros. Click a spike for what made it up.
                 {t.undated > 0 && ` ${t.undated} web result${t.undated === 1 ? "" : "s"} without a publication date ${t.undated === 1 ? "is" : "are"} not charted.`}
+                {scope.kind === "keyword" && " The numbers above are for all activity; this graph shows only this keyword."}
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <BuzzChart points={d.series} sources={sources} bucket={d.bucket} tz={tz} events={d.events} spikes={d.spikes} />
+              <SpikeGraph
+                points={points} bucket={d.bucket} tz={tz} spikes={graphSpikes} events={d.events} scope={scope}
+                platforms={sources} keywords={keywords}
+                range={{ key: range.key, from: range.fromDate, to: range.toDate }}
+                insufficient={d.spikeEvaluation?.status === "insufficient_data" ? { baseline: d.spikeEvaluation.baselinePeriods, needed: d.spikeEvaluation.neededPeriods } : null}
+                canExplain={canExplain} workspaceId={workspace.id} productId={product.id}
+              />
             </CardContent>
           </Card>
 
@@ -180,57 +221,6 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
               </CardContent>
             </Card>
           </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Spike history</CardTitle>
-              <CardDescription>
-                Periods with clearly more mentions than usual for this product, platform or keyword — judged statistically against its own
-                baseline of completely monitored periods (no fixed mention threshold). <strong className="font-medium">Confirmed</strong> needs
-                strong evidence and complete coverage; <strong className="font-medium">possible</strong> means unusual, but the period was only
-                partly monitored or the baseline is still short. Counts use publication time, so a historical search fills in past periods
-                instead of creating a spike today.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-2">
-              {d.spikeEvaluation?.status === "insufficient_data" && (
-                <p className="text-[13px] text-muted-foreground" data-testid="spike-insufficient">
-                  Not enough data yet to judge spikes: {d.spikeEvaluation.baselinePeriods} of {d.spikeEvaluation.neededPeriods} completely monitored
-                  {d.bucket === "hour" ? " hours" : " days"} needed for a baseline.
-                </p>
-              )}
-              {d.spikes.length === 0 ? (
-                <p className="text-[13px] text-muted-foreground">No spikes detected in this period.</p>
-              ) : (
-                <ul className="divide-y" aria-label="Detected spikes">
-                  {d.spikes.map((s) => (
-                    <li key={s.id} className="flex flex-wrap items-center gap-2 py-2 text-[13px]">
-                      <Badge tone={s.confidence === "possible" ? "info" : s.severity === "major" ? "negative" : "warning"}>
-                        {s.confidence === "possible" ? "Possible" : s.severity === "major" ? "Confirmed · Major" : "Confirmed · Notable"}
-                      </Badge>
-                      <span title={formatUtc(s.period_start)}>{s.granularity === "hour" ? "Hour of" : "Day of"} {formatUtc(s.period_start)}</span>
-                      <span className="text-muted-foreground">{s.keyword ? `Keyword “${s.keyword}”` : s.platform ? nameOf(s.platform) : "All platforms"}</span>
-                      <span className="ml-auto tabular">{s.observed} mentions vs ~{Number(s.expected).toFixed(Number(s.expected) < 10 ? 1 : 0)} usual</span>
-                      {s.note && <span className="w-full text-xs text-muted-foreground">{s.note}</span>}
-                      {(() => {
-                        const key = spikeSubject({ granularity: s.granularity, platform: s.keyword ? null : s.platform, periodStart: s.period_start, keyword: s.keyword ?? null });
-                        const inv = explanations.get(key);
-                        return (
-                          <div className="grid w-full gap-1.5">
-                            {inv && <InvestigationResult inv={inv} />}
-                            {canExplain && (!inv || inv.status === "failed") && (
-                              <ActionForm action={explainSpikeAction} label={inv ? "Try again" : "Explain this spike"} pendingLabel="Requesting…" variant="ghost"
-                                fields={{ workspaceId: workspace.id, productId: product.id, granularity: s.granularity, platform: s.keyword ? "" : s.platform ?? "", keyword: s.keyword ?? "", periodStart: new Date(s.period_start).toISOString(), force: inv ? "true" : "false" }} />
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
 
           <p className="text-xs text-muted-foreground">
             Counts come only from mentions SignalForge stored: duplicates and reposts are excluded, publication time is used (not discovery time),

@@ -160,6 +160,8 @@ test("smart monitoring shows product-relative share and overflow risk; buzz show
     model: "arrival_v2", mentions_7d: 25,
   });
   await page.goto(await signInPath(user!.email, "/monitoring"));
+  const adv = page.locator("details#advanced");
+  await adv.locator("summary").first().click();
   const hn = page.getByRole("table", { name: "Platform ranking" }).getByRole("row").filter({ hasText: "Hacker News" });
   await expect(hn).toContainText("64%");
   await hn.getByRole("button", { name: "Hacker News" }).click();
@@ -187,11 +189,21 @@ test("smart monitoring shows product-relative share and overflow risk; buzz show
     status: "insufficient_data", baseline_periods: 2, needed_periods: 3,
   });
   await page.goto("/buzz?range=30d");
-  const spikes = page.getByRole("list", { name: "Detected spikes" });
-  await expect(spikes).toContainText("Confirmed · Major");
-  await expect(spikes).toContainText("Possible");
-  await expect(spikes).toContainText("only partly monitored");
-  await expect(spikes).toContainText("Keyword “fixtureflow”");
+  // All activity: the confirmed product spike. Hacker News: its possible spike. Keyword: the keyword spike.
+  await expect(page.getByTestId("spike-marker-confirmed")).toHaveCount(1);
+  await page.getByTestId("spike-marker-confirmed").click();
+  await expect(page.getByRole("dialog", { name: "Confirmed spike" })).toContainText("Major");
+  await page.keyboard.press("Escape");
+  await page.getByLabel("Show", { exact: true }).selectOption("platform:hackernews");
+  await expect(page.getByTestId("spike-marker-possible")).toHaveCount(1);
+  await page.getByTestId("spike-marker-possible").click();
+  await expect(page.getByRole("dialog", { name: "Possible spike" })).toContainText("only partly monitored");
+  await page.keyboard.press("Escape");
+  await page.getByLabel("Show", { exact: true }).selectOption("keyword:FixtureFlow");
+  await expect(page.getByTestId("spike-marker-confirmed")).toHaveCount(1);
+  await page.getByTestId("spike-marker-confirmed").click();
+  await expect(page.getByRole("dialog", { name: "Confirmed spike" })).toContainText("Keyword “fixtureflow”");
+  await page.keyboard.press("Escape");
   await expect(page.getByTestId("spike-insufficient")).toContainText("2 of 3 completely monitored days");
   expect((await adminSelect<unknown[]>(`buzz_spikes?product_id=eq.${ids.productId}&select=id`)).length).toBe(2);
 });
