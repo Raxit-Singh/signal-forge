@@ -50,7 +50,7 @@ Full setup (Supabase auth settings, email templates, Google OAuth, keys): [ENVIR
 src/
   app/
     (auth)/          sign-in, sign-up, password reset (+ server actions)
-    auth/            /auth/callback (OAuth PKCE), /auth/confirm (email token_hash)
+    auth/            /auth/callback (Google/GitHub/X OAuth, PKCE), /auth/confirm (email links: token_hash or PKCE code)
     onboarding/      workspace → product → keywords → sources → AI → historical search
     (app)/           authenticated shell: overview, mentions, buzz, feedback,
                      competitors, insights, integrations, reports, settings

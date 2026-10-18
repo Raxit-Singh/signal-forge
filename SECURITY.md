@@ -11,7 +11,7 @@ What was checked, what was changed, and what still needs a human before real cus
 - Secrets (data-source keys, Google Play keys, routine tokens) are AES-256-GCM encrypted per workspace, decrypted only at use, never returned to the browser or logged. Token hashes (invitations, OAuth) are stored, not tokens.
 
 **Web**
-- Content Security Policy with a per-request nonce and `strict-dynamic` (no `unsafe-eval` in production; inline styles allowed for charts); `frame-ancestors 'none'`, `object-src 'none'`, `base-uri 'self'`, `form-action` limited to SignalForge, Supabase Auth, Google sign-in, Stripe and Discord. No violations on the main pages in development or a production build.
+- Content Security Policy with a per-request nonce and `strict-dynamic` (no `unsafe-eval` in production; inline styles allowed for charts); `frame-ancestors 'none'`, `object-src 'none'`, `base-uri 'self'`, `form-action` limited to SignalForge, Supabase Auth, the Google, GitHub and X sign-in pages, Stripe and Discord. No violations on the main pages in development or a production build.
 - HSTS (2 years, preload), `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`; `poweredByHeader` off.
 - Server actions reject cross-origin POSTs (Next.js); redirects after sign-in use `safeRedirectPath` (same-origin paths only).
 - Inbound webhooks and callbacks verify signatures or signed state: Stripe (signature over the raw body, 5-minute tolerance, idempotent per event), Discord and GitHub installs (HMAC state bound to the user + code exchange), scheduler (`JOBS_TICK_SECRET`, constant-time compare), unsubscribe links (HMAC; GET only confirms).

@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: "Choose a new password" };
 // Reached after /auth/confirm verified a recovery link (which signs the user in).
 export default async function ResetPasswordPage() {
   const user = await getUser();
-  if (!user) redirect("/login?error=link_expired");
+  if (!user) redirect("/forgot-password?error=link_expired");
   return (
     <AuthLayout>
       <div className="grid gap-6">

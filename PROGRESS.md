@@ -16,6 +16,48 @@ Legend: ✅ verified by an automated check that ran · 🟡 written, not yet exe
 
 Test users created for the walk-through were removed afterwards via the app's own deletion path.
 
+## Authentication repair and social sign-in (2026-10-18)
+
+**Reproduced first.**
+- **Google:** Supabase answered `400 "Unsupported provider: provider is not enabled"`. The Google provider was never switched on in Supabase (no client ID/secret), and the button sent people straight to that raw error.
+- **Email verification**, two problems:
+  1. Supabase's Redirect URLs held only `https://signal-forge-phi-six.vercel.app/` (no `/**`) and the Site URL was `http://localhost:3000`, so a link requested from the deployed site was redirected to `localhost`. Reproduced with an admin-generated link: `303 → http://localhost:3000#…`.
+  2. The email templates are Supabase's defaults (`{{ .ConfirmationURL }}`, PKCE `?code=`), but `/auth/confirm` accepted only `token_hash`, so even a correctly redirected link showed "That link isn't valid".
+
+**Fixed.**
+- ✅ `/auth/confirm` handles token-hash links, PKCE `code` links, and Supabase's `?error_code=` redirects:
+  - expired or used → explained, with resend;
+  - opened in another browser → "sign in to continue";
+  - a second click while already signed in → carries on.
+- ✅ `/auth/callback` maps provider errors to specific messages (cancelled / timed out / not available / email unverified / identity already used).
+- ✅ Social sign-in uses one action for Google, GitHub and X (`provider: "x"`, OAuth 2.0). A button is shown only when Supabase reports the provider is on, so there are no broken buttons. No extra scopes (GitHub: `user:email` only; no repository access).
+- ✅ Login and signup redesigned: provider buttons, "Or continue with email", live password requirements, resend verification (signup confirmation page, unconfirmed sign-in, expired-link notice), clearer errors.
+- ✅ After sign-in, `/onboarding` routes unfinished accounts to the right step and finished ones to the dashboard.
+- ✅ CSP `form-action` allows the GitHub and X sign-in pages.
+- ✅ `npm run auth:check` (`scripts/auth-config-check.ts`) reports environment variables, providers, redirect-URL acceptance, templates and email sender. It prints no secrets.
+- ✅ Supabase dev project, with the owner's approval via the Management API: Site URL → `https://signal-forge-phi-six.vercel.app`; Redirect URLs + `https://signal-forge-phi-six.vercel.app/**`, `http://localhost:3000/**`. Re-tested: the link now redirects to the Vercel site.
+- Email templates were **not** changed: Supabase refuses template edits on free projects using the built-in sender ("configure a custom SMTP provider"). The app handles the default template.
+
+**Tests.**
+- ✅ Unit: `src/lib/auth/flow.test.ts`.
+- ✅ Browser: `e2e/auth.spec.ts`, 11 tests:
+  - provider visibility, OAuth callback errors, signup validation;
+  - no duplicate account for an existing email;
+  - verification, reuse and expiry; Supabase error redirects; other-browser codes;
+  - unconfirmed sign-in + resend form;
+  - password login, session persistence, logout;
+  - existing account keeps its single workspace;
+  - open-redirect refusal;
+  - password reset end to end.
+- ✅ Full regression: unit 284/284, DB 407/407, typecheck, lint, production build. All 17 browser spec files pass, 53 tests, run one file at a time because the Supabase auth rate limit (429) stops a single full run.
+- 🟡 The OAuth hand-off test skips until a provider is switched on.
+- ⬜ Not verified live: a real Google/GitHub/X login, a real verification email from the deployed site, a real reset email. See the live checklist in ENVIRONMENT_SETUP.md §2.
+
+**Owner action.**
+- Create the Google / GitHub (OAuth App) / X OAuth 2.0 clients and paste them into Supabase → Sign In / Providers (ENVIRONMENT_SETUP.md §2).
+- Configure custom SMTP (built-in sender: 2 emails/hour, team addresses only), then optionally switch to the token-hash templates (§1).
+- Set `NEXT_PUBLIC_SITE_URL=https://signal-forge-phi-six.vercel.app` in Vercel.
+
 ## Stop scan; founder test setup with paid sources and Gemini on (2026-10-18)
 
 - **Stop scan / Resume scanning** on Smart Monitoring (workspace admins; migration `20261019000002`):

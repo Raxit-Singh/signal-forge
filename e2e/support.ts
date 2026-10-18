@@ -48,6 +48,46 @@ export async function signInPath(email: string, next: string): Promise<string> {
   return `/auth/confirm?token_hash=${g.hashed_token ?? g.properties?.hashed_token}&type=email&next=${encodeURIComponent(next)}`;
 }
 
+/** Confirmed account that signs in with a known password (email + password flow). */
+export async function createPasswordUser(password: string): Promise<{ id: string; email: string }> {
+  const email = `sf-e2e-${Date.now()}-${randomUUID().slice(0, 6)}@example.com`;
+  const u = await call<{ id: string }>("/auth/v1/admin/users", {
+    method: "POST", headers: adminHeaders(), body: JSON.stringify({ email, password, email_confirm: true }),
+  });
+  return { id: u.id, email };
+}
+
+/** Password-reset link the app would email (no email is sent). */
+export async function recoveryPath(email: string): Promise<string> {
+  const g = await call<{ hashed_token?: string; properties?: { hashed_token: string } }>("/auth/v1/admin/generate_link", {
+    method: "POST", headers: adminHeaders(), body: JSON.stringify({ type: "recovery", email }),
+  });
+  return `/auth/confirm?token_hash=${g.hashed_token ?? g.properties?.hashed_token}&type=recovery`;
+}
+
+/** Auth users with this exact email (duplicate-account checks). */
+export async function usersWithEmail(email: string): Promise<number> {
+  let n = 0;
+  for (let page = 1; page < 50; page++) {
+    const r = await call<{ users: Array<{ email?: string }> }>(`/auth/v1/admin/users?page=${page}&per_page=1000`, { headers: adminHeaders() });
+    n += r.users.filter((u) => u.email?.toLowerCase() === email.toLowerCase()).length;
+    if (r.users.length < 1000) break;
+  }
+  return n;
+}
+
+/** Workspaces this user belongs to (service role). */
+export async function workspaceCount(userId: string): Promise<number> {
+  const rows = await call<unknown[]>(`/rest/v1/workspace_members?user_id=eq.${userId}&select=workspace_id`, { headers: adminHeaders() });
+  return rows.length;
+}
+
+/** Social providers switched on in Supabase Auth (public settings). */
+export async function authProviders(): Promise<{ google: boolean; github: boolean; x: boolean }> {
+  const s = await call<{ external: Record<string, boolean> }>("/auth/v1/settings", { headers: { apikey: PUBLISHABLE() } });
+  return { google: s.external.google === true, github: s.external.github === true, x: s.external.x === true };
+}
+
 /** Confirmed account with a REST session. */
 export async function createUser(fixedEmail?: string): Promise<TestUser> {
   const u = await createUnconfirmedUser(fixedEmail);

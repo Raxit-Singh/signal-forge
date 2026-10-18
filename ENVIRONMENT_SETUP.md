@@ -12,20 +12,53 @@
    ```
    Do **not** run `supabase/tests/harness.sql` against a real project — it is for local tests only.
 4. **Authentication → Sign In / Providers → Email:** enable email provider, keep *Confirm email* ON. Minimum password length 10.
-5. **Authentication → URL Configuration:** Site URL = your app origin; add `http://localhost:3000/**` and your production origin `/**` to redirect URLs.
-6. **Authentication → Email Templates** — make links hit `/auth/confirm` with a token hash so they work across devices:
-   - *Confirm signup:* `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next=/onboarding`
-   - *Reset password:* `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery`
-   - *Change email address:* `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email_change`
-7. **SMTP:** Supabase's default email sender is heavily rate-limited and intended for testing. Configure a custom SMTP provider before inviting real users (decision deferred to M6; free tiers exist).
+5. **Authentication → URL Configuration:** Site URL = your production origin (e.g. `https://<app>.vercel.app`). Redirect URLs: add `http://localhost:3000/**` **and** `https://<app>.vercel.app/**` (with `/**`; an entry without it matches only that exact URL). If a redirect isn't allowed, Supabase silently sends the user to the Site URL instead. That is how verification links ended up on `localhost` (fixed 2026-10-18). `npm run auth:check -- --site https://<app>.vercel.app` checks this.
+6. **Authentication → Emails → Templates** (Supabase allows editing templates only once custom SMTP is configured, step 7; until then the defaults are used and work as described below): the link should carry a token hash to `/auth/confirm`, so it works in any browser or device. `{{ .RedirectTo }}` is the `/auth/confirm?next=…` address the app passed, so links follow whichever site (local or deployed) sent them:
+   - *Confirm signup:* `<a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email">Confirm email address</a>`
+   - *Reset password:* `<a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=recovery">Reset password</a>`
+   - *Magic link:* `<a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email">Sign in</a>`
+   - *Change email address:* `<a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email_change">Confirm new email address</a>`
+
+   The default `{{ .ConfirmationURL }}` templates also work: Supabase verifies the email and `/auth/confirm` exchanges the returned code. They sign the user in only in the browser that started sign-up. In another browser the email is still confirmed and the page asks them to sign in.
+7. **SMTP:** Supabase's default email sender is for testing: it sends only to your Supabase team's addresses and is limited to a few emails per hour for the whole project (2/hour on this project). Configure a custom SMTP provider before inviting real users (decision deferred to M6; free tiers exist).
 8. Free-tier facts that matter (checked 2026-10-14): 500 MB database, 50,000 MAU, 5 GB egress, **projects pause after 1 week of inactivity**, 2 active free projects. A paused project stops cron jobs — fine for development, not for paying customers.
 
-## 2. Google sign-in (optional in development)
+## 2. Social sign-in: Google, GitHub, X
 
-1. Google Cloud Console → APIs & Services → OAuth consent screen (External, scopes: email, profile, openid).
-2. Credentials → OAuth client ID → Web application. Authorized redirect URI: `https://<your-ref>.supabase.co/auth/v1/callback`.
-3. Supabase → Authentication → Providers → Google: paste client ID/secret.
-4. If Google isn't configured, the button returns the user to /login with "Google sign-in isn't available".
+All three are configured **in the Supabase dashboard** (Authentication → Sign In / Providers), not in the app's environment. The app reads which ones are on from Supabase's public settings and shows a "Continue with …" button only for those, so nobody lands on a provider error page. Every provider's callback URL is the same: `https://<your-ref>.supabase.co/auth/v1/callback` (copy it from the provider's panel in Supabase).
+
+**Google**
+1. Google Cloud Console → Google Auth Platform → Branding / Audience: app name, support email, *External*; while in *Testing*, only listed test users can sign in. Data access (scopes): `openid`, `.../auth/userinfo.email`, `.../auth/userinfo.profile`.
+2. Clients → Create client → *Web application*. Authorized JavaScript origins: your app origins (`http://localhost:3000`, `https://<app>.vercel.app`). Authorized redirect URI: the Supabase callback above.
+3. Supabase → Sign In / Providers → Google: enable, paste the Client ID and Client Secret, save.
+
+**GitHub** (sign-in only; separate from the SignalForge GitHub App used for repository investigation)
+1. GitHub → Settings → Developer settings → **OAuth Apps** → New OAuth App (not a GitHub App). Homepage URL: your app origin. Authorization callback URL: the Supabase callback above.
+2. Generate a client secret.
+3. Supabase → Sign In / Providers → GitHub: enable, paste Client ID and secret.
+4. The app requests no extra scopes. Supabase asks only for `user:email` (read the account's email addresses), never repository access.
+
+**X**
+1. Supabase's current provider is **X / Twitter (OAuth 2.0)** (`provider: "x"`, added Feb 2026). The legacy *Twitter (OAuth 1.0a)* provider is not used.
+2. X Developer Portal → your app → *User authentication settings*: OAuth 2.0, type *Web App*, callback URL = the Supabase callback above, website URL = your app origin, and turn on **Request email from users** (without an email the account can't be matched to anyone). Requires an X developer account; check X's current developer terms. Sign-in itself makes no paid API calls.
+3. Keys and tokens → OAuth 2.0 Client ID and Client Secret → Supabase → Sign In / Providers → X / Twitter (OAuth 2.0): enable, paste, save.
+
+**Accounts and linking.** Supabase links a social login to an existing account only when the email is verified on both sides (its automatic linking); otherwise it creates a separate account. Manual linking stays off and SignalForge never merges accounts itself. Workspaces belong to the user ID, so signing in with a different method of the same (linked) account shows the same workspaces. Someone who signed up with Google or GitHub has no password; "Forgot password?" lets them add one.
+
+**Check:** `npm run auth:check` (add `-- --site https://<app>.vercel.app` for the deployed site) lists the environment variables, which providers are on, whether Supabase accepts the app's redirect URLs, which email templates are in use and the email sender. It prints no secrets.
+
+### Live sign-in checklist (do by hand after any auth configuration change)
+Automated tests cover the app's side (`e2e/auth.spec.ts`); these need real accounts and a real inbox.
+- [ ] Email sign-up on the deployed site: email arrives, link opens on the deployed site (not localhost), lands on Create your workspace.
+- [ ] Open a verification link on a phone (different browser): with token-hash templates you are signed in; with the default template the page says the email is confirmed and asks you to sign in, and sign-in works.
+- [ ] Click a verification link twice: the second time explains the link was used.
+- [ ] Resend verification from "Confirm your email": a new email arrives; only the newest link works.
+- [ ] Forgot password → email → new password → sign in with it; the old password fails.
+- [ ] Continue with Google (new account): lands on onboarding. Sign out, sign in again: same workspace, no second workspace.
+- [ ] Continue with GitHub: the GitHub consent screen asks only for email access, not repositories.
+- [ ] Continue with X (only if enabled): returns signed in with an email address.
+- [ ] Existing email/password account, then Google with the same verified Gmail address: the same account and workspaces (Supabase links verified emails).
+- [ ] Cancel on the provider's consent screen: back on SignalForge with "… sign-in was cancelled".
 
 ## 3. Environment variables
 

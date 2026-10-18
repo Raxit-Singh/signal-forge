@@ -28,7 +28,7 @@ function contentSecurityPolicy(nonce: string): string {
     "frame-src 'none'",
     "object-src 'none'",
     "base-uri 'self'",
-    `form-action 'self' ${supabase} https://accounts.google.com https://checkout.stripe.com https://billing.stripe.com https://discord.com`,
+    `form-action 'self' ${supabase} https://accounts.google.com https://github.com https://x.com https://twitter.com https://api.x.com https://api.twitter.com https://checkout.stripe.com https://billing.stripe.com https://discord.com`,
     "frame-ancestors 'none'",
     ...(dev ? [] : ["upgrade-insecure-requests"]),
   ].join("; ");
