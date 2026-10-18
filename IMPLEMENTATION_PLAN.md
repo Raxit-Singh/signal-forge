@@ -99,6 +99,9 @@ Free/Pro/Scale plans from the `plans` table; workspace keyword allowance (DB tri
 Migrations `20261016000007/8`. Budgets, prices and mention allowances unchanged; no paid calls.
 **Acceptance:** see the checklist in PROGRESS.md — all automated checks pass; coverage limits are shown, never hidden.
 
+### Correction: keyword-first monitoring, Connect Claude, spike graph — *implemented and verified 2026-10-18* (see PROGRESS.md)
+Product-owner correction of three features. Smart Monitoring: rankings per keyword × platform and per platform by mention count only (growth shown, never ranks), simple page with diagnostics behind "Advanced details", first scan covers every keyword, product name always monitored. Claude: one card with a Connect button and a simple state; technical setup only under "Having trouble connecting?"; GitHub and the optional routine as separate cards. Buzz: one interactive graph with spike markers, filters (scope, range) and a details panel replaces the bar chart and spike list.
+
 ### M3 Buzz analytics — *implemented and verified 2026-10-15* (see PROGRESS.md)
 Implemented on live SQL over deduplicated mentions (originals only) rather than the UTC `daily_mention_stats` table, so days follow the viewer's time zone; mentions with estimated dates (web results) are excluded from time series and counted separately.
 Daily aggregation job (idempotent recompute per day/product/source), charts (24h/7d/30d/90d/custom, per-platform filter), growth with zero-denominator handling, source distribution, unique authors, engagement, share of voice, experimental virality score with factor breakdown, spike detection (rolling median/MAD baseline + minimum counts), event markers.

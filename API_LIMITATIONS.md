@@ -172,6 +172,13 @@ The first-5-keyword limit of the Milestone 2 sources (`sync_monitoring_queries`)
 
 The combined-vs-separate equivalence (same mentions from one OR query as from one query per keyword) is shown only on **mocked** responses; the live test (above) confirmed OR is accepted and both terms are searched, but not equal recall.
 
+## Ranking and coverage limits (keyword-first monitoring, 2026-10-18)
+
+- Rankings use **observed** mentions: what the sources returned in the period. Sources with page or result-window caps (see the audit above) can return fewer items than exist; such periods are marked partial, and the platform shows "Partial coverage".
+- Mentions without a publication date (some web results) aren't counted in a period, so they don't affect rankings.
+- A platform that was never checked has no rank (unknown, not zero). Growth is shown only when the previous period was at least half monitored and had mentions.
+- Monitoring is polling: SignalForge can't know a new mention exists before checking, except for sources that push events (none of the current ones do). Quiet searches are still checked at least daily (12 h for Hacker News, GitHub, Stack Overflow, Bluesky, Discord).
+
 ## Platform-wide rules SignalForge follows
 - Store only what each platform permits (excerpts and IDs; honour deletion where the API exposes it).
 - Missing or failed monitoring windows are recorded in `coverage_windows` and shown as gaps — never as zero mentions.
@@ -202,7 +209,9 @@ The combined-vs-separate equivalence (same mentions from one OR query as from on
 - **Allowed callbacks:** only Claude's hosted callback (`https://claude.ai/api/mcp/auth_callback`, plus the claude.com variant) and Claude Code's loopback `http://localhost|127.0.0.1:<any>/callback`.
 - **Requirements Claude imposes:** public HTTPS, reachable from Anthropic's egress range `160.79.104.0/21`, and responses within 10 s (refresh within 30 s).
 - **Not tested with Claude itself:** the dev server is localhost only. The flow is tested end to end by a browser test that plays the client.
-- **Connected status is honest:** "Connected" means an authorized grant that Claude has actually used. Authorizing alone shows "Setup required".
+- **Connected status is honest:** "Connected" means an authorized grant that Claude has actually used. Authorizing alone shows "Connecting".
+- **No one-click connect exists (checked 2026-10-18):** Anthropic's help article (support.claude.com, "Get started with custom connectors using remote MCP") documents the path **Customize → Connectors → Add → custom connector** at `https://claude.ai/customize/connectors`, then the server URL and sign-in. It documents **no** URL parameter that pre-fills a connector and no API for another app to add one. So "Connect Claude" opens that page and the customer pastes SignalForge's address (one copy button) — one unavoidable manual step. Team/Enterprise: an owner adds the connector for the organization first. Free Claude plans: one custom connector.
+- **Unreachable servers:** Claude's apps connect from Anthropic's cloud, so a development server on localhost can't be added there (only Claude Code on the same machine can connect). A production server without a public HTTPS address shows "Unavailable".
 - **Read access only:** MCP authorization grants read access plus task reporting. It never starts code changes: implementation needs a separate approval in SignalForge.
 
 ### Claude Code routines (customer-funded execution)
@@ -216,7 +225,7 @@ The combined-vs-separate equivalence (same mentions from one OR query as from on
   - Limits: 30 fires per hour per routine and 100 API fires per hour per account. There is no idempotency key.
 - **Not available:**
   - No API to read a run's status or result, so SignalForge relies on the agent reporting through MCP tools, and tasks with no report fail after 6 hours.
-  - No API to create routines or tokens, so setup is manual.
+  - No API to create routines or tokens, so setup is manual — and a customer's connector authorization (OAuth to SignalForge) gives SignalForge no right to create or fire routines in their Claude account. SignalForge therefore keeps routine setup as a short optional step (collapsed under "Automatic investigations") and, without it, gives the customer a ready-made request to paste into Claude Code.
 - **Fire text is untrusted:** fire text arrives wrapped as untrusted data. SignalForge sends only `signalforge-task: <id>`; instructions come from the authenticated `get_agent_task` tool, and the saved prompt opts in to the payload.
 - **Unverified live:** no customer routine has been fired. Tests use a development-only stand-in (`/api/dev/mock-routine/…`, 404 in production builds).
 

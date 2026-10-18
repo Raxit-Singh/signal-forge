@@ -16,6 +16,39 @@ Legend: ✅ verified by an automated check that ran · 🟡 written, not yet exe
 
 Test users created for the walk-through were removed afterwards via the app's own deletion path.
 
+## Product correction: keyword-first monitoring, Connect Claude, spike graph (2026-10-18)
+
+Commits `7fbf7e5`, `381ed83`, `aad13f9`. Migration `20261019000001` (read-only function; applied to the development project after a dry run). No paid API or AI calls were made: browser tests use fixtures and the test classifier, and the dev server ran with the scheduler off.
+
+**A — Smart Monitoring, keyword-first**
+- Onboarding: company (workspace name), product name, website, description, category, keywords and historical period were already collected. The **product name is now always a monitored keyword**: added or switched back on when keywords are saved, and shown as "Always monitored" (can't be removed). An ambiguous name stays off until it has context words.
+- First scan: searches never checked before run at once instead of waiting for their rotation turn, so every keyword × platform gets a baseline. Historical search already ran one task per search group (every keyword). Skipped keywords are listed with their reason, never silently.
+- Rankings: `keyword_platform_counts` (relevant mentions per keyword × platform, caller's RLS). Keywords, each keyword's platforms, and the overall platforms are ranked **by mention count only** (ties by name). Growth is shown beside the rank and never changes it. A mention matching two keywords counts for each keyword but once in totals. Never-scanned platforms have no rank. States shown: not scanned / learning / partial coverage / monitored. The stored platform rank (diagnostics) is now the raw 28-day count, and checked "learning" platforms are ranked too.
+- Prioritization: unchanged arrival-rate engine. Busier keyword × platform searches get shorter intervals; quiet ones are still checked at least daily; overflow safety, budgets and plan floors still apply.
+- Page: summary (total mentions, active platforms, keywords monitored, last/next scan, coverage warnings), Keyword performance (expand for its platform ranking), Overall platform performance (mentions, share, growth, refresh, next scan, coverage). Formulas, the diagnostics table and the keyword schedule are under "Advanced details". Historical search, More platforms and Launch Boost are unchanged. Follows the global date range (24 h – 90 d or custom; the database compares at most 400 days).
+
+**B — Claude**
+- Settings → **Claude** (was "Developer agent"): one card with one state (Not connected / Connecting / Connected / Needs attention / Unavailable) and **Connect Claude**. Connected only after Claude actually calls SignalForge.
+- Connect dialog: copy SignalForge's address → **Open Claude** (`claude.ai/customize/connectors`) → Add → custom connector → approve in SignalForge. Claude documents no link that pre-fills a connector, so pasting the address is a required manual step. The page re-checks while waiting.
+- The MCP URL, Claude Code command and plan notes appear only under "Having trouble connecting?". Routine setup is collapsed under "Automatic investigations (optional)". GitHub is its own card ("Unavailable" while the GitHub App isn't configured — no setup instructions). Detailed states and per-connection revoke are under "Manage connection". **Disconnect** revokes every connection of the workspace.
+- Investigation → approval → implementation unchanged and re-tested.
+
+**C — Buzz spike graph**
+- One "Mentions and spikes" graph replaces the stacked bar chart and the spike text list. Filters update the same graph: All activity / a platform / a keyword, and 24h · 7d · 30d · 90d · Custom.
+- Confirmed spikes are filled triangles; possible spikes are hollow circles. Hover shows date, count, usual baseline, multiple, confidence and scope.
+- Clicking a marker (or pressing Enter on it, or using the chip list) opens a side panel: baseline comparison, contributing platforms and keywords, the most engaged relevant mentions, and **Explain with AI** on request (existing Gemini pipeline, cited).
+- Publication time on a real time axis. Unmonitored periods are shaded and not drawn as zero; partly monitored periods are shaded lighter. A short notice appears while the baseline is too short. Table view is available. Spike detection itself is unchanged.
+
+**Checks**
+
+| Check | Result |
+|---|---|
+| Unit tests | ✅ 277/277 (+9 ranking, +1 brand term, +1 connection state) |
+| Database tests | ✅ 400/400 (+6: keyword counts, case-insensitivity, current keywords only, relevance filter, RLS, anon) |
+| Typecheck, lint, production build | ✅ |
+| Browser tests (changed areas) | ✅ monitoring 5/5, agent 2/2, buzz 6/6, discovery + AI 6/6 in targeted runs |
+| Full browser run | ✅ 41/41 passed, 1 skipped (live Gemini, opt-in). The full run passed 21; the other 20 were refused at sign-in by Supabase Auth's verify rate limit (429 / `link_expired`) before reaching any page, and all 20 passed when re-run in batches after the limit reset (monitoring 5, reports 2, mentions 6, Stripe webhook 1, email 1, discovery 4, insights 1, members 2). |
+
 ## Email (Resend) — built, not yet sent for real (2026-10-18)
 
 Migration `20261018000007`.

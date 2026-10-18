@@ -121,14 +121,14 @@ SignalForge pays for this; customers never connect an AI provider for it.
 
 ### 3d. Developer agent — Claude connector, GitHub App, routines
 
-**Claude connector (MCP).** Nothing to configure server-side except a public HTTPS `NEXT_PUBLIC_SITE_URL` (Claude can't reach localhost). Customers add `<site>/api/mcp` as a custom connector in Claude and approve in SignalForge. Endpoints: `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`, `/api/oauth/{register,token,revoke}`, `/oauth/authorize`.
+**Claude connector (MCP).** Nothing to configure server-side except a public HTTPS `NEXT_PUBLIC_SITE_URL` (Claude's apps can't reach localhost; a production server without one shows Claude as "Unavailable"). Customers use **Settings → Claude → Connect Claude**: copy SignalForge's address, add it in Claude (Customize → Connectors → Add → custom connector) and approve in SignalForge. The MCP URL and the Claude Code command are under "Having trouble connecting?". On a development server, connect with Claude Code on the same machine (`claude mcp add --transport http signalforge http://localhost:3000/api/mcp`, then `/mcp` to sign in). Endpoints: `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`, `/api/oauth/{register,token,revoke}`, `/oauth/authorize`.
 
 **GitHub App** (repository authorization; separate from `GITHUB_TOKEN`):
 1. Create a GitHub App: permissions **Metadata: read, Contents: read, Pull requests: read** only; no webhook needed.
 2. Setup URL: `<site>/api/github/callback`; enable **"Request user authorization (OAuth) during installation"** (SignalForge uses the install-time user token to prove the installer can access the installation); callback URL the same.
 3. Generate a private key; set `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY` (PEM, `\n` for newlines).
 
-**Claude Code routine** (optional, per customer, on their Claude plan): created by the customer at claude.ai/code/routines with the prompt shown in Settings → Developer agent; they paste the API trigger URL and token. The token is encrypted (`credential_secrets`, purpose `agent`).
+**Claude Code routine** (optional, per customer, on their Claude plan): created by the customer at claude.ai/code/routines with the instructions shown in Settings → Claude → Automatic investigations; they paste the API trigger URL and token. The token is encrypted (`credential_secrets`, purpose `agent`).
 
 **Development:** `/api/dev/mock-routine/<trig_id>/fire` stands in for Claude's fire endpoint (404 in production builds); browser tests use it.
 
@@ -143,6 +143,8 @@ npm run test:e2e     # Playwright; uses .env.local's Supabase project with throw
 npm run audit:keywords  # read-only keyword/query/cost report per product (no platform API calls)
 node scripts/resync-queries.ts --product <uuid> [--apply]   # re-plan one product's query groups now (dry run by default)
 ```
+**Development server without the scheduler:** `DEV_SCHEDULER=off npm run dev` (or the `web-quiet` entry in `.claude/launch.json`) serves the app without the background scheduler, so nothing calls data sources or Gemini while you click around or run browser tests.
+
 **Testing faster intervals (development only):** add to `.env.local` and restart `npm run dev`:
 ```
 DEV_MONITORING_MIN_INTERVAL_MINUTES=60
