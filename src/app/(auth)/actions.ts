@@ -1,5 +1,6 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { publicEnv } from "@/lib/env";
@@ -11,7 +12,21 @@ import {
 } from "@/lib/validation/schemas";
 import { failure, invalid, logServerError, type ActionState } from "@/lib/server/action-result";
 
-const site = () => publicEnv.NEXT_PUBLIC_SITE_URL;
+/**
+ * Where sign-in links and provider callbacks return to: the address the visitor
+ * is actually using, so the PKCE cookie set here is there when they come back
+ * (a NEXT_PUBLIC_SITE_URL left at localhost on a deployment would otherwise
+ * strand them). Supabase only honours addresses in its Redirect URLs allow
+ * list, so a forged Host header can't redirect anywhere else.
+ */
+async function site(): Promise<string> {
+  const h = await headers();
+  const host = (h.get("x-forwarded-host") ?? h.get("host"))?.split(",")[0]?.trim();
+  if (!host || !/^[a-z0-9.-]+(:\d+)?$/i.test(host)) return publicEnv.NEXT_PUBLIC_SITE_URL;
+  const local = /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host);
+  const proto = h.get("x-forwarded-proto")?.split(",")[0]?.trim() || (local ? "http" : "https");
+  return `${proto === "http" && !local ? "https" : proto}://${host}`;
+}
 
 /** Error state that also tells the form to offer "Resend verification email". */
 const unconfirmed = (): ActionState => ({
@@ -51,7 +66,7 @@ export async function signUpAction(_: ActionState, formData: FormData): Promise<
     email: parsed.data.email,
     password: parsed.data.password,
     // After confirming: onboarding, or where the visitor was headed (e.g. an invitation link).
-    options: { emailRedirectTo: emailRedirectTo(site(), next) },
+    options: { emailRedirectTo: emailRedirectTo(await site(), next) },
   });
   if (error) {
     if (error.status === 429 || error.code === "over_email_send_rate_limit") {
@@ -81,7 +96,7 @@ export async function resendVerificationAction(_: ActionState, formData: FormDat
   const { error } = await supabase.auth.resend({
     type: "signup",
     email: parsed.data.email,
-    options: { emailRedirectTo: emailRedirectTo(site(), next) },
+    options: { emailRedirectTo: emailRedirectTo(await site(), next) },
   });
   if (error) {
     if (error.status === 429 || error.code === "over_email_send_rate_limit") {
@@ -102,7 +117,7 @@ export async function signInWithProviderAction(formData: FormData): Promise<void
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider,
-    options: { redirectTo: oauthRedirectTo(site(), provider, next) },
+    options: { redirectTo: oauthRedirectTo(await site(), provider, next) },
   });
   if (error || !data.url) {
     logServerError(`oauth:${provider}`, error ?? "no url");
@@ -116,7 +131,7 @@ export async function requestPasswordResetAction(_: ActionState, formData: FormD
   if (!parsed.success) return invalid(parsed.error);
   const supabase = await createClient();
   const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {
-    redirectTo: emailRedirectTo(site(), "/reset-password"),
+    redirectTo: emailRedirectTo(await site(), "/reset-password"),
   });
   if (error?.status === 429 || error?.code === "over_email_send_rate_limit") {
     return failure("Too many requests. Wait a few minutes and try again.");
