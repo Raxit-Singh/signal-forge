@@ -62,7 +62,7 @@ test("live Gemini: classification, embeddings, issue summary and spike explanati
   for (const l of labels) console.log(`  ${l.external_id.padEnd(13)} about=${l.ai_about_product} sentiment=${l.sentiment} category=${l.feedback_category} severity=${l.ai_severity} area=${l.ai_area} embedded=${l.embedding?.length ?? 0} — ${l.ai_reason}`);
   const by = new Map(labels.map((l) => [l.external_id, l]));
   expect(labels.every((l) => l.ai_model?.startsWith("gemini:")), "labels come from Gemini").toBe(true);
-  expect(labels.every((l) => l.relevance_status === "relevant"), "shadow mode: AI never changes relevance").toBe(true);
+  expect(labels.every((l) => l.relevance_status === "relevant"), "the AI never changes a decided mention").toBe(true);
   expect(by.get("live-bug-1")?.feedback_category).toBe("bug_report");
   expect(by.get("live-praise")?.sentiment).toBe("positive");
   expect(by.get("live-bug-1")?.sentiment).toBe("negative");

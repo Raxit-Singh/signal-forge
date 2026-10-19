@@ -7,6 +7,7 @@ import {
   classificationPrompt, classificationSchema, labelsToApply, validateClassification, type ProductContext, type ValidClassification,
 } from "@/lib/ai/prompts";
 import { AiError } from "@/lib/ai/types";
+import { aiRelevanceDecision } from "@/lib/ai/relevance-decision";
 import { emitEvent } from "@/lib/server/collection/monitor";
 import { budgetedCall, cacheGet, cachePut, resolveAi, type ResolvedAi } from "./gateway";
 
@@ -55,11 +56,11 @@ interface Row {
 
 /**
  * SignalForge Intelligence classification of a product's unclassified mentions:
- * relevance recommendation (SHADOW MODE — never changes relevance_status or the
- * mention allowance), product-targeted sentiment, category, feedback signals,
- * severity, affected area and confidence. Writes only AI columns and history, so
- * a failure never changes collection, billing or analytics tables. Manual
- * corrections are never overwritten.
+ * whether it is about the product, product-targeted sentiment, category,
+ * feedback signals, severity, affected area and confidence. Mentions the keyword
+ * rules left for review ("pending") are decided by a confident answer
+ * (aiRelevanceDecision); rule decisions and anything a person decided are never
+ * changed. Manual corrections are never overwritten.
  */
 export async function classifyProduct(admin: SupabaseClient, productId: string, limit = JOB_LIMIT): Promise<ClassifySummary> {
   const summary: ClassifySummary = { status: "done", classified: 0, cached: 0, failed: 0, calls: 0 };
@@ -176,6 +177,13 @@ async function applyResults(admin: SupabaseClient, ai: ResolvedAi, workspaceId: 
     if (!keep.has("category")) Object.assign(patch, { feedback_category: l.category, category_confidence: l.categoryConfidence });
     const { error } = await admin.from("mentions").update(patch).eq("id", r.id).eq("workspace_id", workspaceId);
     if (error) console.error(`[ai] mention update failed (${error.code ?? "db"})`);
+    // Only a mention still awaiting review changes; the billing trigger counts it once relevant.
+    const decision = aiRelevanceDecision("pending", r.aboutProduct, r.confidence);
+    if (!error && decision) {
+      const { error: decideError } = await admin.from("mentions").update({ relevance_status: decision })
+        .eq("id", r.id).eq("workspace_id", workspaceId).eq("relevance_status", "pending");
+      if (decideError) console.error(`[ai] relevance decision not stored (${decideError.code ?? "db"})`);
+    }
     const base = { workspace_id: workspaceId, mention_id: r.id, classifier, rationale: r.reason || null };
     history.push(
       { ...base, dimension: "relevance", label: r.aboutProduct, confidence: null },

@@ -16,6 +16,26 @@ Legend: ✅ verified by an automated check that ran · 🟡 written, not yet exe
 
 Test users created for the walk-through were removed afterwards via the app's own deletion path.
 
+## Fixes from founder testing (2026-10-19)
+
+- ✅ **Scheduler on Vercel:** the Supabase Vault `app_url` had a stray `/$0`, so every 2-minute tick reached a page instead of `/api/jobs/tick`. Corrected; a direct call ran 12 jobs (9 succeeded).
+- ✅ **Paid platforms couldn't be turned on:** the upsert also rewrote key columns that customers may not update (42501). It now updates, then inserts if no row exists. Covered by an e2e test.
+- ✅ **App Store / Play links** pasted with the app title after the URL are accepted.
+- ✅ **Times in the viewer's time zone** everywhere (`formatTime`, sf_tz cookie app-wide).
+- ✅ **Renaming a product updates its keywords:** the old name and domain keywords follow the edit, and searches are re-planned (`e2e/products.spec.ts`). The Demo product renamed Erly → toing was corrected in place.
+- ✅ **Live progress:** historical search refreshes itself while running; Last/Next scan count down without a reload.
+- ✅ **Hacker News exact-word search** (`typoTolerance=false`): "toing" matched 9,660 near-miss posts in 7 days (doing, going…) vs 0 exact, so a 7-day history took ~30 min and found nothing.
+- ✅ **AI decides "needs review" mentions** when ≥ 70% confident (`aiRelevanceDecision`), on the owner's decision 2026-10-19:
+  - only `pending` changes; rule decisions and team decisions are never touched;
+  - "unsure" waits for a person;
+  - decided-relevant mentions count toward the allowance (billing trigger).
+  - Applied to already-checked mentions: 127 relevant and 44 not relevant for toing. Buzz goes from 244 to 371.
+- Why the three numbers differ:
+  - **historical search "collected":** everything that run saved, before relevance;
+  - **Mentions:** relevant + needs review, duplicates hidden;
+  - **Buzz:** relevant only, with a real publication date (web results without a date are listed but not charted).
+- Housekeeping: 11 leftover e2e workspaces (interrupted test runs) had scanning stopped; their data is kept.
+
 ## Authentication repair and social sign-in (2026-10-18)
 
 **Reproduced first.**

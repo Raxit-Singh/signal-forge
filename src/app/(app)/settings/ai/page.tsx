@@ -117,11 +117,12 @@ export default async function IntelligenceSettings() {
 
       <Card>
         <CardHeader>
-          <CardTitle>AI relevance check (shadow mode)</CardTitle>
+          <CardTitle>AI relevance decisions</CardTitle>
           <CardDescription>
-            The AI&apos;s “is this about the product?” answer is only a recommendation. Your team&apos;s decisions and the keyword
-            rules decide what counts as a mention, including toward your mention allowance. This compares the AI with
-            mentions your team marked relevant or not relevant.
+            When the keyword rules can&apos;t decide whether a mention is about your product (“needs review”), the AI decides if
+            it is at least 70% confident; unsure answers wait for you. The keyword rules&apos; own decisions are kept, and your
+            team&apos;s Relevant / Not relevant always wins. Mentions decided relevant count toward your mention allowance.
+            This compares the AI with mentions your team marked relevant or not relevant.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-2 text-[13px]" data-testid="relevance-eval">

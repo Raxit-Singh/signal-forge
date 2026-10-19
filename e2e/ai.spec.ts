@@ -83,7 +83,7 @@ test("classification → semantic issue with priority evidence → analytics →
   expect(by.get("ai-bug-1")?.embedding?.length, "feedback is embedded for grouping").toBeGreaterThan(0);
   expect(by.get("ai-praise")?.sentiment).toBe("positive");
   expect(labels.every((l) => l.ai_model === "test:mock-classifier")).toBe(true);
-  expect(labels.every((l) => l.relevance_status === "relevant"), "shadow mode: AI never changes relevance or the allowance").toBe(true);
+  expect(labels.every((l) => l.relevance_status === "relevant"), "the AI never changes a decided mention").toBe(true);
 
   const usage = await adminSelect<Array<{ billed_to: string; status: string; purpose: string }>>(`ai_usage_records?workspace_id=eq.${ids.workspaceId}&select=billed_to,status,purpose`);
   expect(usage.every((u) => u.status === "settled" && u.billed_to === "test"), "every call reserved and settled; test calls never touch SignalForge budgets").toBe(true);
