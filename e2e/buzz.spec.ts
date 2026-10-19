@@ -51,11 +51,12 @@ test("buzz analytics shows counts derived from stored mentions, excluding repost
 const graph = (page: import("@playwright/test").Page) => page.getByTestId("spike-graph");
 const day = (n: number) => new Date(Math.floor(Date.now() / 86_400_000) * 86_400_000 - n * 86_400_000).toISOString();
 
-test("days before monitoring started are gaps, not zeros; counts use publication time, not when they were collected", async ({ page }) => {
+test("the graph starts when monitoring started; counts use publication time, not when they were collected", async ({ page }) => {
   await expect(graph(page)).toBeVisible();
+  // Days before monitoring aren't drawn as zeros: the graph starts at the first monitored day and says so.
+  await expect(page.getByTestId("graph-starts")).toContainText("Monitoring started");
   await page.getByText("Show as table").click();
   const rows = page.locator("table tbody tr");
-  await expect(rows.first()).toContainText("no data");
   await expect(rows.last()).not.toContainText("no data");
   await expect(page.getByText("Shaded periods weren't (fully) monitored")).toBeVisible();
   // Every fixture was inserted just now but published over 10 days: they are spread out, not piled into today.

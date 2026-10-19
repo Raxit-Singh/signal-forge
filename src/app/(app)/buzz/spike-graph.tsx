@@ -102,7 +102,11 @@ export function SpikeGraph(p: Props) {
       const cur = byBucket.get(i);
       if (!cur || strength(s) > strength(cur)) byBucket.set(i, s);
     }
-    return p.points.map((x, i) => {
+    // Start where monitoring started: a long unmonitored lead-in is noted below the graph, not drawn.
+    const first = p.points.findIndex((x) => x.coverage !== "none");
+    const lead = first > 0 ? first : 0;
+    return p.points.slice(lead).map((x, j) => {
+      const i = j + lead;
       const s = byBucket.get(i) ?? null;
       const y = s ? (x.value ?? s.observed) : null;
       return {
@@ -121,6 +125,8 @@ export function SpikeGraph(p: Props) {
   };
   const scopeValue = p.scope.kind === "all" ? "" : `${p.scope.kind}:${p.scope.value}`;
   const marked = rows.filter((r) => r.spike);
+  const firstMonitored = p.points.findIndex((x) => x.coverage !== "none");
+  const startedLate = firstMonitored > 0 ? p.points[firstMonitored]!.start : null;
   const hasData = rows.some((r) => r.value !== null);
   const domain: [number, number] = rows.length ? [rows[0]!.t - bucketMs / 2, rows.at(-1)!.t + bucketMs / 2] : [0, 1];
   const step = Math.max(1, Math.ceil(rows.length / 8));
@@ -217,7 +223,7 @@ export function SpikeGraph(p: Props) {
                   );
                 }}
               />
-              <Area type="monotone" dataKey="value" name="Mentions" stroke={LINE} strokeWidth={2} fill={LINE} fillOpacity={0.1}
+              <Area type="linear" dataKey="value" name="Mentions" stroke={LINE} strokeWidth={2} fill={LINE} fillOpacity={0.1}
                 connectNulls={false} isAnimationActive={false} dot={false} activeDot={{ r: 4 }} />
               <Scatter dataKey="confirmed" name="Confirmed spike" fill={CONFIRMED} isAnimationActive={false}
                 shape={(props: unknown) => <Marker {...(props as MarkerProps)} kind="confirmed" onSelect={setSelectedId} />} />
@@ -233,6 +239,9 @@ export function SpikeGraph(p: Props) {
         <li className="flex items-center gap-1.5"><svg width="12" height="12" aria-hidden><path d="M6 1 L11 11 L1 11 Z" fill={CONFIRMED} /></svg>Confirmed spike</li>
         <li className="flex items-center gap-1.5"><svg width="12" height="12" aria-hidden><circle cx="6" cy="6" r="4.5" fill="var(--surface)" stroke={POSSIBLE} strokeWidth="2" /></svg>Possible spike</li>
         <li className="flex items-center gap-1.5"><span className="size-3 rounded-sm bg-muted-foreground/15" aria-hidden />Not monitored</li>
+        {startedLate && (
+          <li className="text-muted-foreground" data-testid="graph-starts">Monitoring started {full.format(new Date(startedLate))}; the graph starts there.</li>
+        )}
         <li className="flex items-center gap-1.5"><span className="size-3 rounded-sm bg-muted-foreground/[0.07] ring-1 ring-border" aria-hidden />Partly monitored</li>
         {p.events.length > 0 && <li className="flex items-center gap-1.5"><span className="h-3 w-0 border-l-2 border-dashed border-info" aria-hidden />Your events</li>}
       </ul>

@@ -74,10 +74,14 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
   const scope = keyword ? { kind: "keyword" as const, value: keyword, label: `“${keyword}”` }
     : source ? { kind: "platform" as const, value: source, label: nameOf(source) } : { kind: "all" as const, value: null, label: "all activity" };
   const graphFrom = d.series.length ? new Date(d.series[0]!.start).getTime() : range.from.getTime();
+  // A "possible" spike needs a baseline: with no fully monitored days before it, the first days of
+  // monitoring would always look like a jump from nothing. Those aren't shown.
+  const noBaseline = d.spikeEvaluation?.status === "insufficient_data" && (d.spikeEvaluation.baselinePeriods ?? 0) === 0;
   const graphSpikes: GraphSpike[] = d.spikes
     .filter((x) => {
       const t = new Date(x.period_start).getTime();
       if (t < graphFrom || t >= range.to.getTime()) return false;
+      if (noBaseline && x.confidence === "possible") return false;
       if (scope.kind === "keyword") return (x.keyword ?? "").toLowerCase() === keyword!.toLowerCase();
       if (x.keyword) return false;
       return scope.kind === "platform" ? x.platform === source : !x.platform;

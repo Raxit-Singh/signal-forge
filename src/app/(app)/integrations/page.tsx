@@ -72,6 +72,14 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
   const dcfg = disc?.config as { guild_name?: string; channels?: Array<{ id: string; name: string }>; available_channels?: Array<{ id: string; name: string }>; mode?: "all" | "keywords" } | undefined;
   const pkg = playPackage((productRow as { play_store_url?: string | null } | null)?.play_store_url);
 
+  // What each source actually found for this product (relevant originals, last 30 days).
+  const foundBy = new Map<string, number>();
+  if (product) {
+    const { data: found } = await supabase.from("mentions").select("source")
+      .eq("product_id", product.id).eq("dedup_kind", "original").in("relevance_status", ["relevant", "user_relevant"])
+      .gte("published_at", new Date(new Date().getTime() - 30 * 86_400_000).toISOString()).limit(20_000);
+    for (const r of found ?? []) foundBy.set(r.source as string, (foundBy.get(r.source as string) ?? 0) + 1);
+  }
   const healthBy = new Map((health ?? []).map((h) => [h.provider as string, h]));
   const live: Record<string, LiveStatus> = {};
   for (const s of coverage?.sources ?? []) {
@@ -83,7 +91,11 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
     if (h?.status === "degraded" && h.last_error_at && (!h.last_success_at || h.last_error_at > h.last_success_at)) {
       lines.push(`Recent issue: ${h.last_error}`);
     }
-    live[s.id] = { tone: STATE[s.state], label: STATE_LABEL[s.state], lines };
+    live[s.id] = {
+      tone: STATE[s.state], label: STATE_LABEL[s.state], lines,
+      ...(product && s.state !== "not_configured" && s.state !== "not_enabled"
+        ? { found: foundBy.get(s.id) ?? 0, href: `/mentions?${new URLSearchParams({ source: s.id, status: "relevant" })}` } : {}),
+    };
   }
 
   return (

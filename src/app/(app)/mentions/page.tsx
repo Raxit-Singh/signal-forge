@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { categoryLabel } from "@/lib/ai/cluster";
 import type { FeedbackCategory } from "@/lib/ai/types";
 import { ExpandableText, MentionFilters, NewMentionsNotice, RelevanceButtons } from "./mention-client";
+import { FEEDBACK_FILTERS, isFeedbackFilter } from "@/lib/domain/feedback-filter";
 
 export const metadata: Metadata = { title: "Mentions" };
 
@@ -115,6 +116,7 @@ export default async function MentionsPage({ searchParams }: { searchParams: Pro
   const statusKey = sp.status && sp.status in STATUS_FILTER ? sp.status : "";
   const statuses = STATUS_FILTER[statusKey];
   const showDupes = sp.dupes === "1";
+  const feedback = isFeedbackFilter(sp.feedback) ? sp.feedback : null;
   const page = parsePage(sp.page);
   const canEdit = hasRole(workspace.role, "member");
   const canScan = hasRole(workspace.role, "admin");
@@ -134,6 +136,12 @@ export default async function MentionsPage({ searchParams }: { searchParams: Pro
     if (type) query = query.eq("mention_type", type);
     if (statuses) query = query.in("relevance_status", statuses);
     if (!showDupes) query = query.eq("dedup_kind", "original");
+    // From Feedback Intelligence: the classified posts behind one of its counts.
+    if (feedback) {
+      query = query.eq("processing_status", "classified")
+        .in("feedback_category", [...FEEDBACK_FILTERS[feedback].categories])
+        .or("ai_about_product.is.null,ai_about_product.neq.no");
+    }
     // Values are double-quoted: they may contain "." or ":" (reserved in PostgREST filters).
     if (q) query = query.or(`title.ilike."*${q}*",content.ilike."*${q}*"`);
     return query;
@@ -156,7 +164,7 @@ export default async function MentionsPage({ searchParams }: { searchParams: Pro
   if (page > pages) redirect(pageHref("/mentions", sp, pages));
 
   const rows = (data ?? []) as unknown as MentionRow[];
-  const filtered = Boolean(q || source || type || statusKey || showDupes);
+  const filtered = Boolean(q || source || type || statusKey || showDupes || feedback);
   const coverage = await getCoverageSummary(product.id);
   const neverCollected = page === 1 && rows.length === 0 && !filtered && coverage.included.length === 0;
   const sources = PUBLIC_SOURCES.map((id) => ({ id, name: integrationInfo(id)?.name ?? id }));
@@ -185,6 +193,13 @@ export default async function MentionsPage({ searchParams }: { searchParams: Pro
       ) : (
         <>
           <MentionFilters sources={sources} types={Object.entries(MENTION_TYPES).map(([id, name]) => ({ id, name }))} />
+          {feedback && (
+            <p className="mb-2 flex flex-wrap items-center gap-2 text-[13px]" data-testid="feedback-filter">
+              <Badge tone="info">{FEEDBACK_FILTERS[feedback].label}</Badge>
+              <span className="text-muted-foreground">as classified by SignalForge Intelligence (from Feedback Intelligence)</span>
+              <Link href="/mentions" className="underline underline-offset-4">Show all mentions</Link>
+            </p>
+          )}
           <NewMentionsNotice productId={product.id} page={page} loadedAt={loadedAt} />
           <p className="mb-2 text-xs text-muted-foreground tabular" aria-live="polite">
             {total === 0

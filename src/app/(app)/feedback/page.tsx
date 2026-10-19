@@ -1,3 +1,4 @@
+import { feedbackMentionsHref } from "@/lib/domain/feedback-filter";
 import { getTimeZone } from "@/lib/server/timezone";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -23,14 +24,19 @@ import {
 export const metadata: Metadata = { title: "Feedback Intelligence" };
 
 
-function Bars({ items, label }: { items: Array<{ label: string; value: number }>; label: string }) {
+function Bars({ items, label }: { items: Array<{ label: string; value: number; href?: string }>; label: string }) {
   const max = Math.max(1, ...items.map((i) => i.value));
   if (items.every((i) => i.value === 0)) return <p className="text-[13px] text-muted-foreground">Nothing classified in this period.</p>;
   return (
     <ul className="grid gap-2" aria-label={label}>
       {items.map((i) => (
         <li key={i.label} className="grid gap-1">
-          <div className="flex justify-between gap-2 text-xs"><span className="truncate">{i.label}</span><span className="tabular text-muted-foreground">{formatCount(i.value)}</span></div>
+          <div className="flex justify-between gap-2 text-xs">
+            {i.href && i.value > 0
+              ? <Link href={i.href} className="truncate underline-offset-4 hover:underline">{i.label}</Link>
+              : <span className="truncate">{i.label}</span>}
+            <span className="tabular text-muted-foreground">{formatCount(i.value)}</span>
+          </div>
           <div className="h-1.5 rounded bg-muted" aria-hidden><div className="h-1.5 rounded bg-[var(--feedback-feature)]" style={{ width: `${(i.value / max) * 100}%` }} /></div>
         </li>
       ))}
@@ -131,16 +137,19 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
         <section aria-labelledby="fb-kpis" className="grid grid-cols-2 gap-3 md:grid-cols-5">
           <h2 id="fb-kpis" className="sr-only">Feedback in numbers</h2>
           {([
-            ["Actionable issues", open.length],
-            ["Bug reports", sum("bugs")],
-            ["Feature requests", sum("features")],
-            ["Complaints", sum("complaints")],
-            ["Positive feedback", sum("praise")],
-          ] as const).map(([l, v]) => (
-            <Card key={l} className="grid min-w-0 gap-0.5 p-3" data-testid="feedback-kpi">
-              <span className="text-xs text-muted-foreground">{l}</span>
-              <span className="text-xl font-semibold tabular">{formatCount(v)}</span>
-            </Card>
+            ["Actionable issues", open.length, "#issues"],
+            ["Bug reports", sum("bugs"), feedbackMentionsHref("bugs")],
+            ["Feature requests", sum("features"), feedbackMentionsHref("features")],
+            ["Complaints", sum("complaints"), feedbackMentionsHref("complaints")],
+            ["Positive feedback", sum("praise"), feedbackMentionsHref("praise")],
+          ] as const).map(([l, v, href]) => (
+            <Link key={l} href={href} className="group rounded-xl focus-visible:outline-2 focus-visible:outline-ring" aria-label={`${l}: ${v}. Show them`}>
+              <Card className="grid h-full min-w-0 gap-0.5 p-3 transition-colors group-hover:bg-muted/40" data-testid="feedback-kpi">
+                <span className="text-xs text-muted-foreground">{l}</span>
+                <span className="text-xl font-semibold tabular">{formatCount(v)}</span>
+                <span className="text-xs text-muted-foreground group-hover:text-foreground">{v > 0 ? "Show them →" : "None yet"}</span>
+              </Card>
+            </Link>
           ))}
         </section>
         {(classifiedTotal > 0 || unclassifiedTotal > 0) && (
@@ -175,10 +184,13 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
             <CardHeader><CardTitle>Feedback categories</CardTitle></CardHeader>
             <CardContent>
               <Bars label="Feedback categories" items={[
-                { label: "Bug reports", value: sum("bugs") }, { label: "Feature requests", value: sum("features") },
-                { label: "Complaints", value: sum("complaints") }, { label: "Praise", value: sum("praise") },
-                { label: "Questions", value: sum("questions") }, { label: "Competitor comparisons", value: compRes.count ?? 0 },
-                { label: "General discussion / other", value: generalRes.count ?? 0 },
+                { label: "Bug reports", value: sum("bugs"), href: feedbackMentionsHref("bugs") },
+                { label: "Feature requests", value: sum("features"), href: feedbackMentionsHref("features") },
+                { label: "Complaints", value: sum("complaints"), href: feedbackMentionsHref("complaints") },
+                { label: "Praise", value: sum("praise"), href: feedbackMentionsHref("praise") },
+                { label: "Questions", value: sum("questions"), href: feedbackMentionsHref("questions") },
+                { label: "Competitor comparisons", value: compRes.count ?? 0, href: feedbackMentionsHref("comparisons") },
+                { label: "General discussion / other", value: generalRes.count ?? 0, href: feedbackMentionsHref("general") },
               ]} />
             </CardContent>
           </Card>

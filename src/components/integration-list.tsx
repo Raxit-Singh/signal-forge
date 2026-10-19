@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Ban, Clock, CreditCard, FlaskConical, Globe, KeyRound, Lock, MessagesSquare } from "lucide-react";
 import { INTEGRATIONS, type IntegrationInfo } from "@/lib/domain/integrations";
 import { Badge } from "@/components/ui/primitives";
@@ -6,6 +7,10 @@ export interface LiveStatus {
   tone: "positive" | "warning" | "negative" | "neutral";
   label: string;
   lines: string[];
+  /** Relevant mentions this source found for the product in the last 30 days. */
+  found?: number;
+  /** Mentions page filtered to this source. */
+  href?: string;
 }
 
 const COMMENTS: Record<NonNullable<IntegrationInfo["commentCoverage"]>, string> = {
@@ -46,6 +51,14 @@ export function IntegrationList({ compact = false, live }: { compact?: boolean; 
               </span>
             </div>
             <p className="text-[13px]">{i.dataAccessed}</p>
+            {live?.[i.provider]?.found !== undefined && (
+              <p className="flex flex-wrap items-baseline gap-x-2 text-[13px]" data-testid={`source-found-${i.provider}`}>
+                <span><span className="font-semibold tabular">{live[i.provider]!.found!.toLocaleString("en-US")}</span> relevant mention{live[i.provider]!.found === 1 ? "" : "s"} in the last 30 days</span>
+                {live[i.provider]!.found! > 0 && live[i.provider]!.href && (
+                  <Link href={live[i.provider]!.href!} className="text-xs underline underline-offset-4">View them</Link>
+                )}
+              </p>
+            )}
             {live?.[i.provider]?.lines.map((l) => (
               <p key={l} className="text-xs text-muted-foreground">{l}</p>
             ))}

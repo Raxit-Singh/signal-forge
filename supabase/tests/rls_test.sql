@@ -1028,6 +1028,21 @@ select t.as_user('00000000-0000-0000-0000-00000000000a');
 set role authenticated;
 select t.ok((select count(*) from public.internal_plan_grants) = 0, 'other workspaces cannot see a grant');
 reset role;
+
+-- A non-public plan is readable by members of a workspace that is on it, and only by them.
+insert into public.plans (id, name, max_products, monthly_mention_limit, history_days, monitoring_interval_minutes, is_public)
+values ('t_hidden_grant', 'Hidden grant', 50, 100, 30, 60, false), ('t_hidden_other', 'Hidden other', 1, 1, 30, 60, false);
+update public.internal_plan_grants set plan_id = 't_hidden_grant' where workspace_id = (select v from ids where k = 'ws_d');
+select t.as_user('00000000-0000-0000-0000-00000000000d');
+set role authenticated;
+select t.ok((select name from public.plans where id = 't_hidden_grant') = 'Hidden grant', 'members can read the non-public plan their workspace is on');
+select t.ok(not exists (select 1 from public.plans where id = 't_hidden_other'), 'other non-public plans stay hidden');
+reset role;
+select t.as_user('00000000-0000-0000-0000-00000000000a');
+set role authenticated;
+select t.ok(not exists (select 1 from public.plans where id = 't_hidden_grant'), 'another workspace''s non-public plan stays hidden');
+reset role;
+update public.internal_plan_grants set plan_id = 'pro' where workspace_id = (select v from ids where k = 'ws_d');
 update public.internal_plan_grants set revoked_at = now() where workspace_id = (select v from ids where k = 'ws_d');
 select t.ok(private.effective_plan_id((select v from ids where k = 'ws_d')) = 'free', 'revoking a grant falls back to the subscription immediately');
 

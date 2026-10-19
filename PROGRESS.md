@@ -34,6 +34,13 @@ Test users created for the walk-through were removed afterwards via the app's ow
   - **historical search "collected":** everything that run saved, before relevance;
   - **Mentions:** relevant + needs review, duplicates hidden;
   - **Buzz:** relevant only, with a real publication date (web results without a date are listed but not charted).
+- ✅ **Workspaces on a non-public plan showed as Free:** `plans_read` exposed only public plans, so the Demo workspace (internal_unlimited) was limited in the UI as Free (e.g. competitors blocked). Migration `20261019000003` lets members read the plan their own workspace is on; other hidden plans stay hidden. DB tests: 410 pass. Applied to dev.
+- ✅ **Feedback counts are clickable:** every Feedback Intelligence count opens Mentions filtered to the posts behind it (`?feedback=features` …).
+- ✅ **Buzz graph:**
+  - starts where monitoring started, instead of mostly grey unmonitored days;
+  - draws straight lines, not smoothed curves;
+  - shows no "possible spike" when there is no baseline yet.
+- ✅ **Integrations** shows each source's relevant mentions in the last 30 days, with a link to them.
 - Housekeeping: 11 leftover e2e workspaces (interrupted test runs) had scanning stopped; their data is kept.
 
 ## Authentication repair and social sign-in (2026-10-18)
