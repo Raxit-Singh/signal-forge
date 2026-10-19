@@ -11,6 +11,8 @@ import {
 } from "@/lib/domain/history";
 import type { KeywordRisk } from "@/lib/domain/keyword-risk";
 import { cn } from "@/lib/utils";
+import { formatTime } from "@/lib/format";
+import { useTimeZone } from "@/components/time";
 
 export interface HistoryFormProps {
   productId: string;
@@ -28,6 +30,7 @@ export interface HistoryFormProps {
 /** "How far back should SignalForge search for mentions?" with exact dates and warnings. */
 export function HistoryForm(p: HistoryFormProps) {
   const [state, action] = useFormAction(startHistoricalSearchAction, idle);
+  const tz = useTimeZone();
   const [mode, setMode] = useState<HistoryMode>(DEFAULT_HISTORY_MODE);
   const [launchDate, setLaunchDate] = useState("");
   const [customStart, setCustomStart] = useState("");
@@ -94,8 +97,8 @@ export function HistoryForm(p: HistoryFormProps) {
         {range.ok ? (
           <p>
             <History className="mr-1 inline size-4 align-text-bottom text-muted-foreground" aria-hidden />
-            Searches from <span className="font-medium tabular">{range.start.toISOString().slice(0, 16).replace("T", " ")} UTC</span> to{" "}
-            <span className="font-medium tabular">{range.end.toISOString().slice(0, 16).replace("T", " ")} UTC</span> ({range.days} day{range.days === 1 ? "" : "s"}).
+            Searches from <span className="font-medium tabular">{formatTime(range.start, tz)}</span> to{" "}
+            <span className="font-medium tabular">{formatTime(range.end, tz)}</span> ({range.days} day{range.days === 1 ? "" : "s"}).
             Ongoing monitoring covers everything after that.
           </p>
         ) : (

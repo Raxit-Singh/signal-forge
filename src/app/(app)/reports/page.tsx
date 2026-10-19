@@ -4,7 +4,8 @@ import { FileText, PackagePlus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveProduct, hasRole, requireWorkspace } from "@/lib/server/session";
 import type { ReportData } from "@/lib/reports/weekly";
-import { formatCount, formatUtc } from "@/lib/format";
+import { formatCount, formatTime } from "@/lib/format";
+import { getTimeZone } from "@/lib/server/timezone";
 import { EmptyState, PageHeader } from "@/components/page";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { ActionForm } from "@/components/ai/action-form";
@@ -13,6 +14,8 @@ import { generateReportNowAction } from "@/app/actions/reports";
 export const metadata: Metadata = { title: "Reports" };
 
 export default async function ReportsPage() {
+  const tz = await getTimeZone();
+  const at = (d: string | Date) => formatTime(d, tz);
   const { workspace } = await requireWorkspace();
   const product = await getActiveProduct(workspace.id);
   if (!product) {
@@ -62,7 +65,7 @@ export default async function ReportsPage() {
                     </Link>
                     <Badge tone={r.kind === "weekly" ? "info" : "neutral"}>{r.kind === "weekly" ? "Weekly" : "Last 7 days"}</Badge>
                     {r.data && <span className="text-xs text-muted-foreground">{formatCount(r.data.current.mentions)} mentions</span>}
-                    <span className="ml-auto text-xs text-muted-foreground">Made {formatUtc(r.created_at)}</span>
+                    <span className="ml-auto text-xs text-muted-foreground">Made {at(r.created_at)}</span>
                   </li>
                 ))}
               </ul>

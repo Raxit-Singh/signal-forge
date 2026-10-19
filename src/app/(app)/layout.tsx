@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveProduct, getProducts, getWorkspaces, getWorkspaceUsage, requireWorkspace } from "@/lib/server/session";
 import { UsageBanner } from "@/components/usage-banner";
+import { getTimeZone } from "@/lib/server/timezone";
 import { Sidebar } from "@/components/app-shell/sidebar";
 import { Topbar, type ShellNotification } from "@/components/app-shell/topbar";
 import { LiveIndicator, RealtimeProvider } from "@/components/realtime/realtime-provider";
@@ -57,7 +58,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </Suspense>
         <main id="main" className="mx-auto w-full max-w-7xl flex-1 px-3 py-5 sm:px-6">
           <div className="mb-1 flex justify-end print:hidden"><LiveIndicator /></div>
-          <div className="print:hidden"><UsageBanner usage={usage} /></div>
+          <div className="print:hidden"><UsageBanner usage={usage} tz={await getTimeZone()} /></div>
           {children}
         </main>
       </div>

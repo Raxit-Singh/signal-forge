@@ -1,5 +1,6 @@
-// Display formatting shared by server components. Pure; no locale surprises:
-// dates are shown in UTC to match analytics day boundaries.
+// Display formatting shared by server and client components. Pure; fixed
+// locale so the server and the browser render the same text. Times are shown
+// in the viewer's own time zone (sf_tz cookie, see components/time.tsx).
 
 const UNITS: Array<[Intl.RelativeTimeFormatUnit, number]> = [
   ["year", 365 * 86_400],
@@ -21,6 +22,24 @@ export function formatRelative(date: Date | string, now: Date = new Date()): str
     if (abs >= secs) return rtf.format(Math.trunc(diff / secs), unit);
   }
   return "just now";
+}
+
+/**
+ * Date and time in the viewer's time zone, with the zone named so it is never
+ * ambiguous: "Oct 19, 2026, 2:45 PM GMT+5:30". Falls back to UTC for an
+ * unknown zone.
+ */
+export function formatTime(date: Date | string, tz = "UTC", opts: { dateOnly?: boolean } = {}): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return "";
+  const options: Intl.DateTimeFormatOptions = opts.dateOnly
+    ? { month: "short", day: "numeric", year: "numeric" }
+    : { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" };
+  try {
+    return new Intl.DateTimeFormat("en-US", { ...options, timeZone: tz }).format(d);
+  } catch {
+    return new Intl.DateTimeFormat("en-US", { ...options, timeZone: "UTC" }).format(d);
+  }
 }
 
 export function formatUtc(date: Date | string): string {

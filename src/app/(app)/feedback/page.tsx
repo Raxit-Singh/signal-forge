@@ -1,13 +1,12 @@
+import { getTimeZone } from "@/lib/server/timezone";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { cookies } from "next/headers";
 import { BarChart3, PackagePlus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getActiveProduct, hasRole, requireWorkspace } from "@/lib/server/session";
 import { workspaceAvailability } from "@/lib/server/ai/gateway";
 import { categoryLabel } from "@/lib/ai/cluster";
-import { isValidTimeZone } from "@/lib/analytics/buzz";
 import { formatCount } from "@/lib/format";
 import { EmptyState, PageHeader } from "@/components/page";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
@@ -40,6 +39,7 @@ function Bars({ items, label }: { items: Array<{ label: string; value: number }>
 }
 
 export default async function FeedbackPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
+  const tz = await getTimeZone();
   const { workspace } = await requireWorkspace();
   const product = await getActiveProduct(workspace.id);
   if (!product) {
@@ -53,8 +53,6 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
     );
   }
   const showClosed = (await searchParams).status === "all";
-  const cookieTz = (await cookies()).get("sf_tz")?.value;
-  const tz = cookieTz && isValidTimeZone(cookieTz) ? cookieTz : "UTC";
   const supabase = await createClient();
   const now = new Date();
   const since = new Date(now.getTime() - 30 * 86_400_000).toISOString();

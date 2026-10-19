@@ -8,7 +8,8 @@ import { getCoverageSummary } from "@/lib/server/collection/status";
 import { parseRange } from "@/lib/domain/date-range";
 import { integrationInfo } from "@/lib/domain/integrations";
 import { PUBLIC_SOURCES, isPublicSource } from "@/lib/sources/registry";
-import { formatCount, formatRelative, formatUtc } from "@/lib/format";
+import { formatCount, formatRelative, formatTime } from "@/lib/format";
+import { getTimeZone } from "@/lib/server/timezone";
 import { pageCount, pageHref, pageItems, pageRange, parsePage } from "@/lib/pagination";
 import { CoverageNotice, EmptyState, PageHeader } from "@/components/page";
 import { Badge, Card } from "@/components/ui/primitives";
@@ -90,6 +91,8 @@ function safeSearch(q: string | undefined) {
 }
 
 export default async function MentionsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const tz = await getTimeZone();
+  const at = (d: string | Date) => formatTime(d, tz);
   const { workspace } = await requireWorkspace();
   const product = await getActiveProduct(workspace.id);
   const sp = await searchParams;
@@ -197,7 +200,7 @@ export default async function MentionsPage({ searchParams }: { searchParams: Pro
           ) : (
             <Card className="p-0">
               <ul aria-label="Mentions" className="divide-y">
-                {rows.map((m) => <MentionItem key={m.id} m={m} canEdit={canEdit} />)}
+                {rows.map((m) => <MentionItem key={m.id} m={m} canEdit={canEdit} at={at} />)}
               </ul>
             </Card>
           )}
@@ -254,7 +257,7 @@ function Pagination({ page, pages, params }: { page: number; pages: number; para
   );
 }
 
-function MentionItem({ m, canEdit }: { m: MentionRow; canEdit: boolean }) {
+function MentionItem({ m, canEdit, at }: { m: MentionRow; canEdit: boolean; at: (d: string) => string }) {
   const name = integrationInfo(m.source as never)?.name.replace(/ \/ Stack Exchange$/, "") ?? m.source;
   const late = new Date(m.discovered_at).getTime() - new Date(m.published_at).getTime() > 86_400_000;
   const engagement = Object.entries(m.engagement ?? {}).filter(([k, v]) => ENGAGEMENT_LABEL[k] && typeof v === "number");
@@ -269,10 +272,10 @@ function MentionItem({ m, canEdit }: { m: MentionRow; canEdit: boolean }) {
         {m.mention_type !== "post" && <Badge>{MENTION_TYPES[m.mention_type] ?? m.mention_type}</Badge>}
         {m.community && <span className="max-w-40 truncate">{m.community}</span>}
         {m.author_display && <span className="max-w-48 truncate font-medium text-foreground/80">{m.author_display}</span>}
-        <time dateTime={m.published_at} title={`${m.published_at_estimated ? "Found" : "Published"} ${formatUtc(m.published_at)}`}>
+        <time dateTime={m.published_at} title={`${m.published_at_estimated ? "Found" : "Published"} ${at(m.published_at)}`}>
           {m.published_at_estimated ? "found " : ""}{formatRelative(m.published_at)}
         </time>
-        {late && !m.published_at_estimated && <span title={`Discovered ${formatUtc(m.discovered_at)}`}>· found {formatRelative(m.discovered_at)}</span>}
+        {late && !m.published_at_estimated && <span title={`Discovered ${at(m.discovered_at)}`}>· found {formatRelative(m.discovered_at)}</span>}
         <span className="ml-auto flex flex-wrap items-center gap-1">
           {status && <Badge tone={status.tone} title={status.title}>{status.label}</Badge>}
           {m.dedup_kind === "exact_duplicate" && <Badge title="Same text as an earlier mention; not counted as a separate report">Duplicate</Badge>}

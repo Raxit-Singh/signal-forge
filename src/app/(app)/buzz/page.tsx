@@ -1,11 +1,11 @@
+import { getTimeZone } from "@/lib/server/timezone";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { cookies } from "next/headers";
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, Minus, PackagePlus, Waves } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveProduct, requireWorkspace } from "@/lib/server/session";
 import { getBuzzDashboard } from "@/lib/server/analytics/buzz";
-import { isValidTimeZone, type Growth } from "@/lib/analytics/buzz";
+import type { Growth } from "@/lib/analytics/buzz";
 import { parseRange } from "@/lib/domain/date-range";
 import { integrationInfo } from "@/lib/domain/integrations";
 import { isPublicSource } from "@/lib/sources/registry";
@@ -13,7 +13,6 @@ import { formatCount } from "@/lib/format";
 import { CoverageNotice, EmptyState, PageHeader } from "@/components/page";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
-import { TimeZoneSync } from "./buzz-client";
 import { SpikeGraph, type GraphPoint, type GraphSpike } from "./spike-graph";
 import type { InvestigationView } from "@/components/ai/investigation-result";
 import { spikeSubject } from "@/lib/server/ai/investigate";
@@ -25,6 +24,7 @@ type SearchParams = Record<string, string | undefined>;
 const nameOf = (id: string) => integrationInfo(id as never)?.name.replace(/ \/ Stack Exchange$/, "") ?? id;
 
 export default async function BuzzPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const tz = await getTimeZone();
   const { workspace } = await requireWorkspace();
   const product = await getActiveProduct(workspace.id);
   if (!product) {
@@ -39,8 +39,6 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
   }
 
   const sp = await searchParams;
-  const cookieTz = (await cookies()).get("sf_tz")?.value;
-  const tz = cookieTz && isValidTimeZone(cookieTz) ? cookieTz : "UTC";
   const range = parseRange(sp, new Date());
   const source = sp.source && isPublicSource(sp.source) ? sp.source : null;
 
@@ -100,7 +98,6 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
 
   return (
     <>
-      <TimeZoneSync current={tz} />
       <PageHeader
         title="Buzz Analytics"
         description={<>How much attention {product.name} gets, where, and whether it&apos;s rising · {range.label} · days in {tz}</>}

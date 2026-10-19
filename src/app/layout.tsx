@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import { ThemeProvider } from "@/components/theme-provider";
+import { TimeZoneProvider } from "@/components/time";
+import { getTimeZone } from "@/lib/server/timezone";
 import "./globals.css";
 
 const sans = Geist({ subsets: ["latin"], variable: "--font-geist-sans", display: "swap" });
@@ -23,6 +25,7 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // Per-request CSP nonce from the proxy (next-themes injects one inline script).
   const nonce = (await headers()).get("x-nonce") ?? undefined;
+  const tz = await getTimeZone();
   return (
     <html lang="en" suppressHydrationWarning className={`${sans.variable} ${mono.variable}`}>
       <body>
@@ -33,7 +36,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           Skip to content
         </a>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange nonce={nonce}>
-          {children}
+          <TimeZoneProvider tz={tz}>{children}</TimeZoneProvider>
         </ThemeProvider>
       </body>
     </html>

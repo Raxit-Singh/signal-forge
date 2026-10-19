@@ -10,7 +10,8 @@ import { HistoryForm } from "@/components/history/history-form";
 import { BackfillProgress } from "@/components/history/backfill-progress";
 import { getMonitoringOverview, type KeywordCoverageRow, type PlatformMonitoring } from "@/lib/server/collection/monitoring-overview";
 import { formatInterval } from "@/lib/sources/adaptive";
-import { formatRelative, formatUtc } from "@/lib/format";
+import { formatRelative, formatTime } from "@/lib/format";
+import { getTimeZone } from "@/lib/server/timezone";
 import { EmptyState, PageHeader } from "@/components/page";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { getKeywordRankings, type KeywordRankings } from "@/lib/server/collection/keyword-rankings";
@@ -32,7 +33,7 @@ const STATE: Record<string, { tone: RankingRow["stateTone"]; label: string }> = 
   not_started: { tone: "info", label: "Waiting for first check" },
 };
 
-function toRow(p: PlatformMonitoring, now: number, planName: string, planMin: number, paidNote: string | null): RankingRow {
+function toRow(p: PlatformMonitoring, now: number, planName: string, planMin: number, paidNote: string | null, at: (d: string) => string): RankingRow {
   const r = p.ranking;
   const st = STATE[p.state] ?? STATE.not_started!;
   const next = p.nextScanAt ? new Date(p.nextScanAt).getTime() : null;
@@ -56,9 +57,9 @@ function toRow(p: PlatformMonitoring, now: number, planName: string, planMin: nu
       : null,
     keywordConflict: p.keywordConflict,
     next: next === null ? "—" : next <= now ? "Due now" : formatRelative(new Date(next), new Date(now)),
-    nextUtc: p.nextScanAt ? formatUtc(p.nextScanAt) : null,
+    nextAt: p.nextScanAt ? at(p.nextScanAt) : null,
     last: p.lastScanAt ? formatRelative(new Date(p.lastScanAt), new Date(now)) : "Not yet",
-    lastUtc: p.lastScanAt ? formatUtc(p.lastScanAt) : null,
+    lastAt: p.lastScanAt ? at(p.lastScanAt) : null,
     confidence: p.confidence,
     completeSharePct: p.completeShare === null ? null : Math.round(p.completeShare * 100),
     incomplete: p.confidence !== "high" || p.state === "partial" || p.state === "failing",
@@ -79,6 +80,8 @@ function toRow(p: PlatformMonitoring, now: number, planName: string, planMin: nu
 }
 
 export default async function MonitoringPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const tz = await getTimeZone();
+  const at = (d: string | Date) => formatTime(d, tz);
   const { workspace } = await requireWorkspace();
   const product = await getActiveProduct(workspace.id);
   if (!product) {
@@ -111,7 +114,7 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
   const active = o.platforms.filter(runnable);
   const available = o.platforms.filter((p) => !runnable(p));
   const paidNote = o.paid.allowanceUsedPercent !== null ? `Paid-source allowance used this month: ${o.paid.allowanceUsedPercent}%.` : null;
-  const rows = active.map((p) => toRow(p, now, o.plan.name, o.plan.minIntervalMinutes, paidNote));
+  const rows = active.map((p) => toRow(p, now, o.plan.name, o.plan.minIntervalMinutes, paidNote, at));
   const boosts = o.boosts.filter((b) => !b.canceled_at && new Date(b.ends_at).getTime() > now);
   const pastBoosts = o.boosts.filter((b) => b.canceled_at || new Date(b.ends_at).getTime() <= now).slice(0, 5);
   const eff = o.summary.efficiency;
@@ -122,7 +125,7 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
   const nextScan = active.map((p) => p.nextScanAt).filter((x): x is string => Boolean(x)).sort()[0] ?? null;
   const unsearchable = o.keywordCoverage.flatMap((kw) => kw.platforms.filter((p) => p.intervalMinutes === null).map((p) => `“${kw.term}” can't be searched on ${p.name}: ${p.detail}`));
   const warnings = [
-    ...(o.allowancePausedUntil ? [`This month's mention allowance is used up: paid platforms are paused and free ones are checked at most daily until ${formatUtc(o.allowancePausedUntil)}. New mentions are held, not discarded.`] : []),
+    ...(o.allowancePausedUntil ? [`This month's mention allowance is used up: paid platforms are paused and free ones are checked at most daily until ${at(o.allowancePausedUntil)}. New mentions are held, not discarded.`] : []),
     ...active.filter((p) => p.state === "failing" || p.state === "partial").map((p) => `${p.name}: ${p.stateDetail ?? (p.state === "failing" ? "checks are failing" : "not every result could be read")}`),
     ...conflicts.map((c) => c.text),
     ...(pausedKeywords > 0 ? [`${pausedKeywords} keyword${pausedKeywords === 1 ? " is" : "s are"} paused: over your ${o.plan.name} plan's keyword allowance (${o.plan.maxKeywords} active per workspace).`] : []),
@@ -142,7 +145,7 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
         {stoppedAt && (
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-warning/40 bg-warning/5 p-3 text-[13px]" role="status" data-testid="scan-stopped">
             <Pause className="size-4 text-warning" aria-hidden />
-            <span><span className="font-medium">Scanning is stopped</span> since {formatUtc(stoppedAt)}. No platform is searched for {product.name} or its competitors; collected data is kept.
+            <span><span className="font-medium">Scanning is stopped</span> since {at(stoppedAt)}. No platform is searched for {product.name} or its competitors; collected data is kept.
               {!canEdit && " A workspace admin can resume it."}</span>
           </div>
         )}
@@ -151,8 +154,8 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
           <Stat label={`Total mentions · ${periodLabel}`} value={k.totalMentions.toLocaleString("en-US")} hint="Relevant, duplicates excluded" />
           <Stat label="Active platforms" value={String(active.length)} />
           <Stat label="Keywords monitored" value={String(monitoredKeywords)} hint={pausedKeywords ? `${pausedKeywords} paused` : undefined} />
-          <Stat label="Last scan" value={lastScan ? formatRelative(new Date(lastScan), new Date(now)) : "Not yet"} hint={lastScan ? formatUtc(lastScan) : undefined} />
-          <Stat label="Next scan" value={stoppedAt ? "Stopped" : !nextScan ? "—" : new Date(nextScan).getTime() <= now ? "Due now" : formatRelative(new Date(nextScan), new Date(now))} hint={nextScan ? formatUtc(nextScan) : undefined} />
+          <Stat label="Last scan" value={lastScan ? formatRelative(new Date(lastScan), new Date(now)) : "Not yet"} hint={lastScan ? at(lastScan) : undefined} />
+          <Stat label="Next scan" value={stoppedAt ? "Stopped" : !nextScan ? "—" : new Date(nextScan).getTime() <= now ? "Due now" : formatRelative(new Date(nextScan), new Date(now))} hint={nextScan ? at(nextScan) : undefined} />
           <Stat label="Coverage warnings" value={String(warnings.length)} hint={warnings.length ? "See below" : "None"} />
         </section>
 
@@ -195,7 +198,7 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
               <p className="text-[13px] text-muted-foreground">
                 Nothing is monitored yet. Add keywords in <Link href="/settings/products" className="underline">product settings</Link>.
               </p>
-            ) : <PlatformTable rows={k.platforms} now={now} stopped={Boolean(stoppedAt)} />}
+            ) : <PlatformTable rows={k.platforms} now={now} stopped={Boolean(stoppedAt)} at={at} />}
           </CardContent>
         </Card>
 
@@ -327,7 +330,7 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
                       <div className="grid gap-0.5 text-[13px]">
                         <span className="flex items-center gap-1.5 font-medium">{b.title}<Badge tone={live ? "positive" : "info"}>{live ? "Active" : "Scheduled"}</Badge></span>
                         <span className="text-xs text-muted-foreground">
-                          {b.platforms.map((x) => o.platforms.find((p) => p.id === x)?.name ?? x).join(", ")} · until {formatUtc(b.ends_at)}
+                          {b.platforms.map((x) => o.platforms.find((p) => p.id === x)?.name ?? x).join(", ")} · until {at(b.ends_at)}
                           {b.max_paid_checks > 0 && ` · up to ${b.max_paid_checks} paid checks`}
                         </span>
                       </div>
@@ -511,7 +514,7 @@ function KeywordList({ rows }: { rows: KeywordPerformance[] }) {
   );
 }
 
-function PlatformTable({ rows, now, stopped }: { rows: KeywordRankings["platforms"]; now: number; stopped: boolean }) {
+function PlatformTable({ rows, now, stopped, at }: { rows: KeywordRankings["platforms"]; now: number; stopped: boolean; at: (d: string) => string }) {
   const next = (p: KeywordRankings["platforms"][number]["platform"]) =>
     stopped ? "Stopped" : !p.nextScanAt ? "—" : new Date(p.nextScanAt).getTime() <= now ? "Due now" : formatRelative(new Date(p.nextScanAt), new Date(now));
   return (
@@ -538,7 +541,7 @@ function PlatformTable({ rows, now, stopped }: { rows: KeywordRankings["platform
               <td className="pl-4"><span className="flex items-center gap-2"><ShareBar pct={r.sharePct} /><span className="w-9 shrink-0 text-right text-xs tabular text-muted-foreground">{r.sharePct === null ? "" : `${r.sharePct}%`}</span></span></td>
               <td className="text-right"><Growth pct={r.growthPct} /></td>
               <td className="pl-4 tabular">{r.platform.intervalMinutes ? `every ${formatInterval(r.platform.intervalMinutes)}` : "—"}</td>
-              <td className="tabular" title={r.platform.nextScanAt ? formatUtc(r.platform.nextScanAt) : undefined}>{next(r.platform)}</td>
+              <td className="tabular" title={r.platform.nextScanAt ? at(r.platform.nextScanAt) : undefined}>{next(r.platform)}</td>
               <td><StatusBadge status={r.status} /></td>
             </tr>
           ))}

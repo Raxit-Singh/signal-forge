@@ -27,3 +27,12 @@ test("cursor round-trips and rejects tampering", () => {
   assert.equal(decodeCursor("%%%"), null);
   assert.equal(decodeCursor(undefined), null);
 });
+
+test("formatTime shows the viewer's zone and names it", async () => {
+  const { formatTime } = await import("./format.ts");
+  assert.equal(formatTime("2026-10-19T09:15:00Z", "Asia/Kolkata"), "Oct 19, 2026, 2:45 PM GMT+5:30");
+  assert.equal(formatTime("2026-10-19T09:15:00Z", "America/New_York"), "Oct 19, 2026, 5:15 AM EDT");
+  assert.equal(formatTime("2026-10-19T09:15:00Z", "Not/AZone"), "Oct 19, 2026, 9:15 AM UTC");
+  assert.equal(formatTime("2026-10-19T20:00:00Z", "Asia/Tokyo", { dateOnly: true }), "Oct 20, 2026");
+  assert.equal(formatTime("garbage"), "");
+});

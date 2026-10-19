@@ -15,6 +15,8 @@ import { explainSpikeAction } from "@/app/actions/ai";
 import { spikeDetailsAction, type SpikeDetails } from "@/app/actions/buzz";
 import { RANGE_PRESETS } from "@/lib/domain/date-range";
 import { cn } from "@/lib/utils";
+import { formatTime } from "@/lib/format";
+import { useTimeZone } from "@/components/time";
 
 export interface GraphPoint { start: string; value: number | null; coverage: "full" | "partial" | "none" }
 
@@ -308,6 +310,7 @@ function Marker({ cx, cy, payload, kind, onSelect }: MarkerProps & { kind: "conf
 function SpikePanel({ spike, platforms, canExplain, workspaceId, productId }: {
   spike: GraphSpike; platforms: Array<{ id: string; name: string }>; canExplain: boolean; workspaceId: string; productId: string;
 }) {
+  const tz = useTimeZone();
   const [details, setDetails] = useState<SpikeDetails | null>(null);
   useEffect(() => {
     let live = true;
@@ -360,7 +363,7 @@ function SpikePanel({ spike, platforms, canExplain, workspaceId, productId }: {
                   {details.mentions.map((m) => (
                     <li key={m.id} className="grid gap-0.5 rounded border p-2">
                       <a href={m.url} target="_blank" rel="noreferrer noopener" className="line-clamp-2 underline-offset-2 hover:underline">{m.title} <ExternalLink className="inline size-3" aria-hidden /></a>
-                      <span className="text-muted-foreground">{name(m.source)} · {new Date(m.publishedAt).toISOString().slice(0, 16).replace("T", " ")} UTC</span>
+                      <span className="text-muted-foreground">{name(m.source)} · {formatTime(m.publishedAt, tz)}</span>
                     </li>
                   ))}
                 </ul>

@@ -130,7 +130,7 @@ function DateRangePicker() {
             if (from && to) apply({ range: "custom", from, to });
           }}
         >
-          <p className="text-xs font-medium text-muted-foreground">Custom range (UTC days)</p>
+          <p className="text-xs font-medium text-muted-foreground">Custom range</p>
           <div className="grid grid-cols-2 gap-2">
             <Input type="date" aria-label="From" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
             <Input type="date" aria-label="To" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />

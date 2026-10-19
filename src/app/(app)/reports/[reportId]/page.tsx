@@ -7,7 +7,8 @@ import { requireWorkspace } from "@/lib/server/session";
 import { change, type PeriodNumbers, type ReportData } from "@/lib/reports/weekly";
 import { categoryLabel } from "@/lib/ai/cluster";
 import { uuidSchema } from "@/lib/validation/schemas";
-import { formatCount, formatUtc } from "@/lib/format";
+import { formatCount, formatTime } from "@/lib/format";
+import { getTimeZone } from "@/lib/server/timezone";
 import { Badge, Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
 import { nameOf, PRIORITY_TONE } from "@/components/feedback/issue-parts";
@@ -54,6 +55,8 @@ function SentimentRow({ label, n }: { label: string; n: PeriodNumbers }) {
 }
 
 export default async function ReportPage({ params }: { params: Promise<{ reportId: string }> }) {
+  const tz = await getTimeZone();
+  const at = (d: string | Date) => formatTime(d, tz);
   const { reportId } = await params;
   if (!uuidSchema.safeParse(reportId).success) notFound();
   const { workspace } = await requireWorkspace();
@@ -72,7 +75,7 @@ export default async function ReportPage({ params }: { params: Promise<{ reportI
         <div className="grid gap-1">
           <p className="text-xs text-muted-foreground">{row.kind === "weekly" ? "Weekly report" : "Report: last 7 days"} · SignalForge</p>
           <h1 className="text-xl font-semibold tracking-tight">{d.product.name}</h1>
-          <p className="text-[13px] text-muted-foreground">{d.period.label} · computed {formatUtc(d.generatedAt)}</p>
+          <p className="text-[13px] text-muted-foreground">{d.period.label} · computed {at(d.generatedAt)}</p>
         </div>
         <div className="flex flex-wrap gap-2 print:hidden">
           <PrintButton />
@@ -157,7 +160,7 @@ export default async function ReportPage({ params }: { params: Promise<{ reportI
           {d.spikes.length === 0 ? <p className="text-[13px] text-muted-foreground">No unusual rises in mentions.</p> : (
             <ul className="grid gap-1 text-[13px]">
               {d.spikes.map((s, k) => (
-                <li key={k}>{formatUtc(s.start)} · {s.keyword ? `“${s.keyword}”` : s.platform ? nameOf(s.platform) : "all platforms"}: {s.observed} mentions vs ~{s.expected} usual <span className="text-xs text-muted-foreground">({s.confidence})</span></li>
+                <li key={k}>{at(s.start)} · {s.keyword ? `“${s.keyword}”` : s.platform ? nameOf(s.platform) : "all platforms"}: {s.observed} mentions vs ~{s.expected} usual <span className="text-xs text-muted-foreground">({s.confidence})</span></li>
               ))}
             </ul>
           )}

@@ -1,15 +1,15 @@
 import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 import { mentionUsageLevel, type WorkspaceUsage } from "@/lib/domain/plans";
-import { formatUtc } from "@/lib/format";
+import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /** App-wide mention allowance warning: 80 % warning, 90 % stronger warning, 100 % used up. */
-export function UsageBanner({ usage }: { usage: WorkspaceUsage | null }) {
+export function UsageBanner({ usage, tz = "UTC" }: { usage: WorkspaceUsage | null; tz?: string }) {
   if (!usage) return null;
   const { percent, level } = mentionUsageLevel(usage.mentionsConsumed, usage.mentionAllowance);
   if (level === "ok") return null;
-  const renews = formatUtc(usage.periodEnd);
+  const renews = formatTime(usage.periodEnd, tz);
   const text = level === "exhausted"
     ? `Your ${usage.planName} plan's ${usage.mentionAllowance.toLocaleString("en-US")} mentions for this period are used up. New mentions are held (not shown or counted) and paid platforms are paused until the allowance renews on ${renews}.`
     : level === "critical"

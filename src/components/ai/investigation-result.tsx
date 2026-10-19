@@ -1,7 +1,7 @@
 import { AlertTriangle, ExternalLink, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/primitives";
 import { integrationInfo } from "@/lib/domain/integrations";
-import { formatUtc } from "@/lib/format";
+import { LocalTime } from "@/components/time";
 import type { InvestigationReport } from "@/lib/server/ai/investigate";
 
 export interface InvestigationView {
@@ -40,7 +40,7 @@ export function InvestigationResult({ inv }: { inv: InvestigationView }) {
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         {r.test_classifier ? <Badge tone="warning">Test classifier — not AI analysis</Badge> : <Badge tone="info">AI analysis</Badge>}
         {r.confidence && <span>Confidence: {r.confidence}</span>}
-        {inv.completed_at && <span>{formatUtc(inv.completed_at)}</span>}
+        {inv.completed_at && <LocalTime value={inv.completed_at} />}
       </div>
       {r.summary && <p>{r.summary}</p>}
       {r.facts && isSpikeFacts(r.facts) && <MeasuredFacts facts={r.facts as Facts} />}

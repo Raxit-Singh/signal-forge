@@ -17,7 +17,8 @@ import { ActionForm } from "@/components/ai/action-form";
 import { CopyBlock } from "@/components/agent/copy-block";
 import { RoutineForm } from "@/components/agent/routine-form";
 import { disconnectClaudeAction, removeRepositoryAction, removeRoutineAction, revokeClaudeAccessAction, selectRepositoryAction } from "@/app/actions/agent";
-import { formatUtc } from "@/lib/format";
+import { formatTime } from "@/lib/format";
+import { getTimeZone } from "@/lib/server/timezone";
 
 export const metadata: Metadata = { title: "Claude" };
 
@@ -39,6 +40,8 @@ function Detail({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 export default async function AgentSettings({ searchParams }: { searchParams: Promise<{ github?: string }> }) {
+  const tz = await getTimeZone();
+  const at = (d: string | Date) => formatTime(d, tz);
   const { workspace } = await requireWorkspace();
   const product = await getActiveProduct(workspace.id);
   const admin = createAdminClient();
@@ -98,7 +101,7 @@ export default async function AgentSettings({ searchParams }: { searchParams: Pr
           )}
           {state === "connecting" && <p className="text-muted-foreground">You approved access. Waiting for Claude to connect — this page updates on its own.</p>}
           {state === "needs_attention" && r.routine.lastError && <p className="text-warning">{r.routine.lastError}</p>}
-          {claudeOn && r.mcp.lastUsedAt && <p className="text-xs text-muted-foreground">Last used {formatUtc(r.mcp.lastUsedAt)}.</p>}
+          {claudeOn && r.mcp.lastUsedAt && <p className="text-xs text-muted-foreground">Last used {at(r.mcp.lastUsedAt)}.</p>}
 
           <div className="flex flex-wrap items-center gap-2">
             {!claudeOn && state !== "unavailable" && <ConnectClaude address={mcp} state={state} />}
@@ -218,14 +221,14 @@ export default async function AgentSettings({ searchParams }: { searchParams: Pr
               {(grants ?? []).map((g) => (
                 <li key={g.id as string} className="flex flex-wrap items-center gap-2 p-2">
                   <span className="font-medium">{clientName.get(g.client_id as string) ?? "Claude"}</span>
-                  <span className="text-muted-foreground">approved {formatUtc(g.created_at as string)} · {g.last_used_at ? `last used ${formatUtc(g.last_used_at as string)}` : "not used yet"}</span>
+                  <span className="text-muted-foreground">approved {at(g.created_at as string)} · {g.last_used_at ? `last used ${at(g.last_used_at as string)}` : "not used yet"}</span>
                   <ActionForm action={revokeClaudeAccessAction} fields={{ workspaceId: workspace.id, grantId: g.id as string }} label="Revoke" variant="ghost" className="ml-auto" />
                 </li>
               ))}
             </ul>
             <dl className="divide-y text-xs" aria-label="Connection details" data-testid="agent-readiness">
               <Detail label="Claude access approved" value={r.mcp.authorized ? "Yes" : "No"} />
-              <Detail label="Claude has connected" value={r.mcp.used ? `Yes · ${formatUtc(r.mcp.lastUsedAt!)}` : "Not yet"} />
+              <Detail label="Claude has connected" value={r.mcp.used ? `Yes · ${at(r.mcp.lastUsedAt!)}` : "Not yet"} />
               <Detail label="Repository" value={r.repository ? r.repository.fullName : app ? "Not connected" : "Unavailable on this server"} />
               <Detail label="Automatic investigations" value={routineLabel} />
               <Detail label="Implementation" value="Only after you approve a plan; Claude opens a pull request for review" />
@@ -246,7 +249,7 @@ export default async function AgentSettings({ searchParams }: { searchParams: Pr
               <tbody>
                 {(tasks ?? []).map((t) => (
                   <tr key={t.id as string} className="border-t">
-                    <td className="py-1.5">{formatUtc(t.created_at as string)}</td>
+                    <td className="py-1.5">{at(t.created_at as string)}</td>
                     <td className="capitalize">{t.stage as string}{t.execution === "manual" ? " (manual)" : ""}</td>
                     <td>{STATUS_LABEL[t.status as TaskStatus]}</td>
                     <td>{t.pr_url ? <a href={t.pr_url as string} className="underline underline-offset-2" target="_blank" rel="noreferrer noopener">Pull request</a> : <Link href={`/feedback#issue-${t.cluster_id}`} className="underline underline-offset-2">Issue</Link>}</td>

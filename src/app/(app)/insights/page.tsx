@@ -7,7 +7,8 @@ import { getActiveProduct, requireWorkspace } from "@/lib/server/session";
 import { workspaceAvailability } from "@/lib/server/ai/gateway";
 import { categoryLabel } from "@/lib/ai/cluster";
 import { STATUS_LABEL as TASK_STATUS } from "@/lib/agent/tasks";
-import { formatUtc } from "@/lib/format";
+import { formatTime } from "@/lib/format";
+import { getTimeZone } from "@/lib/server/timezone";
 import { EmptyState, PageHeader } from "@/components/page";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { CLUSTER_COLS, PRIORITY_TONE, TREND_LABEL, nameOf, type Cluster } from "@/components/feedback/issue-parts";
@@ -24,6 +25,8 @@ const RESULT: Record<string, { label: string; tone: "positive" | "neutral" | "ne
 };
 
 export default async function InsightsPage() {
+  const tz = await getTimeZone();
+  const at = (d: string | Date) => formatTime(d, tz);
   const { workspace } = await requireWorkspace();
   const product = await getActiveProduct(workspace.id);
   if (!product) {
@@ -113,7 +116,7 @@ export default async function InsightsPage() {
                       <li key={i.id} className="flex flex-wrap items-center gap-2">
                         <Badge tone={r.tone}>{r.label}</Badge>
                         <Link href={href} className="min-w-0 truncate underline-offset-2 hover:underline">{KIND_LABEL[i.kind] ?? i.kind}: {i.title ?? "Untitled"}</Link>
-                        <span className="text-xs text-muted-foreground">{formatUtc(i.completed_at ?? i.created_at)}</span>
+                        <span className="text-xs text-muted-foreground">{at(i.completed_at ?? i.created_at)}</span>
                       </li>
                     );
                   })}
@@ -136,7 +139,7 @@ export default async function InsightsPage() {
                         ? <Link href={`/insights/${t.cluster_id}`} className="min-w-0 truncate underline-offset-2 hover:underline">{t.stage === "investigation" ? "Investigation" : "Implementation"}: {titleOf.get(t.cluster_id) ?? "issue"}</Link>
                         : <span>{t.stage}</span>}
                       {t.pr_url && <a href={t.pr_url} target="_blank" rel="noreferrer" className="text-xs underline underline-offset-2">Pull request</a>}
-                      <span className="text-xs text-muted-foreground">{formatUtc(t.created_at)}</span>
+                      <span className="text-xs text-muted-foreground">{at(t.created_at)}</span>
                     </li>
                   ))}
                 </ul>

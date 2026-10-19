@@ -142,9 +142,9 @@ export interface RankingRow {
   keywordInterval: string | null;
   keywordConflict: string | null;
   next: string;
-  nextUtc: string | null;
+  nextAt: string | null;
   last: string;
-  lastUtc: string | null;
+  lastAt: string | null;
   confidence: "high" | "medium" | "low" | null;
   completeSharePct: number | null;
   incomplete: boolean;
@@ -259,8 +259,8 @@ function Details({ r, productId, canEdit }: { r: RankingRow; productId: string; 
           )}
           {r.stateDetail && <p className="text-xs text-muted-foreground">{r.stateDetail}</p>}
           <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-            <div><dt className="text-muted-foreground">Last checked</dt><dd title={r.lastUtc ?? undefined}>{r.last}</dd></div>
-            <div><dt className="text-muted-foreground">Next check</dt><dd title={r.nextUtc ?? undefined}>{r.next}</dd></div>
+            <div><dt className="text-muted-foreground">Last checked</dt><dd title={r.lastAt ?? undefined}>{r.last}</dd></div>
+            <div><dt className="text-muted-foreground">Next check</dt><dd title={r.nextAt ?? undefined}>{r.next}</dd></div>
             {r.discovery && <div className="col-span-2"><dt className="text-muted-foreground">Expected discovery</dt><dd>{r.discovery}</dd></div>}
           </dl>
         </section>
@@ -341,7 +341,7 @@ export function RankingTable({ rows, productId, canEdit }: { rows: RankingRow[];
                     {r.interval}
                     {r.keywordInterval && <span className="block text-xs text-muted-foreground">keywords every {r.keywordInterval}</span>}
                   </td>
-                  <td className="py-2 pr-2" title={r.nextUtc ?? undefined}>{r.next}</td>
+                  <td className="py-2 pr-2" title={r.nextAt ?? undefined}>{r.next}</td>
                   <td className="py-2"><Coverage r={r} /></td>
                 </tr>
                 {open === r.id && (

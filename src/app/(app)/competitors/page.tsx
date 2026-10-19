@@ -1,14 +1,13 @@
 import type { Metadata } from "next";
-import { cookies } from "next/headers";
 import { PackagePlus, Swords } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveProduct, getWorkspacePlan, hasRole, requireWorkspace } from "@/lib/server/session";
 import { getCompetitorComparison } from "@/lib/server/analytics/competitors";
 import { ENTITY_COLORS, MIN_CLASSIFIED_FOR_SENTIMENT } from "@/lib/analytics/competitors";
-import { isValidTimeZone } from "@/lib/analytics/buzz";
 import { parseRange } from "@/lib/domain/date-range";
 import { integrationInfo } from "@/lib/domain/integrations";
-import { formatCount, formatUtc } from "@/lib/format";
+import { formatCount, formatTime } from "@/lib/format";
+import { getTimeZone } from "@/lib/server/timezone";
 import { CoverageNotice, EmptyState, PageHeader } from "@/components/page";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { AddCompetitorForm, CompetitorControls, VolumeChart } from "./competitors-client";
@@ -20,6 +19,8 @@ const sourceName = (id: string) => integrationInfo(id as never)?.name.replace(/ 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 
 export default async function CompetitorsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const tz = await getTimeZone();
+  const at = (d: string | Date) => formatTime(d, tz);
   const { workspace } = await requireWorkspace();
   const product = await getActiveProduct(workspace.id);
   if (!product) {
@@ -34,8 +35,6 @@ export default async function CompetitorsPage({ searchParams }: { searchParams: 
   }
 
   const sp = await searchParams;
-  const cookieTz = (await cookies()).get("sf_tz")?.value;
-  const tz = cookieTz && isValidTimeZone(cookieTz) ? cookieTz : "UTC";
   const range = parseRange(sp, new Date());
   const supabase = await createClient();
   const [{ data: p }, { plan }] = await Promise.all([
@@ -77,7 +76,7 @@ export default async function CompetitorsPage({ searchParams }: { searchParams: 
                         {c.enabled ? <Badge tone="positive">Tracking</Badge> : <Badge tone="neutral">Paused</Badge>}
                       </div>
                       <span className="text-xs text-muted-foreground">
-                        Searches: {c.keywords.map((k) => `“${k}”`).join(", ")} · since {formatUtc(c.trackedSince!)}
+                        Searches: {c.keywords.map((k) => `“${k}”`).join(", ")} · since {at(c.trackedSince!)}
                         {c.websiteUrl && <> · <a href={c.websiteUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">{c.websiteUrl.replace(/^https?:\/\//, "")}</a></>}
                       </span>
                     </div>
@@ -111,7 +110,7 @@ export default async function CompetitorsPage({ searchParams }: { searchParams: 
               <CardHeader>
                 <CardTitle>Share of voice</CardTitle>
                 <CardDescription>
-                  Relevant mentions from {formatUtc(d.window.from.toISOString())} on {d.sources.common.map(sourceName).join(", ")}.
+                  Relevant mentions from {at(d.window.from.toISOString())} on {d.sources.common.map(sourceName).join(", ")}.
                   {d.window.clamped && " The period starts when the most recently added competitor began to be tracked, so every product is measured over the same time."}
                 </CardDescription>
               </CardHeader>

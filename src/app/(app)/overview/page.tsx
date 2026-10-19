@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { getCoverageSummary } from "@/lib/server/collection/status";
 import { integrationInfo } from "@/lib/domain/integrations";
-import { formatRelative, formatUtc } from "@/lib/format";
+import { formatRelative, formatTime } from "@/lib/format";
+import { getTimeZone } from "@/lib/server/timezone";
 
 export const metadata: Metadata = { title: "Overview" };
 
@@ -21,6 +22,8 @@ function isoDaysAgo(days: number) {
 const NOTICES: Record<string, string> = { password_updated: "Your password was updated." };
 
 export default async function OverviewPage({ searchParams }: { searchParams: Promise<{ notice?: string }> }) {
+  const tz = await getTimeZone();
+  const at = (d: string | Date) => formatTime(d, tz);
   const { workspace } = await requireWorkspace();
   const product = await getActiveProduct(workspace.id);
   const notice = NOTICES[(await searchParams).notice ?? ""];
@@ -111,7 +114,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
                         <a href={m.source_url} target="_blank" rel="noopener noreferrer nofollow ugc" className="min-w-0 flex-1 truncate hover:underline">
                           {m.title || m.content?.slice(0, 120) || m.source_url}
                         </a>
-                        <time dateTime={m.published_at} title={formatUtc(m.published_at)} className="shrink-0 text-xs text-muted-foreground">
+                        <time dateTime={m.published_at} title={at(m.published_at)} className="shrink-0 text-xs text-muted-foreground">
                           {formatRelative(m.published_at)}
                         </time>
                       </li>

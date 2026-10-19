@@ -8,7 +8,8 @@ import { CardDescription } from "@/components/ui/primitives";
 import { DiscordChannels, Disconnect, GooglePlayConnect } from "./connections-client";
 import { getCoverageSummary, type CoverageState } from "@/lib/server/collection/status";
 import { integrationInfo } from "@/lib/domain/integrations";
-import { formatRelative, formatUtc } from "@/lib/format";
+import { formatRelative, formatTime } from "@/lib/format";
+import { getTimeZone } from "@/lib/server/timezone";
 import { PageHeader } from "@/components/page";
 import { IntegrationList, type LiveStatus } from "@/components/integration-list";
 import { Badge, Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
@@ -46,6 +47,8 @@ const DISCORD_RESULT: Record<string, { ok: boolean; text: string }> = {
 };
 
 export default async function IntegrationsPage({ searchParams }: { searchParams: Promise<{ discord?: string }> }) {
+  const tz = await getTimeZone();
+  const at = (d: string | Date) => formatTime(d, tz);
   const { workspace } = await requireWorkspace();
   const discordResult = DISCORD_RESULT[(await searchParams).discord ?? ""];
   const product = await getActiveProduct(workspace.id);
@@ -74,7 +77,7 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
   for (const s of coverage?.sources ?? []) {
     const h = healthBy.get(s.id);
     const lines: string[] = [];
-    if (s.lastCoveredAt) lines.push(`Searched up to ${formatRelative(s.lastCoveredAt)} (${formatUtc(s.lastCoveredAt)}).`);
+    if (s.lastCoveredAt) lines.push(`Searched up to ${formatRelative(s.lastCoveredAt)} (${at(s.lastCoveredAt)}).`);
     if (s.detail && s.state !== "live") lines.push(s.detail);
     if (s.note) lines.push(s.note);
     if (h?.status === "degraded" && h.last_error_at && (!h.last_success_at || h.last_error_at > h.last_success_at)) {
@@ -152,7 +155,7 @@ export default async function IntegrationsPage({ searchParams }: { searchParams:
                   <tbody className="divide-y">
                     {(jobs as JobRow[]).map((j) => (
                       <tr key={j.id} className="align-top">
-                        <td className="px-1 py-1.5 whitespace-nowrap" title={formatUtc(j.created_at)}>{formatRelative(j.created_at)}</td>
+                        <td className="px-1 py-1.5 whitespace-nowrap" title={at(j.created_at)}>{formatRelative(j.created_at)}</td>
                         <td className="px-1 py-1.5">{j.result?.provider ? integrationInfo(j.result.provider as never)?.name ?? j.result.provider : "—"}</td>
                         <td className="px-1 py-1.5 text-muted-foreground">{j.scan_id ? "Scan" : "Scheduled"}</td>
                         <td className="px-1 py-1.5">

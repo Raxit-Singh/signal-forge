@@ -10,7 +10,8 @@ import { categoryLabel } from "@/lib/ai/cluster";
 import { demandStrength } from "@/lib/insights/insights";
 import type { DuplicateReport } from "@/lib/server/insights/github-duplicates";
 import { uuidSchema } from "@/lib/validation/schemas";
-import { formatUtc } from "@/lib/format";
+import { formatTime } from "@/lib/format";
+import { getTimeZone } from "@/lib/server/timezone";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { ActionForm } from "@/components/ai/action-form";
 import { InvestigationResult, type InvestigationView } from "@/components/ai/investigation-result";
@@ -27,6 +28,8 @@ export const metadata: Metadata = { title: "Issue insight" };
 const DEMAND_TONE = { strong: "positive", moderate: "info", early: "neutral" } as const;
 
 export default async function IssueInsightPage({ params }: { params: Promise<{ clusterId: string }> }) {
+  const tz = await getTimeZone();
+  const at = (d: string | Date) => formatTime(d, tz);
   const { clusterId } = await params;
   if (!uuidSchema.safeParse(clusterId).success) notFound();
   const { workspace } = await requireWorkspace();
@@ -163,7 +166,7 @@ export default async function IssueInsightPage({ params }: { params: Promise<{ c
                     </ul>
                   )
               )}
-              {dup?.completed_at && <p className="text-xs text-muted-foreground">Checked {formatUtc(dup.completed_at)}{dup.report ? ` · searched for ${dup.report.words.join(", ")}` : ""}.</p>}
+              {dup?.completed_at && <p className="text-xs text-muted-foreground">Checked {at(dup.completed_at)}{dup.report ? ` · searched for ${dup.report.words.join(", ")}` : ""}.</p>}
               {canAct && repo && <ActionForm action={checkDuplicatesAction} fields={{ workspaceId: workspace.id, clusterId: c.id }} label={dup ? "Check again" : "Check GitHub"} pendingLabel="Searching…" />}
             </CardContent>
           </Card>

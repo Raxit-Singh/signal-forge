@@ -4,11 +4,14 @@ import { hasRole, requireWorkspace } from "@/lib/server/session";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { RenameWorkspaceForm, DeleteWorkspaceForm } from "./forms";
 import { InviteForm, MemberControls, RevokeInvitation } from "./members";
-import { formatUtc } from "@/lib/format";
+import { formatTime } from "@/lib/format";
+import { getTimeZone } from "@/lib/server/timezone";
 
 export const metadata: Metadata = { title: "Workspace settings" };
 
 export default async function WorkspaceSettings() {
+  const tz = await getTimeZone();
+  const at = (d: string | Date) => formatTime(d, tz);
   const { user, workspace } = await requireWorkspace();
   const supabase = await createClient();
   const { data: members } = await supabase
@@ -82,7 +85,7 @@ export default async function WorkspaceSettings() {
                     <li key={i.id as string} className="flex flex-wrap items-center gap-2 px-3 py-2 text-[13px]">
                       <span className="min-w-0 flex-1 truncate">{i.email as string}</span>
                       <Badge className="capitalize">{i.role as string}</Badge>
-                      <span className="text-xs text-muted-foreground">expires {formatUtc(i.expires_at as string)}</span>
+                      <span className="text-xs text-muted-foreground">expires {at(i.expires_at as string)}</span>
                       <RevokeInvitation workspaceId={workspace.id} invitationId={i.id as string} />
                     </li>
                   ))}

@@ -4,7 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireWorkspace } from "@/lib/server/session";
 import { isStaff } from "@/lib/server/staff";
 import { serverEnv } from "@/lib/server/env";
-import { formatCount, formatUtc } from "@/lib/format";
+import { formatCount, formatTime } from "@/lib/format";
+import { getTimeZone } from "@/lib/server/timezone";
 import { PageHeader } from "@/components/page";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { nameOf } from "@/components/feedback/issue-parts";
@@ -68,6 +69,8 @@ function Table({ head, rows, label }: { head: string[]; rows: Array<Array<React.
 }
 
 export default async function CostsPage() {
+  const tz = await getTimeZone();
+  const at = (d: string | Date) => formatTime(d, tz);
   await requireWorkspace();
   if (!(await isStaff())) notFound(); // not a staff account: this page doesn't exist
   const { data, error } = await createAdminClient().rpc("svc_admin_cost_summary");
@@ -171,7 +174,7 @@ export default async function CostsPage() {
                 w.name, w.plan, micro(Number(w.ai_micro)), usd(Number(w.api_usd)),
                 w.mention_allowance ? (
                   <span key="m" className={w.exhausted_at ? "text-negative" : ""}>
-                    {formatCount(w.mentions_consumed ?? 0)} / {formatCount(w.mention_allowance)}{w.exhausted_at ? ` · used up ${formatUtc(w.exhausted_at)}` : ""}
+                    {formatCount(w.mentions_consumed ?? 0)} / {formatCount(w.mention_allowance)}{w.exhausted_at ? ` · used up ${at(w.exhausted_at)}` : ""}
                   </span>
                 ) : "—",
               ])} />

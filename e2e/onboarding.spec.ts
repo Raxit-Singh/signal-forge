@@ -1,6 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { createUnconfirmedUser, deleteUser } from "./support";
 
+// Times are shown in the viewer's own zone; pin one so the assertions are stable.
+test.use({ timezoneId: "Asia/Kolkata" });
+const local = (d: Date) => new Intl.DateTimeFormat("en-US", {
+  month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short", timeZone: "Asia/Kolkata",
+}).format(d);
+
 let userId: string | null = null;
 test.afterEach(async () => {
   if (userId) await deleteUser(userId);
@@ -58,7 +64,7 @@ test("registration → verification → workspace → product → keywords → s
   await expect(page.getByText("How far back should SignalForge search for mentions?")).toBeVisible();
   await expect(page.getByText(/Results are what the sources actually return/)).toBeVisible();
   await expect(page.getByRole("radio", { name: "Last 30 days" })).toBeChecked();
-  await expect(page.getByTestId("history-range")).toContainText(/Searches from \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC to \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC \(30 days\)/);
+  await expect(page.getByTestId("history-range")).toContainText(/Searches from \w{3} \d{1,2}, \d{4}, \d{1,2}:\d{2} [AP]M GMT\+5:30 to \w{3} \d{1,2}, \d{4}, \d{1,2}:\d{2} [AP]M GMT\+5:30 \(30 days\)/);
   // Free plan: 30 days of history; longer presets are offered but disabled with the reason.
   await expect(page.getByRole("radio", { name: "Last 90 days" })).toBeDisabled();
   await expect(page.getByText("Beyond your plan").first()).toBeVisible();
@@ -68,7 +74,7 @@ test("registration → verification → workspace → product → keywords → s
   await expect(page.getByTestId("history-range")).toContainText("Enter your product's launch date");
   const recent = new Date(Date.now() - 10 * 86_400_000).toISOString().slice(0, 10);
   await page.getByLabel("Product launch date").fill(recent);
-  await expect(page.getByTestId("history-range")).toContainText(`Searches from ${recent} 00:00 UTC`);
+  await expect(page.getByTestId("history-range")).toContainText(`Searches from ${local(new Date(`${recent}T00:00:00Z`))}`);
   await expect(page.getByRole("button", { name: "Start historical search" })).toBeEnabled();
   // Custom dates outside the plan's window are refused with the limit stated.
   await page.getByRole("radio", { name: "Custom date" }).check();
