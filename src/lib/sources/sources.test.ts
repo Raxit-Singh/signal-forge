@@ -199,6 +199,8 @@ test("HN: quotes phrases, filters by window, pages until done", async () => {
   assert.equal(calls.length, 2);
   const nf = new URL(calls[0]!.url).searchParams.get("numericFilters")!;
   assert.equal(nf, `created_at_i>=${WINDOW.since.getTime() / 1000},created_at_i<${NOW.getTime() / 1000}`);
+  // Exact words only: typo tolerance made short names match thousands of unrelated posts.
+  assert.equal(new URL(calls[0]!.url).searchParams.get("typoTolerance"), "false");
 });
 
 test("HN: page cap marks coverage partial", async () => {

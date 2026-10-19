@@ -89,6 +89,10 @@ export const hackerNews: SourceAdapter = {
           numericFilters: `created_at_i>=${since},created_at_i<${until}`,
           hitsPerPage: String(HITS_PER_PAGE),
           page: String(page),
+          // Algolia's typo tolerance turns a short brand name into thousands of
+          // near-miss words ("toing" → doing, going…) that the matcher then
+          // rejects; exact words only keeps searches fast and complete.
+          typoTolerance: "false",
         });
         const res = await ctx.request({ url: `${API}/search_by_date?${params}`, endpoint: "search_by_date", signal: req.signal });
         pagesRequested++;
