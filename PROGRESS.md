@@ -50,11 +50,11 @@ Test users created for the walk-through were removed afterwards via the app's ow
   - open-redirect refusal;
   - password reset end to end.
 - ✅ Full regression: unit 284/284, DB 407/407, typecheck, lint, production build. All 17 browser spec files pass, 53 tests, run one file at a time because the Supabase auth rate limit (429) stops a single full run.
-- 🟡 The OAuth hand-off test skips until a provider is switched on.
+- ✅ 2026-10-19: Google and GitHub switched on in Supabase by the owner. Supabase hands off to accounts.google.com and github.com/login/oauth; `e2e/auth.spec.ts` 12/12, including the OAuth hand-off test. X is not being set up for now: the code stays, and the button stays hidden while the provider is off.
 - ⬜ Not verified live: a real Google/GitHub/X login, a real verification email from the deployed site, a real reset email. See the live checklist in ENVIRONMENT_SETUP.md §2.
 
 **Owner action.**
-- Create the Google / GitHub (OAuth App) / X OAuth 2.0 clients and paste them into Supabase → Sign In / Providers (ENVIRONMENT_SETUP.md §2).
+- ✅ Google and GitHub done (2026-10-19). X: not planned for now.
 - Configure custom SMTP (built-in sender: 2 emails/hour, team addresses only), then optionally switch to the token-hash templates (§1).
 - Set `NEXT_PUBLIC_SITE_URL=https://signal-forge-phi-six.vercel.app` in Vercel.
 

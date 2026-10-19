@@ -38,7 +38,7 @@ All three are configured **in the Supabase dashboard** (Authentication → Sign 
 3. Supabase → Sign In / Providers → GitHub: enable, paste Client ID and secret.
 4. The app requests no extra scopes. Supabase asks only for `user:email` (read the account's email addresses), never repository access.
 
-**X**
+**X** (not set up as of 2026-10-19; its button stays hidden until enabled)
 1. Supabase's current provider is **X / Twitter (OAuth 2.0)** (`provider: "x"`, added Feb 2026). The legacy *Twitter (OAuth 1.0a)* provider is not used.
 2. X Developer Portal → your app → *User authentication settings*: OAuth 2.0, type *Web App*, callback URL = the Supabase callback above, website URL = your app origin, and turn on **Request email from users** (without an email the account can't be matched to anyone). Requires an X developer account; check X's current developer terms. Sign-in itself makes no paid API calls.
 3. Keys and tokens → OAuth 2.0 Client ID and Client Secret → Supabase → Sign In / Providers → X / Twitter (OAuth 2.0): enable, paste, save.
