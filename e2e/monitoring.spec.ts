@@ -256,3 +256,33 @@ test("mobile: rankings become cards with no horizontal overflow", async ({ page 
 function assert(cond: boolean, message: string): asserts cond {
   if (!cond) throw new Error(message);
 }
+
+test("a paid platform can be turned on (with the spending confirmation) and off again", async ({ page }) => {
+  await adminInsert("internal_plan_grants", {
+    workspace_id: ids.workspaceId, plan_id: "internal_unlimited", reason: "development", granted_by: "e2e-monitoring", expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+  });
+  await page.reload();
+  const reddit = page.locator("form", { has: page.locator('input[name="platform"][value="reddit"]') });
+  await reddit.scrollIntoViewIfNeeded();
+  // The spending confirmation is required before it can be switched on.
+  await expect(reddit.getByRole("button", { name: "Turn on" })).toBeDisabled();
+  await reddit.getByRole("checkbox").check();
+  await reddit.getByRole("button", { name: "Turn on" }).click();
+  const setting = () => adminSelect(`product_source_settings?product_id=eq.${ids.productId}&platform=eq.reddit&select=enabled`);
+  // On success the card leaves "More platforms" and Reddit joins the ranking.
+  const failed = reddit.getByRole("alert");
+  await expect.poll(async () => (await failed.isVisible()) ? await failed.innerText() : JSON.stringify(await setting()))
+    .toMatch(/enabled":true|switched off on this server|Couldn't|plan/);
+  if (await failed.isVisible()) {
+    const text = await failed.innerText();
+    test.skip(text.includes("switched off on this server"), "PAID_SOURCES_ENABLED is not true on this server");
+    throw new Error(`Turning Reddit on failed: ${text}`);
+  }
+  expect(await setting()).toEqual([{ enabled: true }]);
+
+  await page.reload();
+  await openAdvanced(page);
+  await ranking(page).getByRole("button", { name: "Reddit", exact: true }).click();
+  await page.getByRole("button", { name: "Turn off Reddit" }).click();
+  await expect.poll(setting).toEqual([{ enabled: false }]);
+});

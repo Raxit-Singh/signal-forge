@@ -68,11 +68,19 @@ export async function setSourceEnabledAction(_: ActionState, formData: FormData)
         .find((x) => x.id === platform);
       if (e && !e.enabled) return failure(e.reason ?? "This source can't be enabled.");
     }
-    const { error } = await supabase.from("product_source_settings").upsert(
-      { workspace_id: product.workspace_id, product_id: productId, platform, enabled: on, updated_by: user.id },
-      { onConflict: "product_id,platform" },
-    );
-    if (error) throw error;
+    // Update, then insert if there was no row. An upsert would also rewrite the
+    // key columns on conflict, which customers may not update (column grants).
+    const { data: updated, error: updateError } = await supabase.from("product_source_settings")
+      .update({ enabled: on, updated_by: user.id })
+      .eq("product_id", productId).eq("platform", platform)
+      .select("platform");
+    if (updateError) throw updateError;
+    if (!updated?.length) {
+      const { error } = await supabase.from("product_source_settings").insert(
+        { workspace_id: product.workspace_id, product_id: productId, platform, enabled: on, updated_by: user.id },
+      );
+      if (error) throw error;
+    }
   } catch (e) {
     if (e instanceof AuthorizationError) return failure(e.message);
     logServerError("setSourceEnabled", e);

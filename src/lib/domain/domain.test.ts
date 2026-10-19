@@ -58,6 +58,14 @@ test("parseAppStoreUrl extracts app id and strips tracking params", () => {
   assert.equal(r.value.url, "https://apps.apple.com/us/app/focusflow/id1234567890");
   assert.equal(parseAppStoreUrl("https://apps.apple.com.evil.com/id1234567890").ok, false);
   assert.equal(parseAppStoreUrl("http://apps.apple.com/us/app/x/id1234567890").ok, false);
+  // Pasted from the share sheet with the app's title after the link.
+  const shared = parseAppStoreUrl("https://apps.apple.com/in/app/erly-wake-up-early/id6751428380 Erly: Wake Up Early");
+  assert.ok(shared.ok);
+  assert.equal(shared.value.appId, "6751428380");
+  assert.equal(shared.value.url, "https://apps.apple.com/in/app/erly-wake-up-early/id6751428380");
+  const bare = parseAppStoreUrl("apps.apple.com/us/app/focusflow/id1234567890");
+  assert.ok(bare.ok && bare.value.appId === "1234567890");
+  assert.equal(parseAppStoreUrl("Erly https://evil.com/id1234567890").ok, false);
 });
 
 test("parsePlayStoreUrl extracts package name", () => {
@@ -66,6 +74,8 @@ test("parsePlayStoreUrl extracts package name", () => {
   assert.equal(r.value.packageName, "com.acme.focusflow");
   assert.equal(parsePlayStoreUrl("https://play.google.com/store/apps/details?id=nodots").ok, false);
   assert.equal(parsePlayStoreUrl("https://evil.com/?id=com.acme.app").ok, false);
+  const shared = parsePlayStoreUrl("Erly: Wake Up Early https://play.google.com/store/apps/details?id=com.erly.app");
+  assert.ok(shared.ok && shared.value.packageName === "com.erly.app");
 });
 
 test("safeRedirectPath blocks open redirects", () => {

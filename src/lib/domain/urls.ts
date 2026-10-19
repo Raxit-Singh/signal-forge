@@ -58,17 +58,28 @@ export function parseGithubRepo(input: string): Result<{ owner: string; repo: st
 }
 
 /** App Store listing, e.g. https://apps.apple.com/us/app/name/id123456789 */
+/**
+ * Store links are often pasted together with the app's title (the share sheet
+ * copies "https://apps.apple.com/… Erly: Wake Up Early"). Keeps just the link,
+ * and adds https:// when the scheme was left off.
+ */
+function pastedStoreLink(input: string, host: string): string {
+  const tokens = input.trim().split(/\s+/);
+  const link = tokens.find((t) => /^https?:\/\//i.test(t)) ?? tokens.find((t) => t.toLowerCase().startsWith(host)) ?? input.trim();
+  return /^[a-z][a-z0-9+.-]*:/i.test(link) ? link : `https://${link}`;
+}
+
 export function parseAppStoreUrl(input: string): Result<{ url: string; appId: string }> {
   let parsed: URL;
   try {
-    parsed = new URL(input.trim());
+    parsed = new URL(pastedStoreLink(input, "apps.apple.com"));
   } catch {
     return { ok: false, error: "Enter a full App Store URL." };
   }
   if (parsed.protocol !== "https:" || parsed.hostname !== "apps.apple.com") {
     return { ok: false, error: "App Store URLs start with https://apps.apple.com/" };
   }
-  const match = parsed.pathname.match(/\/id(\d{5,12})(?:\/|$)/);
+  const match = parsed.pathname.match(/\/id(\d{5,12})(?!\d)/);
   if (!match?.[1]) return { ok: false, error: "Couldn't find the app id (…/id123456789) in that URL." };
   parsed.search = "";
   parsed.hash = "";
@@ -79,7 +90,7 @@ export function parseAppStoreUrl(input: string): Result<{ url: string; appId: st
 export function parsePlayStoreUrl(input: string): Result<{ url: string; packageName: string }> {
   let parsed: URL;
   try {
-    parsed = new URL(input.trim());
+    parsed = new URL(pastedStoreLink(input, "play.google.com"));
   } catch {
     return { ok: false, error: "Enter a full Google Play URL." };
   }

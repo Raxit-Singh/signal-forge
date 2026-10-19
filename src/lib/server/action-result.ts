@@ -16,7 +16,13 @@ export function failure(message: string): ActionState {
 
 /** Logs server-side detail without leaking it (or any secret) to the client. */
 export function logServerError(scope: string, err: unknown) {
-  const msg = err instanceof Error ? err.message : String(err);
+  // PostgREST/Supabase errors are plain objects: keep their code and message.
+  const o = err as { code?: unknown; message?: unknown; details?: unknown; hint?: unknown } | null;
+  const msg = err instanceof Error
+    ? err.message
+    : o && typeof o === "object" && (o.message || o.code)
+      ? [o.code, o.message, o.details, o.hint].filter((x) => typeof x === "string" && x).join(" | ")
+      : String(err);
   // Never pass request bodies or credentials to the logger.
   console.error(`[${scope}] ${msg.slice(0, 500)}`);
 }
