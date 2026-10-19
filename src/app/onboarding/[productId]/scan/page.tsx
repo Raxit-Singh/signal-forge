@@ -7,6 +7,7 @@ import { SubmitButton } from "@/components/ui/form";
 import { advanceOnboardingAction } from "@/app/actions/product";
 import { sourceSetup } from "@/lib/server/collection/sources";
 import { getBackfillStatus } from "@/lib/server/collection/backfill-status";
+import { AutoRefresh } from "@/components/time";
 import { loadHistoryFormProps } from "@/lib/server/history-form";
 import { getWorkspaceUsage } from "@/lib/server/session";
 import { HistoryForm } from "@/components/history/history-form";
@@ -47,6 +48,7 @@ export default async function HistoryStep({ params }: { params: Promise<{ produc
           {run ? (
             <>
               <div className="flex justify-end"><LiveIndicator /></div>
+              {running && <AutoRefresh everyMs={10_000} />}
               <BackfillProgress status={run} allowanceRemaining={usage?.mentionsRemaining ?? null} renewsOn={usage ? usage.periodEnd.slice(0, 10) : null} />
             </>
           ) : (keywordCount ?? 0) === 0 ? (

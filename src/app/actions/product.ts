@@ -6,8 +6,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { productSchema, aliasListSchema, uuidSchema } from "@/lib/validation/schemas";
-import { ensureBrandTerm } from "@/lib/domain/aliases";
+import { ensureBrandTerm, retargetBrandAliases } from "@/lib/domain/aliases";
 import { planLimitMessage } from "@/lib/domain/plans";
+import { normalizeWebsiteUrl } from "@/lib/domain/urls";
 import { failure, invalid, logServerError, type ActionState } from "@/lib/server/action-result";
 import {
   AuthorizationError, PRODUCT_COOKIE, getActiveWorkspace, requireWorkspaceRole,
@@ -83,7 +84,7 @@ export async function updateProductAction(_: ActionState, formData: FormData): P
   if (!parsed.success) return invalid(parsed.error);
 
   const supabase = await createClient();
-  const { data: product } = await supabase.from("products").select("workspace_id").eq("id", id.data).maybeSingle();
+  const { data: product } = await supabase.from("products").select("workspace_id, name, website_url").eq("id", id.data).maybeSingle();
   if (!product) return failure("Product not found.");
   try {
     await requireWorkspaceRole(product.workspace_id as string, "admin");
@@ -92,10 +93,40 @@ export async function updateProductAction(_: ActionState, formData: FormData): P
   }
   const { error } = await supabase.from("products").update(productColumns(parsed.data)).eq("id", id.data);
   if (error) return productWriteError(error, "updateProduct");
+  // A renamed product (or new website) must be searched under its new name:
+  // replace the old brand / domain keyword, keep everything else.
+  const domainOf = (url: string | null) => (url ? normalizeWebsiteUrl(url) : null);
+  const oldDomain = domainOf(product.website_url as string | null);
+  const { data: rows } = await supabase.from("product_aliases")
+    .select("term, kind, is_ambiguous, context_terms, negative_terms, enabled, source").eq("product_id", id.data).order("created_at");
+  const retargeted = retargetBrandAliases(
+    (rows ?? []).map((a) => ({
+      term: a.term as string, kind: a.kind as string, isAmbiguous: a.is_ambiguous as boolean,
+      contextTerms: (a.context_terms as string[]) ?? [], negativeTerms: (a.negative_terms as string[]) ?? [],
+      enabled: a.enabled as boolean, source: a.source as string,
+    })),
+    { name: product.name as string, domain: oldDomain?.ok ? oldDomain.value.domain : null },
+    { name: parsed.data.name, domain: parsed.data.websiteUrl?.domain ?? null },
+  );
+  if (retargeted.changed) {
+    const { error: aliasError } = await supabase.rpc("replace_product_aliases", {
+      p_product_id: id.data,
+      p_aliases: retargeted.aliases.map((a) => ({
+        term: a.term, kind: a.kind, is_ambiguous: a.isAmbiguous, context_terms: a.contextTerms,
+        negative_terms: a.negativeTerms, enabled: a.enabled, source: a.source,
+      })),
+    });
+    if (aliasError) {
+      logServerError("updateProduct.aliases", aliasError);
+      await resyncQueries(id.data);
+      revalidatePath("/", "layout");
+      return failure("Product saved, but its keywords couldn't be updated to the new name. Update them in Settings → Products → Keywords.");
+    }
+  }
   // Website / App Store URL drive Trustpilot and App Store collection.
   await resyncQueries(id.data);
   revalidatePath("/", "layout");
-  return { status: "success", message: "Product saved." };
+  return { status: "success", message: retargeted.changed ? `Product saved. Keywords now search for “${parsed.data.name}”.` : "Product saved." };
 }
 
 const aliasPayload = z.object({

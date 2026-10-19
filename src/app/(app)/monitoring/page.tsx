@@ -11,6 +11,7 @@ import { BackfillProgress } from "@/components/history/backfill-progress";
 import { getMonitoringOverview, type KeywordCoverageRow, type PlatformMonitoring } from "@/lib/server/collection/monitoring-overview";
 import { formatInterval } from "@/lib/sources/adaptive";
 import { formatRelative, formatTime } from "@/lib/format";
+import { AutoRefresh, RelativeTime } from "@/components/time";
 import { getTimeZone } from "@/lib/server/timezone";
 import { EmptyState, PageHeader } from "@/components/page";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
@@ -154,8 +155,8 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
           <Stat label={`Total mentions · ${periodLabel}`} value={k.totalMentions.toLocaleString("en-US")} hint="Relevant, duplicates excluded" />
           <Stat label="Active platforms" value={String(active.length)} />
           <Stat label="Keywords monitored" value={String(monitoredKeywords)} hint={pausedKeywords ? `${pausedKeywords} paused` : undefined} />
-          <Stat label="Last scan" value={lastScan ? formatRelative(new Date(lastScan), new Date(now)) : "Not yet"} hint={lastScan ? at(lastScan) : undefined} />
-          <Stat label="Next scan" value={stoppedAt ? "Stopped" : !nextScan ? "—" : new Date(nextScan).getTime() <= now ? "Due now" : formatRelative(new Date(nextScan), new Date(now))} hint={nextScan ? at(nextScan) : undefined} />
+          <Stat label="Last scan" value={lastScan ? <RelativeTime value={new Date(lastScan).toISOString()} /> : "Not yet"} hint={lastScan ? at(lastScan) : undefined} />
+          <Stat label="Next scan" value={stoppedAt ? "Stopped" : !nextScan ? "—" : <RelativeTime value={new Date(nextScan).toISOString()} dueLabel="Due now" />} hint={nextScan ? at(nextScan) : undefined} />
           <Stat label="Coverage warnings" value={String(warnings.length)} hint={warnings.length ? "See below" : "None"} />
         </section>
 
@@ -274,6 +275,7 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
+            {backfill && ["queued", "searching"].includes(backfill.status) && <AutoRefresh everyMs={15_000} />}
             {backfill && (
               <BackfillProgress status={backfill} allowanceRemaining={usage?.mentionsRemaining ?? null} renewsOn={usage ? usage.periodEnd.slice(0, 10) : null} />
             )}
@@ -425,7 +427,7 @@ function KeywordCoverageList({ rows }: { rows: KeywordCoverageRow[] }) {
   );
 }
 
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function Stat({ label, value, hint }: { label: string; value: React.ReactNode; hint?: string }) {
   return (
     <Card className="grid content-start gap-0.5 p-3">
       <span className="text-xs text-muted-foreground">{label}</span>

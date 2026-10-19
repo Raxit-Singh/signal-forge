@@ -231,3 +231,41 @@ export function ensureBrandTerm<T extends BrandAlias>(aliases: T[], productName:
 export function isBrandTerm(term: string, productName: string): boolean {
   return term.trim().toLowerCase() === productName.trim().toLowerCase();
 }
+
+/**
+ * Keeps the keyword list in step with a product edit: the old product name is
+ * replaced by the new one (it is what every platform searches for), and a
+ * domain keyword for the old website follows the new website. Nothing else is
+ * touched; the new name is then made sure of like any brand term.
+ */
+export function retargetBrandAliases<T extends BrandAlias>(
+  aliases: T[],
+  before: { name: string; domain: string | null },
+  after: { name: string; domain: string | null },
+): { aliases: T[]; changed: boolean } {
+  const same = (a: string, b: string | null) => b !== null && a.trim().toLowerCase() === b.trim().toLowerCase();
+  let out = [...aliases];
+  let changed = false;
+  if (!same(before.name, after.name)) {
+    const i = out.findIndex((a) => same(a.term, before.name));
+    if (i !== -1) {
+      changed = true;
+      if (out.some((a) => same(a.term, after.name))) out.splice(i, 1);
+      else {
+        const ambiguous = isAmbiguousTerm(after.name.trim());
+        out[i] = { ...out[i]!, term: after.name.trim(), isAmbiguous: ambiguous, contextTerms: [], negativeTerms: [], enabled: !ambiguous };
+      }
+    }
+  }
+  if (before.domain && !same(before.domain, after.domain)) {
+    const i = out.findIndex((a) => a.kind === "domain" && same(a.term, before.domain));
+    if (i !== -1) {
+      changed = true;
+      if (!after.domain || out.some((a) => same(a.term, after.domain))) out.splice(i, 1);
+      else out[i] = { ...out[i]!, term: after.domain };
+    }
+  }
+  const ensured = ensureBrandTerm(out, after.name);
+  out = ensured.aliases;
+  return { aliases: out, changed: changed || ensured.changed };
+}

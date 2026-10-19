@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   normalizeWebsiteUrl, parseGithubRepo, parseAppStoreUrl, parsePlayStoreUrl, safeRedirectPath,
 } from "./urls.ts";
-import { suggestAliases, isAmbiguousTerm, isAmbiguousCustomTerm, splitWords, contextKeywords, ensureBrandTerm } from "./aliases.ts";
+import { suggestAliases, isAmbiguousTerm, isAmbiguousCustomTerm, splitWords, contextKeywords, ensureBrandTerm, retargetBrandAliases } from "./aliases.ts";
 import { checkKeywordLimit, checkProductLimit, effectivePlanId, formatPrice, mentionUsageLevel, planFromRow, planLimitMessage, usageFromRpc } from "./plans.ts";
 import { fitSuggestionsToAllowance } from "./keyword-allowance.ts";
 import { checkKeyShape, keyHint } from "./ai-providers.ts";
@@ -256,4 +256,25 @@ test("the product name is always a monitored brand term", () => {
   const amb = ensureBrandTerm([{ ...base, term: "Notion", isAmbiguous: true, enabled: false }], "Notion");
   assert.equal(amb.changed, false);
   assert.equal(amb.aliases[0]!.enabled, false);
+});
+
+test("retargetBrandAliases follows a product rename and a new website", () => {
+  const base = { isAmbiguous: false, contextTerms: ["alarm"], negativeTerms: [], enabled: true, source: "suggested" };
+  const before = [
+    { ...base, term: "Erly", kind: "exact_name" },
+    { ...base, term: "erly.co", kind: "domain", enabled: false },
+    { ...base, term: "wake up app", kind: "custom", source: "user" },
+  ];
+  const r = retargetBrandAliases(before, { name: "Erly", domain: "erly.co" }, { name: "toing", domain: "toingit.com" });
+  assert.equal(r.changed, true);
+  assert.deepEqual(r.aliases.map((a) => [a.term, a.kind, a.enabled]), [["toing", "exact_name", true], ["toingit.com", "domain", false], ["wake up app", "custom", true]]);
+  assert.deepEqual(r.aliases[0]!.contextTerms, []);
+  // Nothing renamed: unchanged.
+  assert.equal(retargetBrandAliases(before, { name: "Erly", domain: "erly.co" }, { name: "erly", domain: "erly.co" }).changed, false);
+  // New name already a keyword: the old one is dropped, no duplicate.
+  const dup = retargetBrandAliases([...before, { ...base, term: "Toing", kind: "custom" }], { name: "Erly", domain: null }, { name: "toing", domain: null });
+  assert.deepEqual(dup.aliases.map((a) => a.term).sort(), ["Toing", "erly.co", "wake up app"].sort());
+  // Old name wasn't a keyword: the new name is still added as the brand term.
+  const add = retargetBrandAliases([before[2]!], { name: "Erly", domain: null }, { name: "toing", domain: null });
+  assert.equal(add.aliases[0]!.term, "toing");
 });
