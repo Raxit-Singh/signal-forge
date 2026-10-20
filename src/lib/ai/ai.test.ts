@@ -22,7 +22,7 @@ const product = { name: "Cursor", description: "AI code editor", website: "https
 
 const item = (o: Partial<ClassificationOutput["items"][number]> = {}): ClassificationOutput["items"][number] => ({
   id: "m1", relevance: "relevant", sentiment: "negative", category: "bug",
-  signals: { bug: true, feature_request: false, usability: false, complaint: false, competitor_comparison: false, question: false, actionable: true },
+  signals: ["bug", "actionable"],
   severity: "high", area: "AI autocomplete", confidence: 0.9, reason: "Reports a freeze.", ...o,
 });
 

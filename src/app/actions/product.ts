@@ -195,7 +195,8 @@ const stepPayload = z.object({
   step: z.coerce.number().int().min(3).max(6),
 });
 
-const STEP_ROUTES: Record<number, string> = { 3: "sources", 4: "ai", 5: "scan" };
+// Step 4 (the former AI step) has nothing to set up and goes straight to history.
+const STEP_ROUTES: Record<number, string> = { 3: "sources", 4: "scan", 5: "scan" };
 
 /** Moves onboarding forward (never backward). Step 6 = finished. */
 export async function advanceOnboardingAction(formData: FormData): Promise<void> {

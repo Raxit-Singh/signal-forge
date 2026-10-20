@@ -83,11 +83,14 @@ export function planQueries(keywords: OptimizerKeyword[], caps: QueryCapabilitie
   const list = keywords
     .map((k) => ({ ...k, term: clean(k.term) }))
     .filter((k) => {
-      const key = k.term.toLowerCase();
+      // Search engines ignore punctuation in words: "E-Day", "E Day" and "e-day:" are one search.
+      // Domains and handles keep theirs ("acme.io" is not the phrase "acme io").
+      const literal = k.kind === "domain" || k.kind === "handle" || /^@|\w\.\w/u.test(k.term);
+      const key = literal ? k.term.toLowerCase() : k.term.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
       if (!k.term) return false;
       const first = seen.get(key);
       if (first !== undefined) {
-        skipped.push({ term: k.term, reason: "duplicate", detail: `Same search as "${first}" (differs only in letter case, spacing or quotes)`, via: first });
+        skipped.push({ term: k.term, reason: "duplicate", detail: `Same search as "${first}" (differs only in letter case, spacing, punctuation or quotes)`, via: first });
         return false;
       }
       seen.set(key, k.term);

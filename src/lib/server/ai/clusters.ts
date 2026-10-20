@@ -117,6 +117,19 @@ async function confirmMerges(admin: SupabaseClient, ai: ResolvedAi, product: Non
  * priority, and reconciliation so ids and team decisions survive.
  */
 export async function reclusterProduct(admin: SupabaseClient, productId: string, now = new Date()): Promise<{ clusters: number; inserted: number; removed: number; grouping: Grouping }> {
+  // One regrouping per product at a time: two concurrent runs each inserted the same new issues.
+  const lock = `ai:recluster:${productId}`;
+  const holder = crypto.randomUUID();
+  const { data: got } = await admin.rpc("svc_try_acquire_lock", { p_name: lock, p_holder: holder, p_ttl_seconds: 5 * 60 });
+  if (!got) return { clusters: 0, inserted: 0, removed: 0, grouping: "tfidf_v1" };
+  try {
+    return await reclusterProductLocked(admin, productId, now);
+  } finally {
+    await admin.rpc("svc_release_lock", { p_name: lock, p_holder: holder });
+  }
+}
+
+async function reclusterProductLocked(admin: SupabaseClient, productId: string, now: Date): Promise<{ clusters: number; inserted: number; removed: number; grouping: Grouping }> {
   const product = await productContext(admin, productId);
   if (!product) return { clusters: 0, inserted: 0, removed: 0, grouping: "tfidf_v1" };
   // Competitors are compared on volume and sentiment; grouping their feedback into issues would spend embeddings on nothing shown.

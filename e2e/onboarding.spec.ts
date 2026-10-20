@@ -13,7 +13,7 @@ test.afterEach(async () => {
   userId = null;
 });
 
-test("registration → verification → workspace → product → keywords → sources → AI → historical search", async ({ page }) => {
+test("registration → verification → workspace → product → keywords → sources → historical search", async ({ page }) => {
   const user = await createUnconfirmedUser();
   userId = user.id;
 
@@ -51,18 +51,14 @@ test("registration → verification → workspace → product → keywords → s
   await page.getByRole("button", { name: "Save and continue" }).click();
   await expect(page).toHaveURL(/\/sources$/);
 
-  await expect(page.getByText("Hacker News").first()).toBeVisible();
-  await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page).toHaveURL(/\/ai$/);
-
-  await expect(page.getByText("SignalForge Intelligence").first()).toBeVisible();
-  await expect(page.getByText("you never need an AI key")).toBeVisible();
+  // Just the platforms: icon and name, nothing to configure.
+  await expect(page.getByRole("list", { name: "Platforms" }).getByText("Hacker News")).toBeVisible();
+  await expect(page.getByText("Public sources need nothing from you")).toHaveCount(0);
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page).toHaveURL(/\/scan$/);
 
   // Historical search: the user chooses how far back; nothing runs or is estimated before they start it.
   await expect(page.getByText("How far back should SignalForge search for mentions?")).toBeVisible();
-  await expect(page.getByText(/Results are what the sources actually return/)).toBeVisible();
   await expect(page.getByRole("radio", { name: "Last 30 days" })).toBeChecked();
   await expect(page.getByTestId("history-range")).toContainText(/Searches from \w{3} \d{1,2}, \d{4}, \d{1,2}:\d{2} [AP]M GMT\+5:30 to \w{3} \d{1,2}, \d{4}, \d{1,2}:\d{2} [AP]M GMT\+5:30 \(30 days\)/);
   // Free plan: 30 days of history; longer presets are offered but disabled with the reason.

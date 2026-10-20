@@ -164,16 +164,29 @@ async function loadContext(admin: SupabaseClient, productId: string, platform: s
   return (data as ScheduleContext | null) ?? null;
 }
 
-function windowFor(q: QueryRow, now: Date, paid: boolean, requestedSince: Date | null, audit: boolean): SearchWindow {
+export function windowFor(q: Pick<QueryRow, "cursor">, now: Date, paid: boolean, requestedSince: Date | null, audit: boolean, historyUntil: Date | null = null): SearchWindow {
   const cursorUntil = q.cursor?.until ? new Date(q.cursor.until) : null;
+  const firstRun = new Date(now.getTime() - FIRST_RUN_LOOKBACK_MS);
   let since =
     requestedSince && !Number.isNaN(requestedSince.getTime()) ? requestedSince
     : audit ? new Date(now.getTime() - AUDIT_LOOKBACK_MS)
     : cursorUntil ? new Date(cursorUntil.getTime() - OVERLAP_MS)
-    : new Date(now.getTime() - FIRST_RUN_LOOKBACK_MS);
+    // First check of a new search: a historical search already reads up to when it started,
+    // so start there instead of fetching (and paying for) the same newest results twice.
+    : historyUntil && historyUntil > firstRun ? new Date(Math.min(historyUntil.getTime(), now.getTime()))
+    : firstRun;
   const maxBack = paid && !requestedSince ? PAID_MAX_SCHEDULED_LOOKBACK_MS : MAX_LOOKBACK_MS;
   if (since.getTime() < now.getTime() - maxBack) since = new Date(now.getTime() - maxBack);
   return { since, until: now };
+}
+
+/** End of a historical search started in the last day for this product (it covers the time before it). */
+async function recentHistoryEnd(admin: SupabaseClient, productId: string, now: Date): Promise<Date | null> {
+  const { data } = await admin.from("backfill_runs").select("range_end")
+    .eq("product_id", productId).neq("status", "canceled")
+    .gt("range_end", new Date(now.getTime() - FIRST_RUN_LOOKBACK_MS).toISOString())
+    .order("range_end", { ascending: false }).limit(1).maybeSingle<{ range_end: string }>();
+  return data ? new Date(data.range_end) : null;
 }
 
 /** Search + (for page-billed sources without resume) one right-sized escalation when the first call overflowed. */
@@ -244,7 +257,8 @@ export async function runMonitorQuery(
     .eq("product_id", q.product_id).eq("platform", provider).maybeSingle<{ score: number | null; phase: string }>();
   const score = act?.phase === "ranked" ? act.score : null;
   const audit = !isScan && !gap && !isLegacySource(provider) && auditDue(q.last_audit_at ? new Date(q.last_audit_at) : null, paid, score, now);
-  const leadWindow = gap ? { since: new Date(gap.since), until: new Date(gap.until) } : windowFor(q, now, paid, requestedSince, audit);
+  const historyUntil = !q.cursor?.until && !isScan && !audit ? await recentHistoryEnd(admin, q.product_id, now) : null;
+  const leadWindow = gap ? { since: new Date(gap.since), until: new Date(gap.until) } : windowFor(q, now, paid, requestedSince, audit, historyUntil);
   const scope = { workspace_id: q.workspace_id, product_id: q.product_id };
 
   const setup = adapter.configured();

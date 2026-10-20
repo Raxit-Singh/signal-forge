@@ -58,9 +58,6 @@ export async function setSourceEnabledAction(_: ActionState, formData: FormData)
       if (Number((ctx as { paid_allowance_usd?: number } | null)?.paid_allowance_usd ?? 0) <= 0) {
         return failure("Paid sources aren't included in your plan.");
       }
-      if (parsed.data.confirmPaid !== "yes") {
-        return failure("Confirm that this paid source may use your plan's paid-source allowance.");
-      }
     }
     if (on) {
       const connected = await connectedSources(createAdminClient(), productId, product.workspace_id as string);

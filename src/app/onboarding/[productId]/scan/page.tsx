@@ -26,7 +26,6 @@ export default async function HistoryStep({ params }: { params: Promise<{ produc
   const product = await loadOnboardingProduct(productId);
   const setup = sourceSetup();
   const configured = setup.filter((s) => s.configured);
-  const unavailable = setup.filter((s) => !s.configured);
 
   const supabase = await createClient();
   const [{ count: keywordCount }, run, usage] = await Promise.all([
@@ -39,7 +38,7 @@ export default async function HistoryStep({ params }: { params: Promise<{ produc
   return (
     <RealtimeProvider workspaceId={product.workspace_id} productId={product.id}>
       <StepHeader
-        step={5}
+        step={4}
         title="Historical search"
         description="Choose how far back to look for existing conversations about your product."
       />
@@ -58,12 +57,8 @@ export default async function HistoryStep({ params }: { params: Promise<{ produc
           ) : (
             <>
               <p className="text-[13px] text-muted-foreground">
-                Searches {configured.map((s) => s.name).join(", ")} for {product.name}&apos;s {keywordCount} active keyword{keywordCount === 1 ? "" : "s"}.
-                Results are what the sources actually return — if nothing matches, you&apos;ll see zero, never an estimate.
+                Searches {configured.length} platforms for {product.name}&apos;s {keywordCount} active keyword{keywordCount === 1 ? "" : "s"}.
               </p>
-              {unavailable.length > 0 && (
-                <p className="text-xs text-muted-foreground">Not included: {unavailable.map((u) => `${u.name} (${u.reason ?? "unavailable"})`).join("; ")}</p>
-              )}
               <HistoryForm {...await loadHistoryFormProps(product.id)} />
             </>
           )}

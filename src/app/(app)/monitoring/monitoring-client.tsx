@@ -10,26 +10,19 @@ import { Input, Label } from "@/components/ui/primitives";
 import { idle } from "@/lib/action-state";
 import { cn } from "@/lib/utils";
 
-export function SourceToggle({ productId, platform, name, enabled, paid, disabledReason }: {
+export function SourceToggle({ productId, platform, name, enabled, disabledReason }: {
   productId: string; platform: string; name: string; enabled: boolean; paid: boolean; disabledReason?: string;
 }) {
   const [state, action] = useFormAction(setSourceEnabledAction, idle);
-  const [confirm, setConfirm] = useState(false);
   return (
     <form action={action} className="grid gap-1.5">
       <input type="hidden" name="productId" value={productId} />
       <input type="hidden" name="platform" value={platform} />
       <input type="hidden" name="enabled" value={enabled ? "false" : "true"} />
-      {!enabled && paid && !disabledReason && (
-        <label className="flex items-start gap-1.5 text-xs text-muted-foreground">
-          <input type="checkbox" name="confirmPaid" value="yes" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} className="mt-0.5" />
-          <span>I authorize paid checks on {name} within my plan&apos;s paid-source allowance.</span>
-        </label>
-      )}
       <SubmitButton
         size="sm"
         variant={enabled ? "secondary" : "default"}
-        disabled={Boolean(disabledReason) || (!enabled && paid && !confirm)}
+        disabled={Boolean(disabledReason)}
         aria-label={`${enabled ? "Turn off" : "Turn on"} ${name}`}
         pendingLabel="Saving…"
       >

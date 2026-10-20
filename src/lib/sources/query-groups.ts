@@ -56,7 +56,8 @@ export function resolveEnablement(
     if (a.paid) {
       if (!paidOn) return { id, enabled: false, reason: "Paid sources are switched off on this server" };
       if (paidAllowanceUsd <= 0) return { id, enabled: false, reason: "Not included in your plan" };
-      if (set !== true) return { id, enabled: false, reason: "Off — turn it on to start paid monitoring" };
+      // Included in the plan → on by default; spending is capped by the plan's paid-source allowance.
+      if (set === false) return { id, enabled: false, reason: "Turned off for this product" };
     } else if (set === false) {
       return { id, enabled: false, reason: "Turned off for this product" };
     }

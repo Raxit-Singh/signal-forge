@@ -47,11 +47,10 @@ export function mockClassify(posts: PostInput[]): ClassificationOutput {
         relevance: OFF_TOPIC.test(text) ? "irrelevant" : "relevant",
         sentiment: neg && pos ? "mixed" : neg ? "negative" : pos ? "positive" : "neutral",
         category,
-        signals: {
-          bug: category === "bug", feature_request: category === "feature_request", usability: false, complaint: category === "complaint",
-          competitor_comparison: category === "competitor_comparison", question: category === "question",
-          actionable: ["bug", "feature_request", "complaint"].includes(category),
-        },
+        signals: [
+          ...(["bug", "feature_request", "complaint", "competitor_comparison", "question"] as const).filter((k) => category === k),
+          ...(["bug", "feature_request", "complaint"].includes(category) ? ["actionable" as const] : []),
+        ],
         severity,
         area: AREAS.find(([re]) => re.test(text))?.[1] ?? "",
         confidence: category === "general_discussion" ? 0.6 : 0.75,

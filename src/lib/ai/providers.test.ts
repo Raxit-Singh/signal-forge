@@ -13,7 +13,7 @@ const call = (tier: "cheap" | "deep" = "cheap"): AiCall<ClassificationOutput> =>
 const answer: ClassificationOutput = {
   items: [{
     id: "m1", relevance: "relevant", sentiment: "negative", category: "bug",
-    signals: { bug: true, feature_request: false, usability: false, complaint: false, competitor_comparison: false, question: false, actionable: true },
+    signals: ["bug", "actionable"],
     severity: "high", area: "startup", confidence: 0.8, reason: "crash",
   }],
 };

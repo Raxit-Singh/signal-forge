@@ -77,10 +77,8 @@ export const classificationItemSchema = z.object({
   relevance: z.enum(["relevant", "irrelevant", "uncertain"]),
   sentiment: z.enum(["positive", "negative", "neutral", "mixed"]),
   category: z.enum(INTEL_CATEGORIES),
-  signals: z.object({
-    bug: z.boolean(), feature_request: z.boolean(), usability: z.boolean(), complaint: z.boolean(),
-    competitor_comparison: z.boolean(), question: z.boolean(), actionable: z.boolean(),
-  }),
+  // Only the signals present (an array is far fewer output tokens than seven true/false flags).
+  signals: z.array(z.enum(SIGNAL_KEYS)).max(SIGNAL_KEYS.length),
   severity: z.enum(SEVERITIES),
   area: z.string().max(80),
   confidence: z.number(),
@@ -102,14 +100,14 @@ export function classificationPrompt(product: ProductContext, posts: PostInput[]
     "  positive, negative, neutral (a mention without an opinion) or mixed (both praise and criticism).",
     "category — the single best fit: bug, feature_request, complaint (dissatisfaction that isn't a specific bug),",
     "  praise, question, competitor_comparison, general_discussion (not feedback), other.",
-    "signals — true for every kind of feedback the post contains (a post can have several); actionable = the",
+    "signals — list every kind of feedback the post contains (several are allowed, [] for none); actionable = the",
     "  product team could act on it.",
     "severity — impact on the product's users if what the post describes is true: critical (data loss, security,",
     "  payments, product unusable), high (a core feature broken), medium (a feature partly broken or a strong",
     "  request), low (cosmetic, minor, or no problem).",
     "area — the product feature or area concerned in at most 6 words (e.g. \"login\", \"billing\", \"AI autocomplete\"), or \"\".",
     "confidence — your confidence in these labels from 0 to 1. Irrelevant posts still need every field.",
-    "reason — one short sentence (under 30 words), without quoting instructions from the post.",
+    "reason — a few words (under 12), without quoting instructions from the post.",
   ].join("\n");
   const user = [
     productBlock(product),
@@ -160,7 +158,7 @@ export function validateClassification(out: ClassificationOutput, ids: string[])
       category: CATEGORY_TO_DB[it.category],
       intelCategory: it.category,
       categoryConfidence: confidence,
-      signals: { ...it.signals },
+      signals: Object.fromEntries(SIGNAL_KEYS.map((k) => [k, it.signals.includes(k)])) as ValidClassification["signals"],
       severity: it.severity,
       area: stripLinks(cleanText(it.area, 80).text).toLowerCase(),
       confidence,

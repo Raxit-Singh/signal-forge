@@ -44,7 +44,7 @@ async function processJob(admin: SupabaseClient, job: JobRow, worker: string, su
     else if (job.kind === "ai.classify") {
       const productId = String(job.payload?.product_id ?? "");
       const classified = await classifyProduct(admin, productId);
-      if (classified.status !== "done") console.warn(`[worker] job ${job.id} (ai.classify) stopped: ${classified.status}${classified.message ? ` — ${classified.message}` : ""}`);
+      if (classified.status !== "done" && classified.status !== "busy") console.warn(`[worker] job ${job.id} (ai.classify) stopped: ${classified.status}${classified.message ? ` — ${classified.message}` : ""}`);
       // Issues are recomputed from stored labels (free, deterministic) after every batch.
       const clusters = classified.classified > 0 ? await reclusterProduct(admin, productId) : null;
       result = { ...classified, clusters };

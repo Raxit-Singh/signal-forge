@@ -15,9 +15,11 @@ import { budgetedCall, cacheGet, cachePut, resolveAi, type ResolvedAi } from "./
 const MAX_ATTEMPTS = 3;
 /** Mentions one job classifies (newest first). */
 const JOB_LIMIT = 200;
+/** Longer than a run can take (a job stops well inside the 60 s function limit); expires if a run dies. */
+const LOCK_TTL_SECONDS = 5 * 60;
 
 export interface ClassifySummary {
-  status: "done" | "unavailable" | "disabled" | "budget";
+  status: "done" | "unavailable" | "disabled" | "budget" | "busy";
   message?: string;
   classified: number;
   cached: number;
@@ -63,6 +65,20 @@ interface Row {
  * changed. Manual corrections are never overwritten.
  */
 export async function classifyProduct(admin: SupabaseClient, productId: string, limit = JOB_LIMIT): Promise<ClassifySummary> {
+  // One classification run per product at a time: overlapping scheduler ticks (or "Classify
+  // now" during a scheduled run) used to send the same mentions to the AI twice and pay twice.
+  const lock = `ai:classify:${productId}`;
+  const holder = crypto.randomUUID();
+  const { data: got } = await admin.rpc("svc_try_acquire_lock", { p_name: lock, p_holder: holder, p_ttl_seconds: LOCK_TTL_SECONDS });
+  if (!got) return { status: "busy", classified: 0, cached: 0, failed: 0, calls: 0 };
+  try {
+    return await classifyProductLocked(admin, productId, limit);
+  } finally {
+    await admin.rpc("svc_release_lock", { p_name: lock, p_holder: holder });
+  }
+}
+
+async function classifyProductLocked(admin: SupabaseClient, productId: string, limit: number): Promise<ClassifySummary> {
   const summary: ClassifySummary = { status: "done", classified: 0, cached: 0, failed: 0, calls: 0 };
   const product = await productContext(admin, productId);
   if (!product) return { ...summary, status: "unavailable", message: "Product not found." };

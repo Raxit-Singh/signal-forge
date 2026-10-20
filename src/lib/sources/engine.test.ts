@@ -59,6 +59,12 @@ test("keywords differing only in case or spacing are one search, and the duplica
   assert.deepEqual(plan.skipped.map((s) => [s.term, s.reason]), [["focusflow", "duplicate"], ["FocusFlow", "duplicate"]]);
 });
 
+test("keywords differing only in punctuation are one search (search engines ignore it)", () => {
+  const plan = planQueries([kw("Gears of War: E-Day"), kw("Gears of War: E Day", "custom"), kw("gears-of-war:-e-day", "custom"), kw("GearsofWar:EDay", "custom")], CAPS.blueskyPosts, null);
+  assert.deepEqual(plan.skipped.filter((s) => s.reason === "duplicate").map((s) => s.term), ["Gears of War: E Day", "gears-of-war:-e-day"]);
+  assert.equal(plan.groups.length, 2);
+});
+
 test("category terms are never OR-combined with brand aliases; ambiguous terms need context", () => {
   const keywords = [
     kw("FocusFlow"), kw("pomodoro app", "custom"), kw("deep work timer", "custom"),
