@@ -743,6 +743,9 @@ select t.ok((select count(*) from public.provider_pricing where provider = 'apid
 select t.ok((select count(*) from public.provider_pricing where provider = 'tikhub') = 3 and (select price_usd from private.current_price('tikhub_x.search')) = 0.001
   and (select price_usd from private.current_price('tikhub_instagram.reels')) = 0.002,
   'TikHub prices are registered per request');
+select t.ok((select price_usd from private.current_price('serper_web.search')) = 0.001 and (select price_usd from private.current_price('serper_news.search')) = 0.002
+  and (select provider from private.current_price('serper_news.search')) = 'serper',
+  'Serper web and news prices are registered');
 create temp table th as select public.svc_reserve_api_spend('x', 'tikhub_x.search', 1, 'search',
   jsonb_build_array(jsonb_build_object('workspace_id', (select v from ids where k = 'ws_a'), 'product_id', (select v from ids where k = 'p_a')))) as r;
 select t.ok(coalesce((select r ->> 'reason' from th), 'ok') <> 'unpriced'

@@ -187,6 +187,24 @@ export interface PagePlanInput {
   billing: "pages" | "request";
   /** No observations yet: request one page and escalate only if it comes back full. */
   learning: boolean;
+  /**
+   * Share of returned results that turned out relevant (relevantShare()); null while unknown.
+   * When a page holds fewer than MIN_RELEVANT_PER_PAGE relevant results, extra pages mostly
+   * buy unrelated posts (fuzzy search), so one page is requested.
+   */
+  relevantShare?: number | null;
+}
+
+/** Expected relevant results that make an extra billed page worth buying. */
+export const MIN_RELEVANT_PER_PAGE = 2;
+
+/** Relevant share of what a search returns, once there's enough history to say (≥ 3 checks). */
+export function relevantShare(e: GroupEstimate): number | null {
+  if (e.observations < 3) return null;
+  const raw = e.raw.alpha / e.raw.beta;
+  const rel = e.rel.alpha / e.rel.beta;
+  if (!(raw > 0)) return null;
+  return Math.max(0, Math.min(1, rel / raw));
 }
 
 /**
@@ -198,6 +216,7 @@ export interface PagePlanInput {
 export function pagesToRequest(i: PagePlanInput): number {
   if (i.billing === "request") return Math.max(1, i.maxPages);
   if (i.learning) return 1;
+  if (i.relevantShare != null && i.perPage * i.relevantShare < MIN_RELEVANT_PER_PAGE) return 1;
   const mu = expectedResults(i.ratePerHour, i.windowMinutes);
   const want = Math.ceil((mu + 2 * Math.sqrt(mu)) / Math.max(1, i.perPage));
   return Math.max(1, Math.min(i.maxPages, want));
@@ -216,4 +235,23 @@ export function escalationPages(opts: {
   const needed = density === null ? opts.returned * 2 : opts.returned + density * Math.max(0, opts.remainingMinutes);
   const pages = Math.ceil((needed * 1.2) / Math.max(1, opts.perPage));
   return Math.max(opts.requested + 1, Math.min(opts.maxPages, pages));
+}
+
+/**
+ * Escalating re-buys every page, so it is only worth it when the first pages were mostly
+ * about the keywords. Fuzzy searches (TikTok returns "tonguing" for "toing") fill pages
+ * with unrelated posts; buying more of those finds nothing. Cheap text check, no AI.
+ */
+export const MIN_KEYWORD_SHARE_TO_ESCALATE = 0.25;
+
+export function keywordHitShare(texts: string[], terms: string[]): number {
+  if (texts.length === 0) return 0;
+  const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const keys = terms.map(norm).filter((t) => t.length > 1);
+  if (keys.length === 0) return 1;
+  const hits = texts.filter((t) => {
+    const n = ` ${norm(t)} `;
+    return keys.some((k) => n.includes(` ${k} `) || n.replace(/ /g, "").includes(k.replace(/ /g, "")));
+  }).length;
+  return hits / texts.length;
 }

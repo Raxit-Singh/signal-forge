@@ -18,7 +18,7 @@ export type CollectionMethod =
   | "keyword_search" | "comment_search" | "comment_expansion" | "reply_expansion" | "quote_expansion" | "review_feed" | "tag_feed";
 /** What a stored link opens. */
 export type LinkTarget = "item" | "thread" | "shared_content" | "listing";
-export type DataProvider = "official" | "apidirect" | "tikhub";
+export type DataProvider = "official" | "apidirect" | "tikhub" | "serper";
 export type SpendPurpose =
   | "search" | "comment_search" | "comment_expansion" | "reply_expansion" | "quote_expansion" | "review_fetch" | "audit" | "live_test";
 
@@ -116,6 +116,10 @@ export interface SourceRequest {
   /** Short label for usage accounting, e.g. "search", "videos". */
   endpoint: string;
   headers?: Record<string, string>;
+  /** Defaults to GET. */
+  method?: "GET" | "POST";
+  /** JSON body for POST requests. */
+  body?: string;
   signal?: AbortSignal;
   /** Present for paid calls: budget is reserved before the request and settled after it. */
   billing?: BillingIntent;

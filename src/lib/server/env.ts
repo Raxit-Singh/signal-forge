@@ -18,6 +18,8 @@ const serverSchema = z.object({
   // (any of x, tiktok, instagram) instead of API Direct. Unset = API Direct only.
   TIKHUB_API_KEY: z.string().optional(),
   TIKHUB_PLATFORMS: z.string().optional(),
+  // Serper (paid, per query): Web and News search instead of API Direct when set.
+  SERPER_API_KEY: z.string().optional(),
   PAID_SOURCES_ENABLED: z.enum(["true", "false"]).default("false"),
   // SignalForge Intelligence (SYSTEM A; paid by SignalForge). SERVER ONLY. Also needs an
   // operator-set row in ai_global_budget. Customers never supply AI keys for this.

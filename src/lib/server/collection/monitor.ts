@@ -1,8 +1,11 @@
 import "server-only";
 import { NEVER, scanStopped } from "./scan-pause";
+import { failureRetry } from "@/lib/sources/retry";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { auditDue, expansionsPerRun, formatInterval, nextRunAt, type Confidence } from "@/lib/sources/adaptive";
-import { escalationPages, pagesToRequest, updateEstimate, upperRate, type GroupEstimate } from "@/lib/sources/arrival";
+import {
+  escalationPages, keywordHitShare, MIN_KEYWORD_SHARE_TO_ESCALATE, pagesToRequest, relevantShare, updateEstimate, upperRate, type GroupEstimate,
+} from "@/lib/sources/arrival";
 import { collectionProfile, jobCapacity, type CollectionProfile } from "@/lib/sources/collection-profile";
 import { decideResume, observedSpanMinutes, oldestPublished, type Gap, type ResumeDecision } from "@/lib/sources/resume";
 import { expansionParentOf } from "@/lib/sources/apidirect/adapters";
@@ -202,6 +205,9 @@ export async function searchWithEscalation(
   if (!adapter.paid || profile.billing !== "pages" || profile.resume === "range" || !first.saturated || requested >= capPages) {
     return { ...first, escalated: false };
   }
+  if (keywordHitShare(first.items.map((i) => i.matchText), req.terms) < MIN_KEYWORD_SHARE_TO_ESCALATE) {
+    return { ...first, escalated: false };
+  }
   const oldest = oldestPublished(first.items);
   const pages = escalationPages({
     returned: first.items.length, spanMinutes: observedSpanMinutes(first.items, req.window),
@@ -317,6 +323,7 @@ export async function runMonitorQuery(
     ? pagesToRequest({
       ratePerHour: upperRate(estimate.raw), windowMinutes: (fetchWindow.until.getTime() - fetchWindow.since.getTime()) / 60_000,
       perPage: profile.perPage, maxPages: capPages, billing: "pages", learning: estimate.observations === 0,
+      relevantShare: relevantShare(estimate),
     })
     : capPages;
   const maxPages = Math.min(capPages, planned + (audit ? 1 : 0));
@@ -406,14 +413,12 @@ export async function runMonitorQuery(
     for (const m of members) {
       const failures = m.q.consecutive_failures + 1;
       const interval = m.q.interval_minutes ?? m.ctx.plan_min_minutes;
+      const retry = failureRetry(err, interval, failures, adapter.name, now);
       await admin.from("monitoring_queries").update({
         consecutive_failures: failures,
-        // Budget refusals aren't fixed by retrying sooner.
-        next_run_at: (err.kind === "budget" ? nextRunAt(now, interval, 0) : nextRunAt(now, interval, failures)).toISOString(),
+        next_run_at: retry.next.toISOString(),
         coverage_confidence: failures >= 2 ? "low" : "medium",
-        interval_reasons: [err.kind === "budget"
-          ? "Paid-source budget reached: checked again at the normal interval"
-          : `Retrying sooner after ${failures} failed check${failures === 1 ? "" : "s"}`],
+        interval_reasons: [retry.reason],
       }).eq("id", m.q.id);
       await logExecution(admin, { q: m.q, job, started, status: "failed", detail: err.message, paidRequests: m.q.id === q.id ? paidCalls.length : 0, continuation: m.q.id === q.id && gap !== null });
     }

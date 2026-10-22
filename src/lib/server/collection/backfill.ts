@@ -1,7 +1,7 @@
 import "server-only";
 import { NEVER, scanStopped } from "./scan-pause";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { pagesToRequest, upperRate } from "@/lib/sources/arrival";
+import { pagesToRequest, relevantShare, upperRate } from "@/lib/sources/arrival";
 import { collectionProfile } from "@/lib/sources/collection-profile";
 import { planBackfillTasks, runStatus, type TaskCursor, type TaskStatus } from "@/lib/sources/backfill-plan";
 import { SourceError } from "@/lib/sources/errors";
@@ -61,6 +61,9 @@ interface TaskRow {
   platform: string; stream: string; status: TaskStatus; cursor: TaskCursor | null;
   jobs_run: number; pages: number; results: number; inserted: number; paid_requests: number; consecutive_failures: number;
 }
+
+/** Pages the first job of a history task may buy on a page-billed source. */
+const FIRST_JOB_PAGES = 2;
 
 const TASK_COLUMNS = "id, run_id, workspace_id, product_id, query_id, platform, stream, status, cursor, jobs_run, pages, results, inserted, paid_requests, consecutive_failures";
 
@@ -131,9 +134,14 @@ export async function runBackfillTask(admin: SupabaseClient, job: JobRow, adapte
     .eq("query_id", q.id).maybeSingle();
   const estimate = estimateFromRow(est ?? undefined);
   const capPages = Math.max(1, Math.min(stream.capabilities.maxPagesPerRun, profile.maxPagesPerJob, isLegacySource(provider) ? 5 : 10));
-  const maxPages = profile.billing === "pages"
-    ? pagesToRequest({ ratePerHour: upperRate(estimate.raw), windowMinutes: (window.until.getTime() - window.since.getTime()) / 60_000, perPage: profile.perPage, maxPages: capPages, billing: "pages", learning: estimate.observations === 0 })
+  // A history window is long, so the rate model asks for many pages at once; on a page-billed
+  // source every requested page is paid even when it comes back empty (Facebook: 7 pages for
+  // 5 results). The first job of a task reads 2 pages and escalates only if they come back full;
+  // later jobs continue from what that showed.
+  const planned = profile.billing === "pages"
+    ? pagesToRequest({ ratePerHour: upperRate(estimate.raw), windowMinutes: (window.until.getTime() - window.since.getTime()) / 60_000, perPage: profile.perPage, maxPages: capPages, billing: "pages", learning: estimate.observations === 0, relevantShare: relevantShare(estimate) })
     : capPages;
+  const maxPages = profile.billing === "pages" && t.jobs_run === 0 ? Math.min(planned, FIRST_JOB_PAGES) : planned;
 
   const usage: UsageEvent[] = [];
   const paidCalls: PaidCall[] = [];
@@ -205,11 +213,14 @@ export async function runBackfillTask(admin: SupabaseClient, job: JobRow, adapte
     if (err.kind === "rate_limited" || err.kind === "quota") throw err; // the worker defers without spending an attempt
     const failures = t.consecutive_failures + 1;
     const budget = err.kind === "budget";
-    const giveUp = !budget && failures >= MAX_FAILURES;
+    // A rejected request ("not found", invalid search) gives the same answer every time and
+    // paid sources bill it: stop at once instead of buying it MAX_FAILURES times.
+    const permanent = err.kind === "bad_request" || err.kind === "auth";
+    const giveUp = !budget && (permanent || failures >= MAX_FAILURES);
     await admin.from("backfill_tasks").update({
       consecutive_failures: failures, last_error: err.message.slice(0, 500),
       status: budget ? "paused" : giveUp ? "partial" : t.status === "paused" ? "searching" : t.status,
-      note: budget ? "Paused: the paid-source budget is used up. It resumes when the budget allows." : giveUp ? `Stopped after ${failures} failed attempts; the rest of the window was not collected.` : null,
+      note: budget ? "Paused: the paid-source budget is used up. It resumes when the budget allows." : giveUp ? (permanent ? `${adapter.name} rejected this search (${err.message.slice(0, 120)}); nothing more to collect here.` : `Stopped after ${failures} failed attempts; the rest of the window was not collected.`) : null,
       next_run_at: new Date(Date.now() + (budget ? 6 * 3_600_000 : Math.min(3_600_000, 60_000 * 2 ** failures))).toISOString(),
       ...(giveUp ? { cursor: null, completed_at: new Date().toISOString() } : {}),
     }).eq("id", t.id);

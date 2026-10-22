@@ -60,6 +60,17 @@ Automated tests cover the app's side (`e2e/auth.spec.ts`); these need real accou
 - [ ] Existing email/password account, then Google with the same verified Gmail address: the same account and workspaces (Supabase links verified emails).
 - [ ] Cancel on the provider's consent screen: back on SignalForge with "… sign-in was cancelled".
 
+### Serper for Web and News (optional, 2026-10-22)
+
+With `SERPER_API_KEY` set, **Web (Google Search)** and **News (Google News)** search go through Serper instead of API Direct, using the same budgets, ledger and deduplication (`provider = 'serper'`).
+
+| Platform | Serper | API Direct |
+|---|---|---|
+| Web | 10 results, 1 credit ≈ $0.001 | $0.004 per page |
+| News | 100 articles, 2 credits ≈ $0.002 | $0.008 |
+
+$0.001 per credit is the entry pack ($50 for 50,000); bigger packs are cheaper. Test with `node scripts/serper-live-test.ts`. Set the key in Vercel too.
+
 ### TikHub (optional second paid provider, 2026-10-22)
 
 `TIKHUB_API_KEY` + `TIKHUB_PLATFORMS=x,tiktok` makes X and TikTok **search** go through TikHub instead of API Direct. Comment fetching and every other platform stay on API Direct. Remove a platform from the list to switch it back. Calls use the same budget reservations, plan allowances and ledger as API Direct (`provider = 'tikhub'`).

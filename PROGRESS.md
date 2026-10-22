@@ -16,6 +16,24 @@ Legend: ✅ verified by an automated check that ran · 🟡 written, not yet exe
 
 Test users created for the walk-through were removed afterwards via the app's own deletion path.
 
+## Paid-source cost cuts (2026-10-22)
+
+Measured on the ledger: **30% of API Direct spend ($0.52 of $1.72) bought calls that returned nothing.** Fixes:
+
+- ✅ **Pages:** a page-billed request asks for one page when the search's results are mostly unrelated (fewer than 2 relevant per page, `relevantShare`).
+- ✅ **History:** the first job of a history task buys at most 2 pages (Facebook history had bought 7 pages for 5 results).
+- ✅ **Escalation:** skipped when under 25% of the first pages mention a keyword (TikTok's fuzzy "tonguing" results).
+- ✅ **Permanent failures:** no longer retried *sooner*. "Not found" (e.g. no Trustpilot page) waits a week; a rejected search waits a day; history tasks stop at once.
+  - Trustpilot had been re-bought 16 times for a business that isn't on Trustpilot.
+- ✅ **Busy-but-irrelevant searches:** a paid search whose results are under 10% relevant no longer forces hourly checks to avoid overflow.
+- ✅ **Serper for Web + News** (`src/lib/sources/serper/`):
+  - migration `20261022000002` (applied to dev) registers serper prices;
+  - paid requests now support POST;
+  - 🟡 not yet run live: waiting for `SERPER_API_KEY`.
+- **Estimate on the same calls as so far:** $1.72 → ~$0.76 (−56%), with TikHub (X, TikTok) and Serper (Web, News).
+
+**Tests:** unit 299, DB 414.
+
 ## TikHub as a second paid provider for X and TikTok (2026-10-22)
 
 - ✅ **Live probe** (`scripts/tikhub-probe.ts`; probe + comparisons ≈ $0.04 of the $5 test balance):

@@ -12,6 +12,7 @@ export function getAdapters(): Record<PublicSourceId, SourceAdapter> {
     apiDirectKey: env.API_DIRECT_API_KEY,
     tikhubKey: env.TIKHUB_API_KEY,
     tikhubPlatforms: env.TIKHUB_PLATFORMS,
+    serperKey: env.SERPER_API_KEY,
     discordBotToken: env.DISCORD_BOT_TOKEN,
   });
 }

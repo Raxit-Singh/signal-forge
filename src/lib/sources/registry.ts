@@ -1,5 +1,6 @@
 import { createApiDirectAdapters } from "./apidirect/adapters.ts";
 import { tikhubPlatforms, withTikhubSearch } from "./tikhub/adapters.ts";
+import { withSerperSearch } from "./serper/serper.ts";
 import { createGithubAdapter } from "./github.ts";
 import { hackerNews } from "./hackernews.ts";
 import { appStore, bluesky, dev } from "./official.ts";
@@ -19,6 +20,8 @@ export interface SourceKeys {
   tikhubKey?: string;
   /** Comma-separated paid platforms searched through TikHub instead of API Direct (x, tiktok, instagram). */
   tikhubPlatforms?: string;
+  /** Serper key: Web and News search go through Serper instead of API Direct. */
+  serperKey?: string;
 }
 
 /** Milestone 2 sources (one stream, "default"; checkpoints always advance and gaps are recorded). */
@@ -40,7 +43,10 @@ export function createAdapters(keys: SourceKeys): Record<PublicSourceId, SourceA
     app_store: appStore,
     google_play: createGooglePlayAdapter(),
     discord: createDiscordAdapter(keys.discordBotToken || undefined),
-    ...withTikhubSearch(createApiDirectAdapters(keys.apiDirectKey || undefined), keys.tikhubKey || undefined, tikhubPlatforms(keys.tikhubPlatforms)),
+    ...withSerperSearch(
+      withTikhubSearch(createApiDirectAdapters(keys.apiDirectKey || undefined), keys.tikhubKey || undefined, tikhubPlatforms(keys.tikhubPlatforms)),
+      keys.serperKey || undefined,
+    ),
   };
 }
 

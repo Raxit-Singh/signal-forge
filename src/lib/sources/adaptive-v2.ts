@@ -22,7 +22,7 @@
 // the paid budget still apply afterwards, and when they prevent a brand-safe
 // interval the risk is reported, not hidden.
 
-import { mean, profileFactor, safeIntervalMinutes, uncertainty, upperRate, type GroupEstimate } from "./arrival.ts";
+import { mean, profileFactor, relevantShare, safeIntervalMinutes, uncertainty, upperRate, type GroupEstimate } from "./arrival.ts";
 import { formatInterval, INTERVAL_STEPS, MAX_INTERVAL, SLOW_DOWN_AFTER_MS, snapUp, step, type Confidence } from "./adaptive.ts";
 
 /** Expected new relevant mentions per check we aim for (freshness), before the importance tilt. */
@@ -33,6 +33,11 @@ export const LEARNING_MIN_OBSERVATIONS = 3;
 export const LEARNING_MIN_EXPOSURE_HOURS = 48;
 /** Continuation jobs a resumable source may chain to catch up one overflowing window. */
 export const CONTINUATIONS_PER_GAP = 5;
+/**
+ * On paid platforms, a search whose results are mostly unrelated (relevant share below this)
+ * doesn't speed up checks to avoid overflow: each extra check would mostly buy unrelated posts.
+ */
+export const PAID_OVERFLOW_MIN_RELEVANT_SHARE = 0.1;
 
 export type CollectionRisk = "none" | "watch" | "at_risk" | "unavoidable";
 
@@ -153,8 +158,15 @@ export function decidePlatformIntervalV2(i: PlatformModelInput): PlatformModelDe
   // Brand safety: searches that run every check bound the platform interval; rotating searches
   // at risk get their own earlier turns (see applySchedules), so they don't slow everything down.
   const groups = i.groups.map((g) => groupSafety(g, i.profile, i.now, horizon));
-  const everyCheck = groups.filter((_, k) => i.groups[k]!.turns <= 1).map((g) => g.safeMinutes).filter((m): m is number => m !== null);
+  const lowYield = (k: number) => {
+    const share = relevantShare(i.groups[k]!.estimate);
+    return i.paid && share !== null && share < PAID_OVERFLOW_MIN_RELEVANT_SHARE;
+  };
+  const everyCheck = groups.filter((_, k) => i.groups[k]!.turns <= 1 && !lowYield(k)).map((g) => g.safeMinutes).filter((m): m is number => m !== null);
   const safe = everyCheck.length ? Math.min(...everyCheck) : null;
+  if (i.groups.some((_, k) => i.groups[k]!.turns <= 1 && lowYield(k) && groups[k]!.safeMinutes !== null)) {
+    reasons.push("Most results here aren't about the product, so busy results don't make it check more often (that would mostly buy unrelated posts)");
+  }
 
   let target: number;
   if (learning) {

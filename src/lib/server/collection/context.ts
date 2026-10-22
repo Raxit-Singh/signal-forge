@@ -85,7 +85,7 @@ export function createSourceContext(
     const signals = [AbortSignal.timeout(REQUEST_TIMEOUT_MS)];
     if (req.signal) signals.push(req.signal);
     try {
-      const res = await fetch(req.url, { headers: req.headers, signal: AbortSignal.any(signals), cache: "no-store" });
+      const res = await fetch(req.url, { method: req.method ?? "GET", body: req.body, headers: req.headers, signal: AbortSignal.any(signals), cache: "no-store" });
       usage.push({ provider, endpoint: req.endpoint, units: cost, status_code: res.status });
       return res;
     } catch (e) {

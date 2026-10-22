@@ -159,17 +159,29 @@ test("importance tilts freshness: a dominant platform is checked sooner than a m
 });
 
 test("brand-safe pacing: a high-volume search is checked before it can overflow one check", () => {
-  // TikTok: 250 results per check (10 pages × 25), no resume. A broad keyword: 120 results/h,
-  // few of them relevant — freshness alone would allow long intervals, overflow risk doesn't.
+  // TikTok: 250 results per check (10 pages × 25), no resume. A keyword with 120 results/h,
+  // 15% of them relevant: overflow would lose real mentions, so it's checked hourly.
   const p = collectionProfile("tiktok", "videos");
-  const g = model(120, { estimate: learned(120, 14, 0.005), capacity: planningCapacity(p).capacity, resumable: false });
+  const g = model(120, { estimate: learned(120, 14, 0.15), capacity: planningCapacity(p).capacity, resumable: false });
   const d = decidePlatformIntervalV2(input([g], { paid: true, importanceShare: 0.01 }));
   assert.ok(d.safeMinutes! < 120, String(d.safeMinutes));
   assert.equal(d.interval, 60);
-  assert.ok(d.reasons.some((r) => r.includes("overflow")));
   // At a 6 h plan floor the same search can't be made safe: reported as unavoidable, not hidden.
   const floored = decidePlatformIntervalV2(input([g], { paid: true, planMinMinutes: 360 }));
   assert.equal(floored.risk, "unavoidable");
+});
+
+test("a paid search full of unrelated results doesn't buy hourly checks to avoid overflow", () => {
+  // Fuzzy search: 120 results/h but 0.005 relevant/h. Overflow would only lose unrelated posts.
+  const p = collectionProfile("tiktok", "videos");
+  const g = model(120, { estimate: learned(120, 14, 0.005), capacity: planningCapacity(p).capacity, resumable: false });
+  const d = decidePlatformIntervalV2(input([g], { paid: true, importanceShare: 0.01 }));
+  assert.equal(d.safeMinutes, null);
+  assert.ok(d.interval >= 240, String(d.interval)); // the exploration interval, not hourly
+  assert.ok(d.reasons.some((r) => r.includes("aren't about the product")));
+  // Free platforms keep brand-safe pacing (checks cost nothing).
+  const free = decidePlatformIntervalV2(input([g], { paid: false, importanceShare: 0.01 }));
+  assert.ok(free.safeMinutes! < 120);
 });
 
 test("budget pacing never lengthens a platform past its brand-safe interval", () => {
@@ -310,4 +322,22 @@ test("backfill planning: one task per search, depth-limited, paid tasks wait whi
   assert.equal(runStatus([{ status: "completed" }, { status: "paused" }]), "paused");
   assert.equal(runStatus([{ status: "completed" }]), "completed");
   assert.equal(runStatus([{ status: "unavailable" }]), "unavailable");
+});
+
+test("cost rules: one page when pages are mostly unrelated; no escalation on off-topic pages; permanent failures back off", async () => {
+  const { keywordHitShare, MIN_KEYWORD_SHARE_TO_ESCALATE } = await import("./arrival.ts");
+  const { failureRetry } = await import("./retry.ts");
+  const { SourceError } = await import("./errors.ts");
+  const base = { perPage: 25, maxPages: 10, billing: "pages" as const, learning: false };
+  assert.equal(pagesToRequest({ ...base, ratePerHour: 20, windowMinutes: 180 }), 4);
+  assert.equal(pagesToRequest({ ...base, ratePerHour: 20, windowMinutes: 180, relevantShare: 0.02 }), 1, "0.5 relevant per page: one page");
+  assert.equal(pagesToRequest({ ...base, ratePerHour: 20, windowMinutes: 180, relevantShare: 0.2 }), 4, "5 relevant per page: worth paging");
+  assert.ok(keywordHitShare(["Beginner tonguing exercise", "BTS Dynamite", "toing order was late"], ["toing"]) < MIN_KEYWORD_SHARE_TO_ESCALATE + 0.1);
+  assert.equal(keywordHitShare(["Gears of War: E-Day trailer", "gears of war e day leak"], ["Gears of War: E-Day"]), 1);
+  const now = new Date("2026-10-22T12:00:00Z");
+  const notFound = failureRetry(new SourceError("bad_request", "not found", { status: 404 }), 60, 3, "Trustpilot", now);
+  assert.equal(notFound.next.getTime() - now.getTime(), 7 * 24 * 3_600_000);
+  assert.match(notFound.reason, /Not found on Trustpilot/);
+  assert.ok(failureRetry(new SourceError("bad_request", "bad"), 60, 1, "X", now).next.getTime() - now.getTime() >= 24 * 3_600_000);
+  assert.ok(failureRetry(new SourceError("transient", "x"), 360, 2, "X", now).next.getTime() - now.getTime() < 360 * 60_000, "transient: sooner");
 });
