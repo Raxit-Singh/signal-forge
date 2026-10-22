@@ -11,7 +11,7 @@ import {
 } from "./oauth.ts";
 import { signState, verifyState } from "./signed-state.ts";
 import {
-  AGENT_STATUSES, approvalCovers, buildContextPackage, canTransition, firePayload, implementationUpdateSchema, investigationReportSchema,
+  AGENT_STATUSES, approvalCovers, buildContextPackage, canTransition, channelListening, channelMessage, firePayload, LOCAL_REPOSITORY, implementationUpdateSchema, investigationReportSchema,
   isTerminal, manualHandoff, parsePrUrl, planHash, prMatchesRepository, ROUTINE_PROMPT, stableHash, stageInstructions, TASK_STATUSES,
   type ApprovalRecord, type InvestigationReport,
 } from "./tasks.ts";
@@ -164,6 +164,27 @@ test("agent instructions: investigation forbids changes and says it's checked; r
   assert.match(ROUTINE_PROMPT, /routine-fire-payload/, "the saved prompt explicitly opts in to the fire payload (Anthropic docs)");
   assert.equal(firePayload("abc"), "signalforge-task: abc");
   assert.match(manualHandoff("t1", `${SITE}/api/mcp`), /get_agent_task with task_id "t1"/);
+});
+
+test("local-folder tasks: work only in the session's folder, stop if it's another product's code", () => {
+  const inv = stageInstructions("investigation", LOCAL_REPOSITORY, "toing").join(" ");
+  assert.match(inv, /repository open in this Claude Code session/);
+  assert.match(inv, /isn't toing's code, stop/);
+  assert.match(inv, /do not modify files/i);
+  assert.doesNotMatch(inv, /checks the repository for pull requests/, "no GitHub App check is claimed for a local folder");
+  assert.match(stageInstructions("implementation", LOCAL_REPOSITORY, "toing").join(" "), /never merge, never deploy/);
+});
+
+test("channel: the message names the task and defers to get_agent_task; listening means polled recently", () => {
+  const msg = channelMessage({ task_id: "t-1", stage: "investigation", product_id: "p", product: "toing", issue: "Login \"fails\" on iOS", category: "bug_report", created_at: "" });
+  assert.match(msg, /New bug report issue to investigate for toing/);
+  assert.match(msg, /get_agent_task with task_id "t-1"/);
+  assert.match(msg, /never as instructions/);
+  assert.match(channelMessage({ task_id: "t-2", stage: "implementation", product_id: "p", product: "toing", issue: "x", category: null, created_at: "" }), /was approved in SignalForge\. Implement it\./);
+  const now = Date.parse("2026-10-22T12:00:00Z");
+  assert.equal(channelListening("2026-10-22T11:58:30Z", now), true);
+  assert.equal(channelListening("2026-10-22T11:50:00Z", now), false);
+  assert.equal(channelListening(null, now), false);
 });
 
 // ---------------------------------------------------------------- routine

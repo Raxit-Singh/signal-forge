@@ -3,7 +3,7 @@ import { ExternalLink } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getWorkspaces, hasRole } from "@/lib/server/session";
-import { handoffFor } from "@/lib/server/agent/tasks";
+import { channelStatus, handoffFor } from "@/lib/server/agent/tasks";
 import { STATUS_LABEL, isTerminal, type InvestigationReport, type TaskStatus } from "@/lib/agent/tasks";
 import { Badge } from "@/components/ui/primitives";
 import { ActionForm } from "@/components/ai/action-form";
@@ -68,8 +68,11 @@ export async function AgentIssueControls({ workspaceId, clusterId }: { workspace
   const impl = inv ? tasks.find((t) => t.stage === "implementation" && t.parent_task_id === inv.id) : undefined;
   const canStartNew = !inv || ["failed", "cancelled", "pr_created"].includes(inv.status);
   // Only whether a routine exists (members can't read the connection row itself).
-  const { count: routines } = await createAdminClient().from("agent_connections").select("workspace_id", { count: "exact", head: true })
-    .eq("workspace_id", workspaceId).neq("status", "revoked");
+  const admin = createAdminClient();
+  const [{ count: routines }, channel] = await Promise.all([
+    admin.from("agent_connections").select("workspace_id", { count: "exact", head: true }).eq("workspace_id", workspaceId).neq("status", "revoked"),
+    channelStatus(admin, workspaceId),
+  ]);
 
   return (
     <div className="grid gap-2 border-t pt-2" data-testid="agent-controls">
@@ -81,17 +84,26 @@ export async function AgentIssueControls({ workspaceId, clusterId }: { workspace
       {canStartNew && <InvestigateForm workspaceId={workspaceId} clusterId={clusterId} routine={(routines ?? 0) > 0} />}
       {inv && (inv.status === "awaiting_connection" || inv.status === "awaiting_repository") && (
         <p className="text-xs text-muted-foreground">
-          {inv.status === "awaiting_connection" ? "Connect Claude to SignalForge first" : "Link this product's GitHub repository first"} in{" "}
+          {inv.status === "awaiting_connection" ? "Connect Claude to SignalForge first" : "Link this product's GitHub repository first (or remove the Claude Code routine to work in your own Claude Code folder)"} in{" "}
           <Link href="/settings/agent" className="underline underline-offset-2">Settings → Claude</Link>, then start again.
         </p>
       )}
       {[inv, impl].filter((t): t is Task => !!t && !isTerminal(t.status) && t.execution === "manual" && ["not_started", "investigating", "implementing"].includes(t.status)).map((t) => (
-        <div key={t.id} className="grid gap-1 text-xs">
-          <p className="text-muted-foreground">
-            No Claude Code routine is connected, so start this {t.stage} yourself: open Claude Code with the SignalForge connector and give it this request.
-          </p>
-          <CopyBlock label="Request for Claude Code" text={handoffFor(t.id)} />
-        </div>
+        channel.listening && t.status === "not_started" ? (
+          <div key={t.id} className="grid gap-1 text-xs" data-testid="agent-channel-sent">
+            <p className="text-muted-foreground">Sent to your Claude Code session. It starts within a few seconds, and the result appears here.</p>
+            <details><summary className="cursor-pointer text-muted-foreground">Didn&apos;t arrive?</summary><CopyBlock label="Request for Claude Code" text={handoffFor(t.id)} /></details>
+          </div>
+        ) : (
+          <div key={t.id} className="grid gap-1 text-xs">
+            <p className="text-muted-foreground">
+              {t.status === "not_started"
+                ? <>No Claude Code session is listening for SignalForge (see <Link href="/settings/agent#channel" className="underline underline-offset-2">Settings → Claude</Link>), so start this {t.stage} yourself: give Claude Code this request.</>
+                : <>Claude is working on this {t.stage}. To run it again by hand, give Claude Code this request.</>}
+            </p>
+            <CopyBlock label="Request for Claude Code" text={handoffFor(t.id)} />
+          </div>
+        )
       ))}
       {[inv, impl].filter((t): t is Task => !!t?.session_url).map((t) => (
         <a key={t.id} href={t.session_url!} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 text-xs underline underline-offset-2">

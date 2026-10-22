@@ -4,7 +4,7 @@ import { ExternalLink } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getActiveProduct, hasRole, requireWorkspace } from "@/lib/server/session";
-import { githubAppConfig, readiness } from "@/lib/server/agent/tasks";
+import { channelStatus, githubAppConfig, readiness } from "@/lib/server/agent/tasks";
 import { CLAUDE_STATE_LABEL, claudeState, publiclyReachable, type ClaudeState } from "@/lib/agent/connection-state";
 import { CLAUDE_CONNECTORS_URL, ConnectClaude } from "@/components/agent/connect-claude";
 import { site } from "@/lib/server/agent/http";
@@ -48,7 +48,7 @@ export default async function AgentSettings({ searchParams }: { searchParams: Pr
   const supabase = await createClient();
   const isAdmin = hasRole(workspace.role, "admin");
   const sp = await searchParams;
-  const r = await readiness(admin, workspace.id, product?.id ?? null);
+  const [r, channel] = await Promise.all([readiness(admin, workspace.id, product?.id ?? null), channelStatus(admin, workspace.id)]);
   const mcp = resourceUrl(site());
   const app = githubAppConfig();
   const publicSite = publiclyReachable(site());
@@ -125,6 +125,43 @@ export default async function AgentSettings({ searchParams }: { searchParams: Pr
                 <li>Claude apps connect from Anthropic&apos;s cloud, so SignalForge must be at a public HTTPS address{publicSite ? " (it is)" : " (this server isn't)"}.</li>
               </ul>
             </div>
+          </details>
+        </CardContent>
+      </Card>
+
+      <Card id="channel" data-testid="channel-card">
+        <CardHeader>
+          <CardTitle className="flex flex-wrap items-center gap-2">
+            Send issues to Claude Code <span className="text-xs font-normal text-muted-foreground">research preview</span>
+            <Badge tone={channel.listening ? "positive" : channel.signedIn ? "warning" : "neutral"} data-testid="channel-state">
+              {channel.listening ? "Listening" : channel.signedIn ? "Not running" : "Not set up"}
+            </Badge>
+          </CardTitle>
+          <CardDescription>
+            “Investigate with Claude” goes straight into the Claude Code session you already have open on your code, so Claude
+            starts with everything it already knows about the project. It works in that session&apos;s folder; no GitHub setup needed.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 text-[13px]">
+          {channel.listening && channel.lastUsedAt && <p className="text-xs text-muted-foreground">A Claude Code session checked for tasks at {at(channel.lastUsedAt)}.</p>}
+          {!channel.listening && channel.signedIn && <p className="text-xs text-muted-foreground">This computer is signed in, but no Claude Code session with the channel is running. Start one with step 2.</p>}
+          <details className="rounded-md border p-3 text-xs" open={!channel.signedIn}>
+            <summary className="cursor-pointer text-[13px] font-medium">How to set it up</summary>
+            <ol className="mt-3 grid list-decimal gap-3 pl-5 text-muted-foreground">
+              <li className="grid gap-1.5">
+                <span>Once per computer, in your project folder (the SignalForge channel is in <code className="font-mono">channel/</code>; copy it and <code className="font-mono">.mcp.json</code> into other projects). Your browser opens SignalForge to approve access:</span>
+                <CopyBlock label="Sign in" text={`node channel/signalforge-channel.mjs login${site() === "https://signal-forge-phi-six.vercel.app" ? "" : ` --site ${site()}`}`} />
+              </li>
+              <li className="grid gap-1.5">
+                <span>Start Claude Code with the channel (Claude Code v2.1.80 or newer; confirm the development-channel prompt):</span>
+                <CopyBlock label="Start Claude Code" text="claude --dangerously-load-development-channels server:signalforge" />
+              </li>
+              <li>Click <span className="font-medium text-foreground">Investigate with Claude</span> on an issue. To receive only one product&apos;s issues in this folder, set <code className="font-mono">SIGNALFORGE_PRODUCT</code> in <code className="font-mono">.mcp.json</code>.</li>
+            </ol>
+            <p className="mt-3 text-muted-foreground">
+              Claude Code runs with your own permissions there: investigations are told not to change code, and implementations start only after
+              you approve the plan here. Team and Enterprise organizations must enable channels first.
+            </p>
           </details>
         </CardContent>
       </Card>

@@ -2,8 +2,8 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   approvalCovers, buildContextPackage, canTransition, firePayload, implementationUpdateSchema, investigationReportSchema, isTerminal,
-  manualHandoff, planHash, prMatchesRepository, parsePrUrl, stableHash, stageInstructions,
-  type ImplementationUpdate, type InvestigationReport, type TaskStage, type TaskStatus,
+  CHANNEL_CLIENT_NAME, channelListening, LOCAL_REPOSITORY, manualHandoff, planHash, prMatchesRepository, parsePrUrl, stableHash, stageInstructions,
+  type ImplementationUpdate, type QueuedTask, type InvestigationReport, type TaskStage, type TaskStatus,
 } from "@/lib/agent/tasks";
 import { fireRoutine } from "@/lib/agent/routine";
 import { getPullRequest, installationToken, pullRequestsSince } from "@/lib/agent/github-app";
@@ -104,6 +104,15 @@ type TaskRow = {
 };
 const TASK_COLS = "id, workspace_id, product_id, cluster_id, repository_id, execution, stage, status, context, report, plan_hash, parent_task_id, pr_url, session_url";
 
+/** The repository a task is bound to: the linked one, or the user's Claude Code folder for manual tasks. */
+async function taskRepository(admin: SupabaseClient, task: Pick<TaskRow, "repository_id" | "execution">) {
+  if (task.repository_id) {
+    const { data } = await admin.from("agent_repositories").select("full_name, default_branch, installation_id").eq("id", task.repository_id).maybeSingle();
+    if (data) return { fullName: data.full_name as string, defaultBranch: data.default_branch as string, installationId: data.installation_id as number, local: false };
+  }
+  return task.execution === "manual" ? { fullName: LOCAL_REPOSITORY, defaultBranch: null, installationId: null, local: true } : null;
+}
+
 async function loadTask(admin: SupabaseClient, taskId: string, workspaceId: string): Promise<TaskRow | null> {
   if (!/^[0-9a-f-]{36}$/i.test(taskId)) return null;
   const { data } = await admin.from("agent_tasks").select(TASK_COLS).eq("id", taskId).eq("workspace_id", workspaceId).maybeSingle();
@@ -159,7 +168,9 @@ export async function startInvestigation(admin: SupabaseClient, o: { workspaceId
   if (execution === "routine" && !o.acknowledged) {
     throw new AgentError("Confirm that you understand the routine runs with your Claude Code permissions before starting it.");
   }
-  const status: TaskStatus = !ready.mcp.authorized ? "awaiting_connection" : !ic.repositoryId ? "awaiting_repository" : "not_started";
+  // A routine runs in the cloud and needs a linked repository; a manual task runs in the user's
+  // own Claude Code session, whose folder is the repository when none is linked.
+  const status: TaskStatus = !ready.mcp.authorized ? "awaiting_connection" : !ic.repositoryId && execution === "routine" ? "awaiting_repository" : "not_started";
   const { data: task, error } = await admin.from("agent_tasks").insert({
     workspace_id: o.workspaceId, product_id: ic.productId, cluster_id: o.clusterId, repository_id: ic.repositoryId, execution,
     stage: "investigation", status, context: ic.context, context_hash: stableHash(ic.context), created_by: o.userId,
@@ -190,16 +201,16 @@ export async function approvePlan(admin: SupabaseClient, o: { workspaceId: strin
   if (task.status !== "awaiting_approval" || !task.report || !task.plan_hash) throw new AgentError("There is no plan waiting for approval.");
   if (task.plan_hash !== o.planHash) throw new AgentError("The plan changed since you opened it. Review it again.");
   if (task.report.recommendation === "do_not_implement") throw new AgentError("Claude recommended not implementing this; there is nothing to approve.");
-  const { data: repo } = task.repository_id ? await admin.from("agent_repositories").select("full_name").eq("id", task.repository_id).maybeSingle() : { data: null };
+  const repo = await taskRepository(admin, task);
   if (!repo) throw new AgentError("No repository is authorized for this product.");
   const environment = await environmentId(admin, o.workspaceId);
   const { error } = await admin.from("agent_approvals").insert({
-    workspace_id: o.workspaceId, investigation_task_id: task.id, cluster_id: task.cluster_id, repository_full_name: repo.full_name,
+    workspace_id: o.workspaceId, investigation_task_id: task.id, cluster_id: task.cluster_id, repository_full_name: repo.fullName,
     plan_hash: task.plan_hash, environment, approved_by: o.userId,
   });
   if (error) throw new AgentError("This plan already has an approval.");
   await setStatus(admin, task, "approved", {}, "user");
-  await audit(admin, o.workspaceId, o.userId, "agent.plan_approved", task.id, { plan_hash: task.plan_hash, repository: repo.full_name, environment });
+  await audit(admin, o.workspaceId, o.userId, "agent.plan_approved", task.id, { plan_hash: task.plan_hash, repository: repo.fullName, environment });
 }
 
 async function environmentId(admin: SupabaseClient, workspaceId: string) {
@@ -214,13 +225,13 @@ export async function startImplementation(admin: SupabaseClient, o: { workspaceI
   const { data: a } = await admin.from("agent_approvals").select("id, workspace_id, investigation_task_id, cluster_id, repository_full_name, plan_hash, environment, used_at, revoked_at")
     .eq("investigation_task_id", inv.id).is("revoked_at", null).maybeSingle();
   if (!a) throw new AgentError("No approval found.");
-  const { data: repo } = inv.repository_id ? await admin.from("agent_repositories").select("full_name").eq("id", inv.repository_id).maybeSingle() : { data: null };
+  const repo = await taskRepository(admin, inv);
   const environment = await environmentId(admin, o.workspaceId);
   const check = approvalCovers({
     workspaceId: a.workspace_id as string, investigationTaskId: a.investigation_task_id as string, clusterId: (a.cluster_id as string | null) ?? null,
     repositoryFullName: a.repository_full_name as string, planHash: a.plan_hash as string, environment: a.environment as string,
     usedAt: (a.used_at as string | null) ?? null, revokedAt: (a.revoked_at as string | null) ?? null,
-  }, { workspaceId: o.workspaceId, investigationTaskId: inv.id, clusterId: inv.cluster_id, repositoryFullName: (repo?.full_name as string | undefined) ?? "", planHash: inv.plan_hash ?? "", environment });
+  }, { workspaceId: o.workspaceId, investigationTaskId: inv.id, clusterId: inv.cluster_id, repositoryFullName: repo?.fullName ?? "", planHash: inv.plan_hash ?? "", environment });
   if (!check.ok) throw new AgentError(`The approval doesn't cover this: ${check.reason}`);
   const { data: claimed } = await admin.from("agent_approvals").update({ used_at: new Date().toISOString() }).eq("id", a.id).is("used_at", null).select("id");
   if (!claimed?.length) throw new AgentError("This approval was already used.");
@@ -266,8 +277,10 @@ export async function agentGetTask(admin: SupabaseClient, who: McpPrincipal, tas
   const task = await loadTask(admin, taskId, who.workspaceId);
   if (!task) throw new AgentError("No such task in this workspace.");
   if (isTerminal(task.status)) throw new AgentError(`This task is ${task.status}; do nothing further.`);
-  const { data: repo } = task.repository_id ? await admin.from("agent_repositories").select("full_name, default_branch").eq("id", task.repository_id).maybeSingle() : { data: null };
+  const repo = await taskRepository(admin, task);
   if (!repo) throw new AgentError("No repository is authorized for this task yet. Ask the user to connect one in SignalForge.");
+  const product = (task.context as { product?: { name?: string } }).product?.name;
+  const repository = repo.local ? "the repository open in this Claude Code session" : repo.fullName;
   if (task.stage === "investigation") {
     if (!["not_started", "awaiting_connection", "awaiting_repository", "investigating"].includes(task.status)) throw new AgentError("The investigation stage is over.");
     if (task.status !== "investigating") {
@@ -275,8 +288,8 @@ export async function agentGetTask(admin: SupabaseClient, who: McpPrincipal, tas
       await event(admin, task.workspace_id, task.id, "status:investigating", "agent", { from: task.status });
     }
     return {
-      task_id: task.id, stage: "investigation", code_changes_allowed: false, repository: repo.full_name, default_branch: repo.default_branch,
-      instructions: stageInstructions("investigation", repo.full_name as string), context: task.context,
+      task_id: task.id, stage: "investigation", code_changes_allowed: false, repository, default_branch: repo.defaultBranch,
+      instructions: stageInstructions("investigation", repo.fullName, product), context: task.context,
       report_with: "submit_investigation_report",
     };
   }
@@ -284,7 +297,7 @@ export async function agentGetTask(admin: SupabaseClient, who: McpPrincipal, tas
   const parent = task.parent_task_id ? await loadTask(admin, task.parent_task_id, who.workspaceId) : null;
   const approvalId = (task.context as { approval_id?: string }).approval_id;
   const { data: a } = approvalId ? await admin.from("agent_approvals").select("plan_hash, repository_full_name, revoked_at, used_at").eq("id", approvalId).eq("workspace_id", who.workspaceId).maybeSingle() : { data: null };
-  if (!parent || !a || a.revoked_at || !a.used_at || a.plan_hash !== parent.plan_hash || (a.repository_full_name as string).toLowerCase() !== (repo.full_name as string).toLowerCase()) {
+  if (!parent || !a || a.revoked_at || !a.used_at || a.plan_hash !== parent.plan_hash || (a.repository_full_name as string).toLowerCase() !== repo.fullName.toLowerCase()) {
     throw new AgentError("This implementation has no valid approval. Do not change any code.");
   }
   if (!["not_started", "implementing", "testing"].includes(task.status)) throw new AgentError("The implementation stage is over.");
@@ -293,8 +306,8 @@ export async function agentGetTask(admin: SupabaseClient, who: McpPrincipal, tas
     await event(admin, task.workspace_id, task.id, "status:implementing", "agent", { from: "not_started" });
   }
   return {
-    task_id: task.id, stage: "implementation", repository: repo.full_name, default_branch: repo.default_branch,
-    instructions: stageInstructions("implementation", repo.full_name as string),
+    task_id: task.id, stage: "implementation", repository, default_branch: repo.defaultBranch,
+    instructions: stageInstructions("implementation", repo.fullName, product),
     approved_plan: parent.report, context: { ...task.context, approved_plan: undefined, approval_id: undefined },
     report_with: "report_implementation_status",
   };
@@ -323,15 +336,16 @@ export async function agentReportImplementation(admin: SupabaseClient, who: McpP
   const parsed = implementationUpdateSchema.safeParse(update);
   if (!parsed.success) throw new AgentError(`The update doesn't match the required format: ${parsed.error.issues.slice(0, 3).map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
   const u: ImplementationUpdate = parsed.data;
-  const { data: repo } = await admin.from("agent_repositories").select("full_name, installation_id").eq("id", task.repository_id!).maybeSingle();
+  const repo = await taskRepository(admin, task);
   const patch: Record<string, unknown> = { result_summary: u.summary ?? null, branch: u.branch ?? null };
   if (u.status === "pr_created") {
-    if (!u.pull_request_url || !repo || !prMatchesRepository(u.pull_request_url, repo.full_name as string)) {
+    // A local-folder task has no linked repository to match or check: the URL is recorded as reported.
+    if (!u.pull_request_url || !repo || (!repo.local && !prMatchesRepository(u.pull_request_url, repo.fullName))) {
       throw new AgentError("A pull request URL in the approved repository is required.");
     }
     patch.pr_url = u.pull_request_url;
     patch.pr_number = parsePrUrl(u.pull_request_url)!.number;
-    patch.pr_state = await verifyPr(repo.installation_id as number, repo.full_name as string, patch.pr_number as number, u.branch ?? null);
+    patch.pr_state = repo.local ? "unverified" : await verifyPr(repo.installationId!, repo.fullName, patch.pr_number as number, u.branch ?? null);
     patch.completed_at = new Date().toISOString();
   }
   if (u.status === "failed") {
@@ -348,6 +362,36 @@ export async function agentReportImplementation(admin: SupabaseClient, who: McpP
     await admin.from("agent_tasks").update({ status: "pr_created", pr_url: patch.pr_url }).eq("id", task.parent_task_id).eq("status", "implementing");
   }
   return { accepted: true, pr_state: patch.pr_state ?? null };
+}
+
+/** Whether a SignalForge channel is signed in for the workspace, and listening right now (polled recently). */
+export async function channelStatus(admin: SupabaseClient, workspaceId: string): Promise<{ signedIn: boolean; listening: boolean; lastUsedAt: string | null }> {
+  const { data: grants } = await admin.from("oauth_grants").select("client_id, last_used_at").eq("workspace_id", workspaceId).is("revoked_at", null);
+  const ids = [...new Set((grants ?? []).map((g) => g.client_id as string))];
+  const { data: clients } = ids.length ? await admin.from("oauth_clients").select("client_id").in("client_id", ids).eq("client_name", CHANNEL_CLIENT_NAME) : { data: [] };
+  const channel = new Set((clients ?? []).map((c) => c.client_id as string));
+  const used = (grants ?? []).filter((g) => channel.has(g.client_id as string)).map((g) => g.last_used_at as string | null).filter((x): x is string => !!x).sort();
+  const lastUsedAt = used.at(-1) ?? null;
+  return { signedIn: (grants ?? []).some((g) => channel.has(g.client_id as string)), listening: channelListening(lastUsedAt), lastUsedAt };
+}
+
+/**
+ * Tasks waiting for the user's own Claude Code session (the SignalForge channel polls
+ * this): manual tasks not started yet (including ones queued before Claude was connected),
+ * oldest first, from the last day only.
+ */
+export async function agentQueue(admin: SupabaseClient, who: McpPrincipal): Promise<QueuedTask[]> {
+  const since = new Date(Date.now() - 86_400_000).toISOString();
+  const { data } = await admin.from("agent_tasks").select("id, stage, product_id, context, created_at")
+    .eq("workspace_id", who.workspaceId).eq("execution", "manual").in("status", ["not_started", "awaiting_connection"]).gte("created_at", since)
+    .order("created_at", { ascending: true }).limit(20);
+  return (data ?? []).map((t) => {
+    const c = t.context as { product?: { name?: string }; issue?: { title?: string; category?: string } };
+    return {
+      task_id: t.id as string, stage: t.stage as TaskStage, product_id: t.product_id as string, product: c.product?.name ?? "",
+      issue: c.issue?.title ?? "", category: c.issue?.category ?? null, created_at: t.created_at as string,
+    };
+  });
 }
 
 /**

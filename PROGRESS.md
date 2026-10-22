@@ -16,6 +16,30 @@ Legend: ✅ verified by an automated check that ran · 🟡 written, not yet exe
 
 Test users created for the walk-through were removed afterwards via the app's own deletion path.
 
+## Claude Code channel: issues go into your open session (2026-10-22)
+
+"Investigate with Claude" can now go straight into a Claude Code session that's already open on the code, using Claude Code [channels](https://code.claude.com/docs/en/channels) (research preview).
+
+- **Channel** (`channel/signalforge-channel.mjs`, `.mcp.json`):
+  - a local MCP server that Claude Code starts;
+  - `login` signs the computer in through SignalForge's existing OAuth (DCR + PKCE, loopback callback, client name "SignalForge channel (Claude Code)"). Tokens are kept in `~/.config/signalforge/channel.json` (0600) and refresh tokens rotate;
+  - it polls `GET /api/agent/queue` every 15 s and pushes each new task once as a `<channel>` event. `SIGNALFORGE_PRODUCT` limits it to one product;
+  - it proxies SignalForge's MCP tools, so the session needs no separate connector.
+- **Local-folder mode:** manual tasks no longer need a linked GitHub repository. The session's folder is the repository (`LOCAL_REPOSITORY`).
+  - Approvals are bound to it like a named repository.
+  - Claude is told to stop if the folder isn't the product's code.
+  - Pull requests are recorded as "not verified with GitHub".
+  - Routines (cloud) still need a linked repository.
+- **Queue:** `/api/agent/queue` uses the same bearer validation as `/api/mcp` and needs the `signalforge:agent` scope. It returns manual tasks that are `not_started` or `awaiting_connection` from the last 24 h, with the message text built server-side (`channelMessage`). The instructions themselves still come only from `get_agent_task`.
+- **UI:**
+  - Settings → Claude has a "Send issues to Claude Code" card: Listening / Not running / Not set up, with the two commands.
+  - On an issue: "Sent to your Claude Code session" while a channel is listening; otherwise the copy-paste request.
+- **Tests:**
+  - ✅ unit 302: local instructions, channel message, listening window.
+  - ✅ `npm run test:channel`: the real channel over stdio against a fake SignalForge (one delivery per task, product filter, token refresh and rotation, tool proxy).
+  - ✅ lint, typecheck, build.
+  - 🟡 Not yet run live: a real sign-in and a real Claude Code session. The e2e agent spec (routine path) was not re-run.
+
 ## Paid-source cost cuts (2026-10-22)
 
 Measured on the ledger: **30% of API Direct spend ($0.52 of $1.72) bought calls that returned nothing.** Fixes:

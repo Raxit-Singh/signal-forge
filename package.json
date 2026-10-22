@@ -21,7 +21,8 @@
     "dev:cron": "node scripts/dev-cron.mjs",
     "test:apidirect-live": "node scripts/apidirect-live-test.ts",
     "audit:keywords": "node scripts/keyword-audit.ts",
-    "auth:check": "node scripts/auth-config-check.ts"
+    "auth:check": "node scripts/auth-config-check.ts",
+    "test:channel": "node scripts/channel-selftest.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.30.0",

@@ -94,6 +94,6 @@ export const config = {
     // Skip static assets and the scheduler endpoint (authenticated by its own secret).
     // Also skipped: the MCP server, OAuth endpoints and discovery documents (bearer-token or
     // public; no browser session), and the development-only routine stand-in.
-    "/((?!_next/static|_next/image|favicon.ico|api/jobs|api/mcp|api/oauth|api/dev/mock-routine|api/dev/mock-github|api/stripe/webhook|api/email/unsubscribe|\\.well-known|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/jobs|api/mcp|api/agent/queue|api/oauth|api/dev/mock-routine|api/dev/mock-github|api/stripe/webhook|api/email/unsubscribe|\\.well-known|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml)$).*)",
   ],
 };
