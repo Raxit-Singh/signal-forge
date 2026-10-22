@@ -29,10 +29,14 @@ Measured on the ledger: **30% of API Direct spend ($0.52 of $1.72) bought calls 
 - ✅ **Serper for Web + News** (`src/lib/sources/serper/`):
   - migration `20261022000002` (applied to dev) registers serper prices;
   - paid requests now support POST;
-  - 🟡 not yet run live: waiting for `SERPER_API_KEY`.
+  - ✅ **live** (`scripts/serper-live-test.ts`, 2026-10-22):
+    - Web: 10/10 results mention "Gears of War" and 10/10 "toing" (1 credit each);
+    - News: 10/10 relevant for "Gears of War".
+  - Serper's free accounts reject quoted phrases, so a rejected query is retried without quotes.
+  - Free accounts get 10 articles per credit: each call settles the credits Serper reports (`serper_news.credits`, migration `20261022000003`).
 - **Estimate on the same calls as so far:** $1.72 → ~$0.76 (−56%), with TikHub (X, TikTok) and Serper (Web, News).
 
-**Tests:** unit 299, DB 414.
+**Tests:** unit 300, DB 415.
 
 ## TikHub as a second paid provider for X and TikTok (2026-10-22)
 

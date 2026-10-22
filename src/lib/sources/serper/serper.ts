@@ -1,6 +1,8 @@
 // Serper (google.serper.dev) for Web (Google Search) and News (Google News).
-// Paid per query in credits ($50 = 50,000 credits ⇒ $0.001 per credit at the entry
-// pack): up to 10 results cost 1 credit, 11–100 results cost 2. Replaces API
+// Paid in credits ($50 = 50,000 credits ⇒ $0.001 per credit at the entry pack): up to 10
+// results cost 1 credit, 11–100 results cost 2; each response reports the credits used and
+// that is what is settled. Free accounts return at most 10 news articles (1 credit) and
+// reject quoted phrases, so a rejected quoted query is retried without quotes. Replaces API
 // Direct's web ($0.004 per page) and news ($0.008 per request) searches when
 // SERPER_API_KEY is set; results are normalized exactly like API Direct's (same
 // ids, so a page found through either provider is stored once).
@@ -13,9 +15,9 @@ export const SERPER_BASE = "https://google.serper.dev";
 
 export const SERPER_ENDPOINTS = {
   /** 10 results (1 credit). */
-  web: { pricingKey: "serper_web.search", path: "/search", num: 10 },
-  /** 100 articles (2 credits): more articles per dollar than 10 for 1. */
-  news: { pricingKey: "serper_news.search", path: "/news", num: 100 },
+  web: { pricingKey: "serper_web.search", path: "/search", num: 10, credits: 1 },
+  /** Up to 100 articles (2 credits on paid accounts; free accounts return 10 for 1 credit). */
+  news: { pricingKey: "serper_news.credits", path: "/news", num: 100, credits: 2 },
 } as const;
 
 const HOUR = 3_600_000;
@@ -72,7 +74,7 @@ interface SerperNews { title?: string; link?: string; snippet?: string; date?: s
 
 /** One paid POST. Serper bills answered queries; errors are not charged. */
 async function serperPost<T>(
-  ctx: SourceContext, apiKey: string, ep: { pricingKey: string; path: string }, body: Record<string, unknown>,
+  ctx: SourceContext, apiKey: string, ep: { pricingKey: string; path: string; credits: number }, body: Record<string, unknown>,
   list: (d: T) => unknown[] | undefined, signal?: AbortSignal,
 ): Promise<{ data: T; ledgerId: string | null }> {
   const paid = await ctx.paidRequest({
@@ -82,7 +84,7 @@ async function serperPost<T>(
     headers: { "X-API-KEY": apiKey, "Content-Type": "application/json" },
     body: JSON.stringify(body),
     signal,
-    billing: { pricingKey: ep.pricingKey, units: 1, purpose: "search" },
+    billing: { pricingKey: ep.pricingKey, units: ep.credits, purpose: "search" },
   });
   const res = paid.response;
   let data: unknown = null;
@@ -93,7 +95,10 @@ async function serperPost<T>(
   }
   if (res.ok && data && typeof data === "object") {
     const items = list(data as T);
-    await paid.settle({ billedUnits: 1, results: Array.isArray(items) ? items.length : null });
+    // Serper reports the credits it charged; free accounts get 10 results for 1 credit even when more are asked for.
+    const credits = (data as { credits?: unknown }).credits;
+    const billed = typeof credits === "number" && credits >= 0 && credits <= 10 ? credits : ep.credits;
+    await paid.settle({ billedUnits: billed, results: Array.isArray(items) ? items.length : null });
     if (!Array.isArray(items) && items !== undefined) throw new SourceError("bad_request", `Serper ${ep.path}: unexpected response shape`);
     return { data: data as T, ledgerId: paid.ledgerId };
   }
@@ -112,12 +117,26 @@ const tag = (items: CandidateMention[], id: string | null) => {
   return items;
 };
 
+/** Serper's free accounts reject quoted phrases ("Query pattern not allowed for free accounts"). */
+const FREE_PATTERN = /not allowed for free accounts/i;
+const unquoted = (q: string) => q.replace(/"/g, "");
+
+/** Posts once; if a free account rejects the quoted query, retries it without quotes (the matcher still requires the phrase). */
+async function withFreeFallback<T>(run: (q: string) => Promise<T>, q: string): Promise<T> {
+  try {
+    return await run(q);
+  } catch (e) {
+    if (e instanceof SourceError && e.kind === "bad_request" && FREE_PATTERN.test(e.message) && q.includes('"')) return run(unquoted(q));
+    throw e;
+  }
+}
+
 export function createSerperSearch(apiKey: string): Pick<Record<PaidSourceId, SourceAdapter["searchMentions"]>, "web" | "news"> {
   return {
     async web(req, ctx) {
       const tbs = serperTimeFilter(req.window.until.getTime() - req.window.since.getTime());
-      const r = await serperPost<{ organic?: SerperOrganic[] }>(ctx, apiKey, SERPER_ENDPOINTS.web,
-        { q: queryOf(req), num: SERPER_ENDPOINTS.web.num, ...(tbs ? { tbs } : {}) }, (d) => d.organic ?? [], req.signal);
+      const r = await withFreeFallback((q) => serperPost<{ organic?: SerperOrganic[] }>(ctx, apiKey, SERPER_ENDPOINTS.web,
+        { q, num: SERPER_ENDPOINTS.web.num, ...(tbs ? { tbs } : {}) }, (d) => d.organic ?? [], req.signal), queryOf(req));
       const now = ctx.now();
       const items = (r.data.organic ?? [])
         .filter((o): o is SerperOrganic & { link: string } => typeof o.link === "string")
@@ -131,8 +150,8 @@ export function createSerperSearch(apiKey: string): Pick<Record<PaidSourceId, So
 
     async news(req, ctx) {
       const tbs = serperTimeFilter(req.window.until.getTime() - req.window.since.getTime());
-      const r = await serperPost<{ news?: SerperNews[] }>(ctx, apiKey, SERPER_ENDPOINTS.news,
-        { q: queryOf(req), num: SERPER_ENDPOINTS.news.num, ...(tbs ? { tbs } : {}) }, (d) => d.news ?? [], req.signal);
+      const r = await withFreeFallback((q) => serperPost<{ news?: SerperNews[] }>(ctx, apiKey, SERPER_ENDPOINTS.news,
+        { q, num: SERPER_ENDPOINTS.news.num, ...(tbs ? { tbs } : {}) }, (d) => d.news ?? [], req.signal), queryOf(req));
       const now = ctx.now();
       const list = r.data.news ?? [];
       const items = list
@@ -143,7 +162,8 @@ export function createSerperSearch(apiKey: string): Pick<Record<PaidSourceId, So
         })
         .filter((x): x is CandidateMention => x !== null)
         .filter((i) => i.publishedAt >= req.window.since && i.publishedAt <= req.window.until);
-      const saturated = list.length >= SERPER_ENDPOINTS.news.num;
+      // Free accounts cap news at 10 articles; a full page of either size means more may exist.
+      const saturated = list.length >= SERPER_ENDPOINTS.news.num || list.length === 10;
       return {
         items: tag(items, r.ledgerId), complete: !saturated, saturated, pagesRequested: 1,
         incompleteReason: saturated ? `News search returned its ${SERPER_ENDPOINTS.news.num}-article maximum; more articles may exist.` : undefined,

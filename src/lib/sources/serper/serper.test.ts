@@ -35,8 +35,8 @@ test("Serper dates and time filters", () => {
   assert.equal(serperError(400, "Not enough credits").kind, "budget");
 });
 
-test("News: POST with the key in a header, 100 articles for one billed query, window enforced, own site dropped", async () => {
-  const { ctx, calls } = ctxWith({ news: [
+test("News: POST with the key in a header, billed the credits Serper reports, window enforced, own site dropped", async () => {
+  const { ctx, calls } = ctxWith({ credits: 1, news: [
     { title: "Toing launches in Pune with ₹99 meals for students", link: "https://news.example/toing-pune", snippet: "Swiggy's toing…", date: "5 hours ago", source: "Example News" },
     { title: "An older story about toing expanding to Mumbai", link: "https://news.example/old", snippet: "", date: "Oct 1, 2026", source: "Example" },
     { title: "Toing official blog post", link: "https://toingit.com/blog", date: "1 hour ago" },
@@ -47,7 +47,8 @@ test("News: POST with the key in a header, 100 articles for one billed query, wi
   assert.equal(req.headers!["X-API-KEY"], "sk_test");
   assert.ok(!req.url.includes("sk_test"));
   assert.deepEqual(JSON.parse(req.body!), { q: "toing", num: 100, tbs: "qdr:w" });
-  assert.equal(req.billing.pricingKey, "serper_news.search");
+  assert.equal(req.billing.pricingKey, "serper_news.credits");
+  assert.equal(req.billing.units, 2, "reserved for the paid-account maximum");
   assert.equal(calls[0]!.outcome?.billedUnits, 1);
   assert.deepEqual(r.items.map((i) => i.sourceUrl), ["https://news.example/toing-pune"]);
   assert.equal(r.items[0]!.dataProvider, "serper");
@@ -62,4 +63,23 @@ test("Web: 10 results, estimated dates like API Direct, failed queries settle at
   const bad = ctxWith({ message: "Unauthorized" }, 401);
   await assert.rejects(createSerperSearch("x").web({ terms: ["toing"], window: WINDOW, maxPages: 1 }, bad.ctx), (e: Error & { kind?: string }) => e.kind === "auth");
   assert.equal(bad.calls[0]!.outcome?.billedUnits, 0);
+});
+
+test("free accounts: a rejected quoted query is retried without quotes", async () => {
+  const bodies: string[] = [];
+  const ctx: SourceContext = {
+    async request() { throw new Error("paid only"); },
+    async paidRequest(req) {
+      bodies.push(req.body!);
+      const ok = !req.body!.includes('\\"');
+      const body = ok ? { credits: 1, news: [] } : { message: "Query pattern not allowed for free accounts.", statusCode: 400 };
+      return { response: new Response(JSON.stringify(body), { status: ok ? 200 : 400 }), ledgerId: null, settle: async () => {} };
+    },
+    async cooldown() {},
+    now: () => NOW,
+  };
+  const r = await createSerperSearch("k").news({ terms: ["Gears of War"], window: WINDOW, maxPages: 1 }, ctx);
+  assert.equal(bodies.length, 2);
+  assert.equal(JSON.parse(bodies[1]!).q, "Gears of War");
+  assert.equal(r.items.length, 0);
 });
