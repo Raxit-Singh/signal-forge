@@ -738,8 +738,20 @@ select public.svc_reserve_api_spend('reddit', 'reddit.posts', 1, 'search',
   jsonb_build_array(jsonb_build_object('workspace_id', (select v from ids where k = 'ws_a'), 'product_id', (select v from ids where k = 'p_a'))));
 select t.ok((select status from public.api_cost_ledger where id = (select (r ->> 'ledger_id')::uuid from rv where k = 'shared')) = 'unknown',
   'reservations abandoned by crashed workers become unknown (still counted)');
-select t.ok((select count(*) from public.provider_pricing) = 18 and (select price_usd from private.current_price('x.posts')) = 0.006,
+select t.ok((select count(*) from public.provider_pricing where provider = 'apidirect') = 18 and (select price_usd from private.current_price('x.posts')) = 0.006,
   'pricing registry seeded from the verified price list');
+select t.ok((select count(*) from public.provider_pricing where provider = 'tikhub') = 3 and (select price_usd from private.current_price('tikhub_x.search')) = 0.001
+  and (select price_usd from private.current_price('tikhub_instagram.reels')) = 0.002,
+  'TikHub prices are registered per request');
+create temp table th as select public.svc_reserve_api_spend('x', 'tikhub_x.search', 1, 'search',
+  jsonb_build_array(jsonb_build_object('workspace_id', (select v from ids where k = 'ws_a'), 'product_id', (select v from ids where k = 'p_a')))) as r;
+select t.ok(coalesce((select r ->> 'reason' from th), 'ok') <> 'unpriced'
+  and ((select (r ->> 'ok')::boolean from th) = false
+       or exists (select 1 from public.api_cost_ledger where provider = 'tikhub' and pricing_key = 'tikhub_x.search' and estimated_usd = 0.001)),
+  'a TikHub call is priced and reserved through the same budgets, recorded under its own provider');
+select t.ok((public.svc_reserve_api_spend('reddit', 'tikhub_x.search', 1, 'search',
+  jsonb_build_array(jsonb_build_object('workspace_id', (select v from ids where k = 'ws_a'), 'product_id', (select v from ids where k = 'p_a')))) ->> 'reason') = 'unpriced',
+  'a TikHub price cannot be used for another platform');
 reset role;
 
 -- Launch boosts: admins only, paid boosts need explicit authorization, isolated per workspace.

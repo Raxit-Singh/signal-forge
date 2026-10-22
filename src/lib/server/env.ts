@@ -14,6 +14,10 @@ const serverSchema = z.object({
   // Paid social data (API Direct). Collection also needs PAID_SOURCES_ENABLED=true
   // and an operator-set global budget row (api_budgets, scope 'global').
   API_DIRECT_API_KEY: z.string().optional(),
+  // TikHub (paid, per request): searches the platforms listed in TIKHUB_PLATFORMS
+  // (any of x, tiktok, instagram) instead of API Direct. Unset = API Direct only.
+  TIKHUB_API_KEY: z.string().optional(),
+  TIKHUB_PLATFORMS: z.string().optional(),
   PAID_SOURCES_ENABLED: z.enum(["true", "false"]).default("false"),
   // SignalForge Intelligence (SYSTEM A; paid by SignalForge). SERVER ONLY. Also needs an
   // operator-set row in ai_global_budget. Customers never supply AI keys for this.

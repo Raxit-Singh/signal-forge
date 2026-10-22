@@ -18,7 +18,7 @@ export type CollectionMethod =
   | "keyword_search" | "comment_search" | "comment_expansion" | "reply_expansion" | "quote_expansion" | "review_feed" | "tag_feed";
 /** What a stored link opens. */
 export type LinkTarget = "item" | "thread" | "shared_content" | "listing";
-export type DataProvider = "official" | "apidirect";
+export type DataProvider = "official" | "apidirect" | "tikhub";
 export type SpendPurpose =
   | "search" | "comment_search" | "comment_expansion" | "reply_expansion" | "quote_expansion" | "review_fetch" | "audit" | "live_test";
 

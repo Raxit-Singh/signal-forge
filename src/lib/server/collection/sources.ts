@@ -10,6 +10,8 @@ export function getAdapters(): Record<PublicSourceId, SourceAdapter> {
     stackExchangeKey: env.STACKEXCHANGE_KEY,
     youtubeApiKey: env.YOUTUBE_API_KEY,
     apiDirectKey: env.API_DIRECT_API_KEY,
+    tikhubKey: env.TIKHUB_API_KEY,
+    tikhubPlatforms: env.TIKHUB_PLATFORMS,
     discordBotToken: env.DISCORD_BOT_TOKEN,
   });
 }

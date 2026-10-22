@@ -60,6 +60,31 @@ Automated tests cover the app's side (`e2e/auth.spec.ts`); these need real accou
 - [ ] Existing email/password account, then Google with the same verified Gmail address: the same account and workspaces (Supabase links verified emails).
 - [ ] Cancel on the provider's consent screen: back on SignalForge with "… sign-in was cancelled".
 
+### TikHub (optional second paid provider, 2026-10-22)
+
+`TIKHUB_API_KEY` + `TIKHUB_PLATFORMS=x,tiktok` makes X and TikTok **search** go through TikHub instead of API Direct. Comment fetching and every other platform stay on API Direct. Remove a platform from the list to switch it back. Calls use the same budget reservations, plan allowances and ledger as API Direct (`provider = 'tikhub'`).
+
+**Prices** (TikHub's own list, verified 2026-10-22):
+
+| Endpoint | Price per successful request | Volume discount |
+|---|---|---|
+| X search | $0.001 | none |
+| TikTok search | $0.001 | none |
+| Instagram reels | $0.002 | none |
+
+Failed requests aren't charged. A TikHub search returns ~17–20 results per call, against API Direct's $0.006 per page for X/TikTok.
+
+**Live check (`node scripts/tikhub-live-test.ts`):**
+
+| Platform | Result |
+|---|---|
+| X | relevance as good as API Direct; the window is applied with `since:`/`until:` operators |
+| TikTok | good, filtered by publish-time presets (relevance-ranked) |
+| Instagram | relevance-ranked with no date filter, nothing recent found; kept on API Direct |
+| Reddit | TikHub's only Reddit search failed for every query, so Reddit isn't offered |
+
+Set both variables in Vercel too.
+
 ## 3. Environment variables
 
 Copy `.env.example` to `.env.local` (and set the same in your host's dashboard):

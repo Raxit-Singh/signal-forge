@@ -16,3 +16,6 @@ blob-report/
 
 # API Direct live-test output (raw third-party responses)
 .apidirect-live/
+
+# TikHub live-probe output (raw third-party responses)
+.tikhub-live/

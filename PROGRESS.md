@@ -16,6 +16,33 @@ Legend: ✅ verified by an automated check that ran · 🟡 written, not yet exe
 
 Test users created for the walk-through were removed afterwards via the app's own deletion path.
 
+## TikHub as a second paid provider for X and TikTok (2026-10-22)
+
+- ✅ **Live probe** (`scripts/tikhub-probe.ts`; probe + comparisons ≈ $0.04 of the $5 test balance):
+  - key works; listed prices confirmed against the balance;
+  - failed calls cost nothing;
+  - Reddit search is broken on TikHub;
+  - X ignores "Latest" sorting but honours `since:`/`until:`;
+  - TikTok and Instagram ids match API Direct's.
+- ✅ **Same search on both providers** (Gears of War, 7 days):
+
+  | Platform | TikHub | API Direct |
+  |---|---|---|
+  | X | 16/17 relevant ($0.001) | 18/20 ($0.006) |
+  | TikTok | 20/20 ($0.001) | 30/30 ($0.006) |
+  | Instagram | 0 recent | 1 recent |
+
+- ✅ **Implementation:**
+  - `src/lib/sources/tikhub/`: client, normalizers, search adapters;
+  - `TIKHUB_PLATFORMS` swaps only the search of x/tiktok/instagram, so comment expansion, streams and checkpoints stay on the API Direct adapter;
+  - migration `20261022000001` widens provider checks and registers the 3 TikHub prices (applied to dev);
+  - unit 294, DB 413.
+- ✅ **End-to-end adapter test** (`scripts/tikhub-live-test.ts`), 2 pages each:
+  - X "toing" 32/32 and "Gears of War" 34/35;
+  - TikTok "Gears of War" 40/40 ($0.002);
+  - Instagram 0 recent, so it stays on API Direct.
+- 🟡 Not yet observed in the scheduled pipeline with a real ledger row; both Demo products have scanning stopped. Check `api_cost_ledger where provider = 'tikhub'` after resuming.
+
 ## Fixes from founder testing (2026-10-19)
 
 - ✅ **Scheduler on Vercel:** the Supabase Vault `app_url` had a stray `/$0`, so every 2-minute tick reached a page instead of `/api/jobs/tick`. Corrected; a direct call ran 12 jobs (9 succeeded).

@@ -1,4 +1,5 @@
 import { createApiDirectAdapters } from "./apidirect/adapters.ts";
+import { tikhubPlatforms, withTikhubSearch } from "./tikhub/adapters.ts";
 import { createGithubAdapter } from "./github.ts";
 import { hackerNews } from "./hackernews.ts";
 import { appStore, bluesky, dev } from "./official.ts";
@@ -15,6 +16,9 @@ export interface SourceKeys {
   stackExchangeKey?: string;
   youtubeApiKey?: string;
   apiDirectKey?: string;
+  tikhubKey?: string;
+  /** Comma-separated paid platforms searched through TikHub instead of API Direct (x, tiktok, instagram). */
+  tikhubPlatforms?: string;
 }
 
 /** Milestone 2 sources (one stream, "default"; checkpoints always advance and gaps are recorded). */
@@ -36,7 +40,7 @@ export function createAdapters(keys: SourceKeys): Record<PublicSourceId, SourceA
     app_store: appStore,
     google_play: createGooglePlayAdapter(),
     discord: createDiscordAdapter(keys.discordBotToken || undefined),
-    ...createApiDirectAdapters(keys.apiDirectKey || undefined),
+    ...withTikhubSearch(createApiDirectAdapters(keys.apiDirectKey || undefined), keys.tikhubKey || undefined, tikhubPlatforms(keys.tikhubPlatforms)),
   };
 }
 
