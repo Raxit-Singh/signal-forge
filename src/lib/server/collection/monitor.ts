@@ -3,6 +3,7 @@ import { NEVER, scanStopped } from "./scan-pause";
 import { failureRetry } from "@/lib/sources/retry";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { auditDue, expansionsPerRun, formatInterval, nextRunAt, type Confidence } from "@/lib/sources/adaptive";
+import { worthContinuing } from "@/lib/sources/adaptive-v2";
 import {
   escalationPages, keywordHitShare, MIN_KEYWORD_SHARE_TO_ESCALATE, pagesToRequest, relevantShare, updateEstimate, upperRate, type GroupEstimate,
 } from "@/lib/sources/arrival";
@@ -388,6 +389,14 @@ export async function runMonitorQuery(
         profile, window: m.window, items: search.items.filter((i) => i.publishedAt >= m.window.since), saturated: Boolean(search.saturated),
         pagesRead: search.pagesRequested ?? maxPages, previous: m.q.id === q.id ? gap : null, platformName: adapter.name,
       });
+      if (resume.gap && !worthContinuing(paid, estimate)) {
+        // Mostly unrelated results: record the unread part as partial instead of paying for follow-ups.
+        resume.lost = {
+          since: new Date(resume.gap.since), until: new Date(resume.gap.until),
+          reason: `Most ${adapter.name} results for this search aren't about the product, so the rest of this busy window wasn't fetched.`,
+        };
+        resume.gap = null;
+      }
       const decision = await finishMember(admin, m, provider, job, started, r, search, resume, {
         audit: audit && m.q.id === q.id, sharedWith: members.length, continuation: m.q.id === q.id && gap !== null,
         expansions: m.q.id === q.id ? expandedParents.length : 0,
@@ -580,8 +589,12 @@ async function finishMember(
 
   // Arrival-rate estimate (audits re-read old windows, so they'd double count).
   const span = observedSpanMinutes(memberItems, m.window);
+  // Undated, ranked results (web search) return mostly the same pages every check: only new ones
+  // are arrivals, or a quiet search would look busy and be checked every hour.
+  const undated = memberItems.length > 0 && memberItems.every((i) => i.publishedAtEstimated);
   if (!extra.audit) await updateArrival(admin, m, provider, extra.profile, {
-    results: memberItems.length, relevant: r.relevant, windowStart: m.window.since, windowEnd: m.window.until,
+    results: undated ? r.inserted : memberItems.length, relevant: undated ? Math.min(r.relevant, r.inserted) : r.relevant,
+    windowStart: m.window.since, windowEnd: m.window.until,
     saturated: Boolean(search.saturated), observedSpanMinutes: span, at: now,
   });
 

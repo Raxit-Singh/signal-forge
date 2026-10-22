@@ -10,7 +10,7 @@ import {
 } from "./arrival.ts";
 import {
   assessRisk, BATCH_TARGET, decidePlatformIntervalV2, importanceShares, paceForBudgetSafely, rankByImportance,
-  snapDown, type GroupModel, type PlatformModelInput,
+  snapDown, worthContinuing, type GroupModel, type PlatformModelInput,
 } from "./adaptive-v2.ts";
 import { collectionProfile, historySupport, jobCapacity, planningCapacity } from "./collection-profile.ts";
 import { decideResume, observedSpanMinutes, oldestPublished } from "./resume.ts";
@@ -209,6 +209,27 @@ test("no measured rate, no claimed risk: a search never checked isn't scheduled 
   assert.equal(d.safeMinutes, null);
   assert.equal(d.risk, "none");
   assert.equal(d.arrivalPerDay, 0);
+});
+
+test("learning doesn't hold a faster interval set earlier: it moves to the learning interval at once", () => {
+  // Hourly checks with 1 h windows: 5 checks but only 5 h of exposure, so still learning (48 h needed).
+  let e = emptyEstimate();
+  for (let h = 5; h > 0; h--) {
+    const end = new Date(now.getTime() - (h - 1) * H);
+    e = updateEstimate(e, { results: 20, relevant: 0, windowStart: new Date(end.getTime() - H), windowEnd: end, saturated: true, at: end });
+  }
+  const g: GroupModel = { id: "g", estimate: e, capacity: 1000, resumable: true, turns: 1 };
+  const d = decidePlatformIntervalV2(input([g], { paid: true, previous: { recommended: 60, pendingSince: null } }));
+  assert.equal(d.learning, true);
+  assert.ok(d.recommended > 60, `stuck at ${d.recommended}`);
+  assert.ok(d.recommended <= 360);
+});
+
+test("paid searches full of unrelated results don't chase overflowing windows with follow-up checks", () => {
+  assert.equal(worthContinuing(true, learned(70, 2, 0)), false, "0% relevant: no follow-ups");
+  assert.equal(worthContinuing(true, learned(70, 2, 0.5)), true);
+  assert.equal(worthContinuing(false, learned(70, 2, 0)), true, "free sources always continue");
+  assert.equal(worthContinuing(true, emptyEstimate()), true, "not enough data yet");
 });
 
 test("new platforms learn first (bounded interval until enough checks and exposure)", () => {

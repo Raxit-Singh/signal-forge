@@ -200,12 +200,17 @@ export function decidePlatformIntervalV2(i: PlatformModelInput): PlatformModelDe
   let recommended = wanted;
   let pendingSince: Date | null = null;
   const prev = i.previous?.recommended ?? null;
-  if (prev !== null && wanted > prev) {
+  if (prev !== null && wanted > prev && learning) {
+    // While learning, the target never exceeds the learning interval, so moving to it at once is safe.
+    // Holding a faster interval set earlier (by a plan target or boost that no longer applies) would keep
+    // a new platform checking far more often than its data justifies until learning ends.
+    recommended = wanted;
+    reasons.push(`Checked every ${formatInterval(wanted)} while it's still learning`);
+  } else if (prev !== null && wanted > prev) {
     const relaxed = wanted < prev * 1.25; // dead band: tiny drifts don't move the interval
-    if (learning || i.confidence === "low" || relaxed) {
+    if (i.confidence === "low" || relaxed) {
       recommended = prev;
-      reasons.push(learning ? "Kept the current interval while it's still learning"
-        : i.confidence === "low" ? "Kept the current interval: coverage is incomplete, so lower activity can't be confirmed"
+      reasons.push(i.confidence === "low" ? "Kept the current interval: coverage is incomplete, so lower activity can't be confirmed"
         : "Activity changed only slightly, so the interval stays the same");
     } else {
       const since = i.previous?.pendingSince ?? i.now;
@@ -251,6 +256,17 @@ export function decidePlatformIntervalV2(i: PlatformModelInput): PlatformModelDe
     learning, arrivalPerDay: round2(relMean * 24), rateUpperPerHour: round2(rawUpper), uncertainty: round2(unc),
     freshMinutes: fresh, safeMinutes: safe, groups, recommended, interval, planLimited, pendingSince, risk, riskDetail: detail, reasons,
   };
+}
+
+/**
+ * Whether an overflowing window of a search is worth reading to the end with follow-up checks.
+ * On paid platforms, a search whose results are mostly unrelated (measured) isn't: each follow-up
+ * would mostly buy unrelated posts. Free sources and searches without enough data always continue.
+ */
+export function worthContinuing(paid: boolean, e: GroupEstimate): boolean {
+  if (!paid) return true;
+  const share = relevantShare(e);
+  return share === null || share >= PAID_OVERFLOW_MIN_RELEVANT_SHARE;
 }
 
 /** Overflow risk at a given interval vs the brand-safe bound. */
