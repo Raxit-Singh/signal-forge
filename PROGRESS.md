@@ -16,6 +16,25 @@ Legend: ✅ verified by an automated check that ran · 🟡 written, not yet exe
 
 Test users created for the walk-through were removed afterwards via the app's own deletion path.
 
+## "Investigate with Claude" as a no-setup handoff (2026-10-23)
+
+The button now hands the issue to the user's own Claude. SignalForge doesn't create a task, start a session or receive a report: the user reads Claude's answer and continues in Claude.
+
+- **Message** (`src/lib/agent/investigate.ts`):
+  - product, issue, reach, summary and up to 8 posts, each folded to one line and marked untrusted;
+  - the connector tool names with the issue id;
+  - "Ask me before changing any code".
+- **Three ways in**, from one dialog:
+  - **Open in Claude:** `claude.ai/new?q=…`. This isn't documented by Anthropic, so the message is also copied. The message shrinks to fit 8,000 characters.
+  - **Continue your last Claude Code chat:** `claude --continue '<message>'`. The message is a single-quoted shell word; `'` becomes `’`, so public text can't run anything.
+  - **Pick a different chat:** `claude --resume`, then paste the message.
+- **Removed from the UI:** the channel card, routine setup, GitHub repository card, task list, approval and report flow, and the project `.mcp.json`. The code stays: MCP tools, task workflow, channel.
+- **Settings → Claude:** only the optional connector.
+- **Tests:**
+  - ✅ unit 308, including a real `sh`/`zsh`/`bash` check with a malicious post;
+  - ✅ lint, typecheck, build;
+  - 🟡 `e2e/agent.spec.ts` was rewritten for the new dialog but not run. Running it creates test workspaces on the dev project.
+
 ## Claude Code channel: issues go into your open session (2026-10-22)
 
 "Investigate with Claude" can now go straight into a Claude Code session that's already open on the code, using Claude Code [channels](https://code.claude.com/docs/en/channels) (research preview).

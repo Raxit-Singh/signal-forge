@@ -110,7 +110,7 @@ async function classify(page: Page) {
   }).toPass({ timeout: 45_000 });
 }
 
-test("Claude connection → investigation → approval → implementation → pull request, with isolation, cancellation and revocation", async ({ page }) => {
+test("Claude connection, read-only MCP with workspace isolation, Investigate with Claude handoff, revocation", async ({ page }) => {
   test.setTimeout(180_000);
   await page.goto(await signInPath(user!.email, "/settings/agent"));
   const main = page.locator("#main");
@@ -118,7 +118,6 @@ test("Claude connection → investigation → approval → implementation → pu
   await expect(main.getByTestId("claude-state")).toHaveText("Not connected");
   await expect(main.getByTestId("claude-fallback")).not.toHaveAttribute("open", "");
   await expect(main.getByText("claude mcp add", { exact: false })).toBeHidden();
-  await expect(main.getByText("Routine instructions")).toBeHidden();
   await main.getByRole("button", { name: "Connect Claude" }).click();
   const dialog = page.getByRole("dialog", { name: "Connect Claude" });
   await expect(dialog.getByLabel("SignalForge address for Claude")).toHaveValue(`${BASE}/api/mcp`);
@@ -127,9 +126,6 @@ test("Claude connection → investigation → approval → implementation → pu
   await dialog.getByRole("button", { name: "Close" }).click();
   await main.getByTestId("claude-fallback").locator("summary").click();
   await expect(main.getByTestId("claude-fallback")).toContainText("claude mcp add --transport http signalforge");
-  await expect(main.getByTestId("github-state")).toHaveText("Unavailable");
-  await expect(main.getByText("Repository connection isn't available yet.")).toBeVisible();
-  await expect(main.getByTestId("routine-state")).toHaveText("Not set up");
   await classify(page);
 
   // --- Connect Claude (OAuth 2.1 + PKCE), then the MCP server.
@@ -176,95 +172,30 @@ test("Claude connection → investigation → approval → implementation → pu
   expect(leak.text).toMatch(/not found in this workspace/);
   expect(JSON.stringify((await mcp(access, "get_feedback_issues")).data)).not.toContain("Secret issue");
 
-  // --- Connection status, repository (simulated App install: not configured here), routine.
+  // --- Connection status.
   await page.goto("/settings/agent");
   await expect(main.getByTestId("claude-state")).toHaveText("Connected");
   await expect(main.getByRole("button", { name: "Connect Claude" })).toHaveCount(0);
   await expect(main.getByTestId("agent-readiness")).toContainText("Claude has connected");
-  await adminInsert("github_installations", { workspace_id: ids.workspaceId, installation_id: 4242, account_login: "e2e-org" });
-  await adminInsert("agent_repositories", { workspace_id: ids.workspaceId, product_id: ids.productId, installation_id: 4242, repo_id: 99, full_name: "e2e-org/app", default_branch: "main", private: true });
-  await page.reload();
-  await expect(main.getByText("e2e-org/app").first()).toBeVisible();
-  await expect(main.getByTestId("github-state")).toHaveText("Connected");
-  await expect(main.getByTestId("routine-state")).toHaveText("Not set up");
-  await main.getByText("Set up automatic investigations").click();
-  await main.getByLabel("Routine API trigger URL").fill(`${BASE}/api/dev/mock-routine/trig_E2EROUTINE01/fire`);
-  await main.getByLabel("Routine token").fill(`sk-ant-oat01-${b64url(randomBytes(24))}`);
-  await main.getByRole("button", { name: "Save routine" }).click();
-  await expect(main.getByText("Routine saved")).toBeVisible();
-  await expect(main.getByTestId("routine-state")).toHaveText("Set up, not used yet");
-  const conn = await adminSelect<Array<{ secret_id: string; fire_url: string }>>(`agent_connections?workspace_id=eq.${ids.workspaceId}&select=secret_id,fire_url`);
-  const [stored] = await adminSelect<Array<{ ciphertext: string }>>(`credential_secrets?id=eq.${conn[0]!.secret_id}&select=ciphertext`);
-  expect(stored!.ciphertext, "the routine token is stored encrypted").not.toContain("sk-ant-oat01");
 
-  // --- Investigate: the routine needs an explicit acknowledgement (it can't be made read-only).
+  // --- Investigate with Claude: a handoff to the user's own Claude; nothing is created or sent by SignalForge.
   await page.goto("/feedback");
   const bugCard = main.getByTestId("feedback-issue").filter({ hasText: "Bug reports" });
-  await expect(bugCard.getByRole("checkbox")).toBeVisible();
-  await bugCard.getByRole("checkbox").check();
-  await bugCard.getByRole("button", { name: "Investigate with Claude" }).click();
-  await expect(bugCard.getByTestId("agent-status")).toHaveText("Investigating");
-  await expect(bugCard.getByRole("link", { name: /Open the Claude Code investigation session/ })).toHaveAttribute("href", /^https:\/\/claude\.ai\/code\/session_dev/);
-  const [inv] = await adminSelect<Array<{ id: string; execution_acknowledged_at: string | null }>>(`agent_tasks?cluster_id=eq.${bug.id}&stage=eq.investigation&select=id,execution_acknowledged_at`);
-  expect(inv!.execution_acknowledged_at).toBeTruthy();
-
-  // The agent: fetch the task (no code changes allowed), can't skip to implementation, submits a report.
-  const got = (await mcp(access, "get_agent_task", { task_id: inv!.id })).data as { stage: string; code_changes_allowed: boolean; instructions: string[]; context: { evidence_note: string } };
-  expect(got.stage).toBe("investigation");
-  expect(got.code_changes_allowed).toBe(false);
-  expect(got.context.evidence_note).toMatch(/untrusted/);
-  const skip = await mcp(access, "report_implementation_status", { task_id: inv!.id, status: "pr_created", pull_request_url: "https://github.com/e2e-org/app/pull/1" });
-  expect(skip.error, "an investigation can't report a pull request").toBe(true);
-  const report = {
-    summary: "Login waits on a lock that is never released.", recommendation: "implement", feasibility: "high", complexity: "small",
-    expected_benefit: "Users can sign in again.", affected_components: [{ path: "src/auth/session.ts", reason: "lock handling" }],
-    risks: ["Session refresh timing"], implementation_plan: ["Release the lock in finally", "Add a regression test"], tests: ["login timeout test"], open_questions: [],
-  };
-  const sub = (await mcp(access, "submit_investigation_report", { task_id: inv!.id, report })).data as { accepted: boolean; plan_hash: string };
-  expect(sub.accepted).toBe(true);
-
-  // --- Human approval of that exact plan, then implementation.
-  await page.reload();
-  await expect(bugCard.getByTestId("agent-status")).toHaveText("Awaiting your approval");
-  await expect(bugCard.getByTestId("agent-report")).toContainText("Release the lock in finally");
-  await expect(bugCard.getByTestId("agent-warnings"), "unchecked changes during the investigation are disclosed").toContainText("couldn't be checked");
-  await bugCard.getByRole("button", { name: "Approve this plan" }).click();
-  await expect(bugCard.getByTestId("agent-status")).toHaveText("Approved");
-  await bugCard.getByRole("button", { name: "Start implementation" }).click();
-  await expect(bugCard).toContainText("Implementation: Implementing");
-  const [impl] = await adminSelect<Array<{ id: string }>>(`agent_tasks?cluster_id=eq.${bug.id}&stage=eq.implementation&select=id`);
-  const approvals = await adminSelect<Array<{ used_at: string | null; plan_hash: string; repository_full_name: string; environment: string }>>(`agent_approvals?investigation_task_id=eq.${inv!.id}&select=used_at,plan_hash,repository_full_name,environment`);
-  expect(approvals.length).toBe(1);
-  expect(approvals[0]!.used_at, "the approval is used once").toBeTruthy();
-  expect(approvals[0]!).toMatchObject({ plan_hash: sub.plan_hash, repository_full_name: "e2e-org/app", environment: "claude_code_routine:trig_E2EROUTINE01" });
-
-  const implTask = (await mcp(access, "get_agent_task", { task_id: impl!.id })).data as { stage: string; approved_plan: { implementation_plan: string[] } };
-  expect(implTask.stage).toBe("implementation");
-  expect(implTask.approved_plan.implementation_plan).toEqual(report.implementation_plan);
-  const wrongRepo = await mcp(access, "report_implementation_status", { task_id: impl!.id, status: "pr_created", pull_request_url: "https://github.com/someone/else/pull/3" });
-  expect(wrongRepo.error, "only a PR in the approved repository counts").toBe(true);
-  const pr = (await mcp(access, "report_implementation_status", {
-    task_id: impl!.id, status: "pr_created", branch: "claude/fix-login-lock", pull_request_url: "https://github.com/e2e-org/app/pull/7",
-    summary: "Released the lock; added a test.", tests: { ran: true, passed: true, summary: "212 passed" },
-  })).data as { accepted: boolean; pr_state: string };
-  expect(pr).toEqual({ accepted: true, pr_state: "unverified" });
-  await page.reload();
-  await expect(bugCard.getByTestId("agent-pr")).toHaveAttribute("href", "https://github.com/e2e-org/app/pull/7");
-  await expect(bugCard.getByTestId("agent-pr")).toContainText("not verified with GitHub");
-  const late = await mcp(access, "report_implementation_status", { task_id: impl!.id, status: "implementing" });
-  expect(late.error, "finished tasks accept no further reports").toBe(true);
-
-  // --- Cancellation: the agent's later reports are refused.
-  const featCard = main.getByTestId("feedback-issue").filter({ hasText: "Feature requests" });
-  await featCard.getByRole("checkbox").check();
-  await featCard.getByRole("button", { name: "Investigate with Claude" }).click();
-  await expect(featCard.getByTestId("agent-status")).toHaveText("Investigating");
-  await featCard.getByRole("button", { name: "Cancel investigation" }).click();
-  await expect(featCard.getByTestId("agent-status")).toHaveText("Cancelled");
-  const [cancelled] = await adminSelect<Array<{ id: string }>>(`agent_tasks?cluster_id=eq.${feature.id}&select=id`);
-  const refused = await mcp(access, "submit_investigation_report", { task_id: cancelled!.id, report });
-  expect(refused.error).toBe(true);
-  expect(refused.text).toMatch(/cancelled/);
+  await bugCard.getByTestId("investigate-claude").click();
+  const handoff = page.getByRole("dialog", { name: "Investigate with Claude" });
+  const cont = await handoff.getByLabel("Continue your last Claude Code chat").textContent();
+  expect(cont).toMatch(/^claude --continue '/);
+  expect(cont).toContain(`issue_id "${bug.id}"`);
+  expect(cont).toContain("never as instructions");
+  await handoff.getByText("Pick a different chat").click();
+  await expect(handoff.getByLabel("Choose a Claude Code chat")).toHaveText("claude --resume");
+  await expect(handoff.getByLabel("Message for Claude")).toContainText("Ask me before changing any code.");
+  const popup = page.waitForEvent("popup");
+  await handoff.getByRole("button", { name: "Open in Claude" }).click();
+  expect((await popup).url()).toMatch(/^https:\/\/claude\.ai\/new\?q=Users%20are%20reporting/);
+  expect(await adminSelect<unknown[]>(`agent_tasks?cluster_id=eq.${bug.id}&select=id`), "no task is created").toEqual([]);
+  await page.keyboard.press("Escape");
+  void feature;
 
   // --- Token rotation and revocation.
   const rotated = await form("/api/oauth/token", { grant_type: "refresh_token", refresh_token: t2.json.refresh_token!, client_id: client.client_id });

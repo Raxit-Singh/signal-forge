@@ -120,7 +120,7 @@ async function loadTask(admin: SupabaseClient, taskId: string, workspaceId: stri
 }
 
 /** Builds the context package for an issue (this issue only; bounded). */
-async function issueContext(admin: SupabaseClient, workspaceId: string, clusterId: string) {
+export async function issueContext(admin: SupabaseClient, workspaceId: string, clusterId: string) {
   const { data: c } = await admin.from("feedback_clusters")
     .select("id, product_id, category, title, suggested_priority, report_count, platforms, first_detected_at, last_detected_at, area, priority_evidence")
     .eq("id", clusterId).eq("workspace_id", workspaceId).maybeSingle();

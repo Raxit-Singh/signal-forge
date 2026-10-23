@@ -192,8 +192,8 @@ export default async function IssueInsightPage({ params }: { params: Promise<{ c
           {canAct && draftable && (
             <Card>
               <CardHeader>
-                <CardTitle>Developer agent</CardTitle>
-                <CardDescription>Have your own Claude investigate this in your codebase. <Link href="/settings/agent" className="underline underline-offset-2">Set up</Link></CardDescription>
+                <CardTitle>Fix it with Claude</CardTitle>
+                <CardDescription>Hand this issue to your own Claude: it finds the cause in your code and suggests a fix. No setup needed.</CardDescription>
               </CardHeader>
               <CardContent><AgentIssueControls workspaceId={workspace.id} clusterId={c.id} /></CardContent>
             </Card>

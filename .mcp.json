@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "signalforge": {
-      "command": "node",
-      "args": ["channel/signalforge-channel.mjs"],
-      "env": { "SIGNALFORGE_PRODUCT": "" }
-    }
-  }
-}
