@@ -19,3 +19,4 @@ blob-report/
 
 # TikHub live-probe output (raw third-party responses)
 .tikhub-live/
+.verify/

@@ -24,14 +24,12 @@ The button now hands the issue to the user's own Claude. SignalForge doesn't cre
   - product, issue, reach, summary and up to 8 posts, each folded to one line and marked untrusted;
   - the connector tool names with the issue id;
   - "Ask me before changing any code".
-- **Three ways in**, from one dialog:
-  - **Open in Claude:** `claude.ai/new?q=…`. This isn't documented by Anthropic, so the message is also copied. The message shrinks to fit 8,000 characters.
-  - **Continue your last Claude Code chat:** `claude --continue '<message>'`. The message is a single-quoted shell word; `'` becomes `’`, so public text can't run anything.
-  - **Pick a different chat:** `claude --resume`, then paste the message.
+- **One click:** the button opens `claude.ai/new?q=<message>` in a new tab. This isn't documented by Anthropic, so the message is also copied to the clipboard. It shrinks to fit 8,000 characters by quoting fewer posts. The Claude Code options (`--continue` / `--resume`) were dropped to keep it to one click.
+- ✅ Checked in the local preview with a throwaway account (deleted afterwards): one click opens one tab with the full message.
 - **Removed from the UI:** the channel card, routine setup, GitHub repository card, task list, approval and report flow, and the project `.mcp.json`. The code stays: MCP tools, task workflow, channel.
 - **Settings → Claude:** only the optional connector.
 - **Tests:**
-  - ✅ unit 308, including a real `sh`/`zsh`/`bash` check with a malicious post;
+  - ✅ unit 307;
   - ✅ lint, typecheck, build;
   - 🟡 `e2e/agent.spec.ts` was rewritten for the new dialog but not run. Running it creates test workspaces on the dev project.
 

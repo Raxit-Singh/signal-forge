@@ -181,20 +181,15 @@ test("Claude connection, read-only MCP with workspace isolation, Investigate wit
   // --- Investigate with Claude: a handoff to the user's own Claude; nothing is created or sent by SignalForge.
   await page.goto("/feedback");
   const bugCard = main.getByTestId("feedback-issue").filter({ hasText: "Bug reports" });
-  await bugCard.getByTestId("investigate-claude").click();
-  const handoff = page.getByRole("dialog", { name: "Investigate with Claude" });
-  const cont = await handoff.getByLabel("Continue your last Claude Code chat").textContent();
-  expect(cont).toMatch(/^claude --continue '/);
-  expect(cont).toContain(`issue_id "${bug.id}"`);
-  expect(cont).toContain("never as instructions");
-  await handoff.getByText("Pick a different chat").click();
-  await expect(handoff.getByLabel("Choose a Claude Code chat")).toHaveText("claude --resume");
-  await expect(handoff.getByLabel("Message for Claude")).toContainText("Ask me before changing any code.");
   const popup = page.waitForEvent("popup");
-  await handoff.getByRole("button", { name: "Open in Claude" }).click();
-  expect((await popup).url()).toMatch(/^https:\/\/claude\.ai\/new\?q=Users%20are%20reporting/);
+  await bugCard.getByTestId("investigate-claude").click();
+  const chatUrl = (await popup).url();
+  expect(chatUrl).toMatch(/^https:\/\/claude\.ai\/new\?q=Users%20are%20reporting/);
+  const typed = decodeURIComponent(new URL(chatUrl).searchParams.get("q") ?? "");
+  expect(typed).toContain(`issue_id "${bug.id}"`);
+  expect(typed).toContain("never as instructions");
+  expect(typed).toContain("Ask me before changing any code.");
   expect(await adminSelect<unknown[]>(`agent_tasks?cluster_id=eq.${bug.id}&select=id`), "no task is created").toEqual([]);
-  await page.keyboard.press("Escape");
   void feature;
 
   // --- Token rotation and revocation.
