@@ -95,7 +95,7 @@ test("filters persist across pages, reset to page 1 when changed, and work with 
 
   // Changing a filter goes back to page 1 and keeps the others.
   await page.getByLabel("Search text").fill("post 3");
-  await page.getByRole("button", { name: "Search" }).click();
+  await page.getByRole("button", { name: "Search", exact: true }).click();
   await expect(page).not.toHaveURL(/page=/);
   await expect(page).toHaveURL(/source=hackernews/);
   await expect(page.getByText(/Showing 1–\d+ of \d+ mentions?/)).toBeVisible();

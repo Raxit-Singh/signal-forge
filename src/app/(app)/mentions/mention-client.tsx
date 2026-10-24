@@ -2,18 +2,19 @@
 
 import { useActionState, useEffect, useLayoutEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Check, ThumbsDown, ThumbsUp, X } from "lucide-react";
+import { Check, Search, ThumbsDown, ThumbsUp, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/primitives";
 import { idle } from "@/lib/action-state";
 import { countNewMentionsAction, setMentionRelevanceAction } from "@/app/actions/mentions";
 import { useRealtime } from "@/components/realtime/realtime-provider";
 import { cn } from "@/lib/utils";
 
 const selectCls =
-  "h-9 rounded-md border bg-background px-2 text-[13px] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring sm:h-8";
+  "panel h-9 cursor-pointer rounded-full bg-transparent pl-3 pr-2 text-[13px] text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring";
 
-export function MentionFilters({ sources, types }: { sources: Array<{ id: string; name: string }>; types: Array<{ id: string; name: string }> }) {
+type Option = { id: string; name: string };
+
+export function MentionFilters({ sources, types, sentiments }: { sources: Option[]; types: Option[]; sentiments: Option[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -33,30 +34,31 @@ export function MentionFilters({ sources, types }: { sources: Array<{ id: string
     start(() => router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false }));
   };
 
-  const hasFilters = ["q", "source", "type", "status", "dupes"].some((k) => params.get(k));
+  const hasFilters = ["q", "source", "type", "status", "dupes", "sentiment"].some((k) => params.get(k));
 
   return (
     <form
       role="search"
       aria-label="Filter mentions"
       aria-busy={pending}
-      className="mb-3 flex flex-wrap items-center gap-2"
+      className="mb-4 flex flex-wrap items-center gap-2"
       onSubmit={(e) => {
         e.preventDefault();
         apply({ q: q.trim() || null });
       }}
     >
-      <div className="flex w-full gap-2 sm:w-auto">
+      <div className="panel flex h-10 w-full items-center gap-2 rounded-full pl-3.5 pr-1 sm:w-auto">
+        <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
         <label className="sr-only" htmlFor="mention-q">Search text</label>
-        <Input
+        <input
           id="mention-q"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search text…"
           maxLength={100}
-          className="h-9 min-w-0 flex-1 sm:h-8 sm:w-56 sm:flex-none"
+          className="h-full min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground sm:w-56 sm:flex-none sm:text-[13px]"
         />
-        <Button type="submit" variant="secondary" size="sm" className="h-9 sm:h-8">Search</Button>
+        <Button type="submit" size="sm" className="h-8 rounded-full px-3.5">Search</Button>
       </div>
       <label className="sr-only" htmlFor="mention-source">Platform</label>
       <select id="mention-source" className={selectCls} value={params.get("source") ?? ""} onChange={(e) => apply({ source: e.target.value || null })}>
@@ -68,6 +70,11 @@ export function MentionFilters({ sources, types }: { sources: Array<{ id: string
         <option value="">All types</option>
         {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
       </select>
+      <label className="sr-only" htmlFor="mention-sentiment">Sentiment</label>
+      <select id="mention-sentiment" className={selectCls} value={params.get("sentiment") ?? ""} onChange={(e) => apply({ sentiment: e.target.value || null })}>
+        <option value="">Any sentiment</option>
+        {sentiments.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+      </select>
       <label className="sr-only" htmlFor="mention-status">Relevance</label>
       <select id="mention-status" className={selectCls} value={params.get("status") ?? ""} onChange={(e) => apply({ status: e.target.value || null })}>
         <option value="">Relevant + needs review</option>
@@ -76,7 +83,7 @@ export function MentionFilters({ sources, types }: { sources: Array<{ id: string
         <option value="irrelevant">Not relevant</option>
         <option value="all">Everything</option>
       </select>
-      <label className="flex min-h-9 items-center gap-1.5 text-[13px] text-muted-foreground sm:min-h-0">
+      <label className="flex min-h-9 cursor-pointer items-center gap-1.5 px-1 text-[13px] text-muted-foreground">
         <input
           type="checkbox"
           className="size-3.5 accent-[var(--primary)]"
@@ -90,10 +97,10 @@ export function MentionFilters({ sources, types }: { sources: Array<{ id: string
           type="button"
           variant="ghost"
           size="sm"
-          className="h-9 sm:h-8"
+          className="h-9 rounded-full"
           onClick={() => {
             setQ("");
-            apply({ q: null, source: null, type: null, status: null, dupes: null });
+            apply({ q: null, source: null, type: null, status: null, dupes: null, sentiment: null });
           }}
         >
           <X aria-hidden /> Clear
@@ -137,7 +144,7 @@ export function ExpandableText({ text, lang }: { text: string; lang: string | nu
           type="button"
           onClick={() => setExpanded((v) => !v)}
           aria-expanded={expanded}
-          className="min-h-9 text-xs font-medium text-primary hover:underline focus-visible:outline-2 focus-visible:outline-ring sm:min-h-0"
+          className="min-h-9 text-xs font-medium text-foreground underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring sm:min-h-0"
         >
           {expanded ? "Show less" : "Read more"}
         </button>
