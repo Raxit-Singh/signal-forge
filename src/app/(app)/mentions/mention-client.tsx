@@ -10,11 +10,20 @@ import { useRealtime } from "@/components/realtime/realtime-provider";
 import { cn } from "@/lib/utils";
 
 const selectCls =
-  "panel h-9 cursor-pointer rounded-full bg-transparent pl-3 pr-2 text-[13px] text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring";
+  "panel h-9 cursor-pointer rounded-full bg-transparent pl-3 pr-2 text-[13px] text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring";
 
 type Option = { id: string; name: string };
 
-export function MentionFilters({ sources, types, sentiments }: { sources: Option[]; types: Option[]; sentiments: Option[] }) {
+const TABS = [
+  { key: "all", label: "All", patch: { status: null, sentiment: null } },
+  { key: "review", label: "Need review", patch: { status: "review", sentiment: null } },
+  { key: "negative", label: "Negative", patch: { sentiment: "negative", status: null } },
+  { key: "positive", label: "Positive", patch: { sentiment: "positive", status: null } },
+] as const;
+
+export function MentionFilters({ sources, types, sentiments, counts }: {
+  sources: Option[]; types: Option[]; sentiments: Option[]; counts: { all: number; review: number; negative: number; positive: number };
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -35,78 +44,102 @@ export function MentionFilters({ sources, types, sentiments }: { sources: Option
   };
 
   const hasFilters = ["q", "source", "type", "status", "dupes", "sentiment"].some((k) => params.get(k));
+  const status = params.get("status") ?? "";
+  const sentiment = params.get("sentiment") ?? "";
+  const tab = status === "review" && !sentiment ? "review"
+    : !status && sentiment === "negative" ? "negative"
+    : !status && sentiment === "positive" ? "positive"
+    : !status && !sentiment ? "all" : null;
 
   return (
-    <form
-      role="search"
-      aria-label="Filter mentions"
-      aria-busy={pending}
-      className="mb-4 flex flex-wrap items-center gap-2"
-      onSubmit={(e) => {
-        e.preventDefault();
-        apply({ q: q.trim() || null });
-      }}
-    >
-      <div className="panel flex h-10 w-full items-center gap-2 rounded-full pl-3.5 pr-1 sm:w-auto">
-        <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-        <label className="sr-only" htmlFor="mention-q">Search text</label>
-        <input
-          id="mention-q"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search text…"
-          maxLength={100}
-          className="h-full min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground sm:w-56 sm:flex-none sm:text-[13px]"
-        />
-        <Button type="submit" size="sm" className="h-8 rounded-full px-3.5">Search</Button>
-      </div>
-      <label className="sr-only" htmlFor="mention-source">Platform</label>
-      <select id="mention-source" className={selectCls} value={params.get("source") ?? ""} onChange={(e) => apply({ source: e.target.value || null })}>
-        <option value="">All platforms</option>
-        {sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-      </select>
-      <label className="sr-only" htmlFor="mention-type">Type</label>
-      <select id="mention-type" className={selectCls} value={params.get("type") ?? ""} onChange={(e) => apply({ type: e.target.value || null })}>
-        <option value="">All types</option>
-        {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-      </select>
-      <label className="sr-only" htmlFor="mention-sentiment">Sentiment</label>
-      <select id="mention-sentiment" className={selectCls} value={params.get("sentiment") ?? ""} onChange={(e) => apply({ sentiment: e.target.value || null })}>
-        <option value="">Any sentiment</option>
-        {sentiments.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-      </select>
-      <label className="sr-only" htmlFor="mention-status">Relevance</label>
-      <select id="mention-status" className={selectCls} value={params.get("status") ?? ""} onChange={(e) => apply({ status: e.target.value || null })}>
-        <option value="">Relevant + needs review</option>
-        <option value="review">Needs review</option>
-        <option value="relevant">Relevant only</option>
-        <option value="irrelevant">Not relevant</option>
-        <option value="all">Everything</option>
-      </select>
-      <label className="flex min-h-9 cursor-pointer items-center gap-1.5 px-1 text-[13px] text-muted-foreground">
-        <input
-          type="checkbox"
-          className="size-3.5 accent-[var(--primary)]"
-          checked={params.get("dupes") === "1"}
-          onChange={(e) => apply({ dupes: e.target.checked ? "1" : null })}
-        />
-        Show duplicates &amp; reposts
-      </label>
-      {hasFilters && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-9 rounded-full"
-          onClick={() => {
-            setQ("");
-            apply({ q: null, source: null, type: null, status: null, dupes: null, sentiment: null });
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-3" aria-busy={pending}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div role="radiogroup" aria-label="Show" className="panel flex max-w-full overflow-x-auto rounded-full p-1 text-[13px]">
+          {TABS.map((t) => {
+            const on = tab === t.key;
+            const n = counts[t.key];
+            return (
+              <button key={t.key} type="button" role="radio" aria-checked={on} onClick={() => apply({ ...t.patch })}
+                className={cn("press flex h-8 shrink-0 items-center gap-2 rounded-full px-3.5 transition-colors duration-200",
+                  on ? "bg-foreground/[0.09] text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]" : "text-muted-foreground hover:text-foreground")}>
+                {t.key === "negative" && <span className="size-1.5 rounded-full bg-signal shadow-[var(--signal-glow)]" aria-hidden />}
+                {t.label}
+                <span className={cn("rounded-full px-1.5 text-[11px] tabular-nums", on ? "bg-foreground/[0.1]" : "bg-foreground/[0.05]")}>{n > 9999 ? "9999+" : n.toLocaleString("en-US")}</span>
+              </button>
+            );
+          })}
+        </div>
+        <form
+          role="search"
+          aria-label="Filter mentions"
+          className="panel flex h-10 w-full items-center gap-2 rounded-full pl-3.5 pr-1 sm:w-[340px]"
+          onSubmit={(e) => {
+            e.preventDefault();
+            apply({ q: q.trim() || null });
           }}
         >
-          <X aria-hidden /> Clear
-        </Button>
-      )}
-    </form>
+          <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+          <label className="sr-only" htmlFor="mention-q">Search text</label>
+          <input
+            id="mention-q"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search text…"
+            maxLength={100}
+            className="h-full min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground sm:text-[13px]"
+          />
+          <Button type="submit" size="sm" className="h-8 rounded-full px-3.5">Search</Button>
+        </form>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="sr-only" htmlFor="mention-source">Platform</label>
+        <select id="mention-source" className={selectCls} value={params.get("source") ?? ""} onChange={(e) => apply({ source: e.target.value || null })}>
+          <option value="">All platforms</option>
+          {sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        <label className="sr-only" htmlFor="mention-type">Type</label>
+        <select id="mention-type" className={selectCls} value={params.get("type") ?? ""} onChange={(e) => apply({ type: e.target.value || null })}>
+          <option value="">All types</option>
+          {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+        <label className="sr-only" htmlFor="mention-sentiment">Sentiment</label>
+        <select id="mention-sentiment" className={selectCls} value={sentiment} onChange={(e) => apply({ sentiment: e.target.value || null })}>
+          <option value="">Any sentiment</option>
+          {sentiments.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+        <label className="sr-only" htmlFor="mention-status">Relevance</label>
+        <select id="mention-status" className={selectCls} value={status} onChange={(e) => apply({ status: e.target.value || null })}>
+          <option value="">Relevant + needs review</option>
+          <option value="review">Needs review</option>
+          <option value="relevant">Relevant only</option>
+          <option value="irrelevant">Not relevant</option>
+          <option value="all">Everything</option>
+        </select>
+        <label className="flex min-h-9 cursor-pointer items-center gap-1.5 px-1 text-[13px] text-muted-foreground">
+          <input
+            type="checkbox"
+            className="size-3.5 accent-[var(--primary)]"
+            checked={params.get("dupes") === "1"}
+            onChange={(e) => apply({ dupes: e.target.checked ? "1" : null })}
+          />
+          Duplicates &amp; reposts
+        </label>
+        {hasFilters && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-9 rounded-full"
+            onClick={() => {
+              setQ("");
+              apply({ q: null, source: null, type: null, status: null, dupes: null, sentiment: null });
+            }}
+          >
+            <X aria-hidden /> Clear
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
 

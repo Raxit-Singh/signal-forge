@@ -2,9 +2,9 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowDownRight, ArrowUpRight, Bug, ChevronRight, Clock, Download, Inbox, MessageSquare, Plus, Sparkles, TrendingUp, Waypoints } from "lucide-react";
 import { CountUp } from "@/components/motion";
+import { Periods } from "@/components/periods";
 import { cn } from "@/lib/utils";
 
 // Overview in the Obsidian style: one signal red, used only for what needs attention (the worst
@@ -97,32 +97,6 @@ function Empty({ children }: { children: React.ReactNode }) {
 
 // ---------------------------------------------------------------- hero
 
-const PERIODS = [["7d", "Week"], ["30d", "Month"], ["90d", "Quarter"]] as const;
-
-function Periods({ value }: { value: string }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const params = useSearchParams();
-  const pick = (key: string) => {
-    const sp = new URLSearchParams(params.toString());
-    sp.set("range", key);
-    sp.delete("from");
-    sp.delete("to");
-    router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
-  };
-  return (
-    <div role="radiogroup" aria-label="Period" className="panel flex rounded-full p-1 text-[13px]">
-      {PERIODS.map(([k, label]) => (
-        <button key={k} type="button" role="radio" aria-checked={value === k} onClick={() => pick(k)}
-          className={cn("press h-8 rounded-full px-4 transition-colors duration-200",
-            value === k ? "bg-foreground/[0.09] text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]" : "text-muted-foreground hover:text-foreground")}>
-          {label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 /** Where the conversation is: the top platforms' shares as bars (the largest in red), the rest striped. */
 function MixBar({ d }: { d: OverviewData }) {
   if (d.mix.length === 0) return <Empty>No mentions in this period yet.</Empty>;
@@ -162,7 +136,7 @@ function MixBar({ d }: { d: OverviewData }) {
 
 function Hero({ d }: { d: OverviewData }) {
   return (
-    <section className="grid gap-8 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+    <section className="grid grid-cols-[minmax(0,1fr)] gap-8 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
       <div className="rise grid content-start gap-6">
         <h1 className="text-[34px] font-medium leading-[1.05] tracking-[-0.035em] sm:text-[44px]">
           {d.greeting}{d.name && <>, <span className="text-foreground/45">{d.name}</span></>}
@@ -600,7 +574,7 @@ function Recent({ d }: { d: OverviewData }) {
 
 export function OverviewBoard({ d }: { d: OverviewData }) {
   return (
-    <div className="grid gap-5 pb-10">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-5 pb-10">
       <Hero d={d} />
       <Platforms d={d} />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-12">
