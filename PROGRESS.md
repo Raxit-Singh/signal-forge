@@ -16,6 +16,19 @@ Legend: ✅ verified by an automated check that ran · 🟡 written, not yet exe
 
 Test users created for the walk-through were removed afterwards via the app's own deletion path.
 
+## SignalForge for Claude: connector required, short request (2026-10-24)
+
+- **"Investigate with Claude" needs the SignalForge connector.**
+  - Without it, the button leads to Settings → Claude ("Connect SignalForge to Claude first").
+  - With it, the button opens `claude.ai/new?q=` with a short request (`connectorRequest`): the issue id and title, the connector tools to use, untrusted-posts handling and "ask before changing code". Claude reads everything else live. The request is also copied.
+  - The full typed-in message (`investigationMessage` / `chatHandoff`) was removed.
+- **Settings → Claude** is now "SignalForge for Claude":
+  - state, Connect / Open Claude;
+  - two panels: "Investigate issues in your code" and "Ask Claude about your feedback", with example prompts for the active product;
+  - the read-only note, Manage connection, and "Having trouble connecting?".
+- **"Connected"** = an unrevoked grant from a client other than the Claude Code channel (`claudeConnected`).
+- ✅ Checked in the local preview with a throwaway account and a test-only grant (both deleted afterwards): not connected → link to Settings; connected → one tab with the request. Unit 307, lint and build pass.
+
 ## "Investigate with Claude" as a no-setup handoff (2026-10-23)
 
 The button now hands the issue to the user's own Claude. SignalForge doesn't create a task, start a session or receive a report: the user reads Claude's answer and continues in Claude.

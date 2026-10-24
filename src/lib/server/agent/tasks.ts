@@ -364,6 +364,18 @@ export async function agentReportImplementation(admin: SupabaseClient, who: McpP
   return { accepted: true, pr_state: patch.pr_state ?? null };
 }
 
+/**
+ * Whether Claude is connected to the workspace through the SignalForge connector: an
+ * approved, unrevoked grant from Claude (the Claude Code channel's sign-in doesn't count).
+ */
+export async function claudeConnected(admin: SupabaseClient, workspaceId: string): Promise<boolean> {
+  const { data: grants } = await admin.from("oauth_grants").select("client_id").eq("workspace_id", workspaceId).is("revoked_at", null);
+  const ids = [...new Set((grants ?? []).map((g) => g.client_id as string))];
+  if (!ids.length) return false;
+  const { count } = await admin.from("oauth_clients").select("client_id", { count: "exact", head: true }).in("client_id", ids).neq("client_name", CHANNEL_CLIENT_NAME);
+  return (count ?? 0) > 0;
+}
+
 /** Whether a SignalForge channel is signed in for the workspace, and listening right now (polled recently). */
 export async function channelStatus(admin: SupabaseClient, workspaceId: string): Promise<{ signedIn: boolean; listening: boolean; lastUsedAt: string | null }> {
   const { data: grants } = await admin.from("oauth_grants").select("client_id, last_used_at").eq("workspace_id", workspaceId).is("revoked_at", null);

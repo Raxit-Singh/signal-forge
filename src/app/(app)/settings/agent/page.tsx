@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ExternalLink } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getActiveProduct, hasRole, requireWorkspace } from "@/lib/server/session";
@@ -8,13 +9,14 @@ import { CLAUDE_CONNECTORS_URL, ConnectClaude } from "@/components/agent/connect
 import { site } from "@/lib/server/agent/http";
 import { resourceUrl } from "@/lib/agent/oauth";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
+import { Button } from "@/components/ui/button";
 import { ActionForm } from "@/components/ai/action-form";
 import { CopyBlock } from "@/components/agent/copy-block";
 import { disconnectClaudeAction, revokeClaudeAccessAction } from "@/app/actions/agent";
 import { formatTime } from "@/lib/format";
 import { getTimeZone } from "@/lib/server/timezone";
 
-export const metadata: Metadata = { title: "Claude" };
+export const metadata: Metadata = { title: "SignalForge for Claude" };
 
 const TONE: Record<ClaudeState, "positive" | "warning" | "negative" | "neutral" | "info"> = {
   not_connected: "neutral", connecting: "info", connected: "positive", needs_attention: "warning", unavailable: "neutral",
@@ -39,6 +41,12 @@ export default async function AgentSettings() {
   const reachable = publicSite || process.env.NODE_ENV !== "production";
   const state = claudeState({ authorized: r.mcp.authorized, used: r.mcp.used, routineError: null, reachable });
   const claudeOn = state === "connected" || state === "needs_attention";
+  const name = product?.name ?? "your product";
+  const examples = [
+    `What are the top complaints about ${name} this week?`,
+    `Summarize the bug reports about ${name} and where they come from.`,
+    `Why did mentions of ${name} spike recently?`,
+  ];
 
   const { data: grants } = isAdmin
     ? await supabase.from("oauth_grants").select("id, client_id, user_id, scopes, created_at, last_used_at").eq("workspace_id", workspace.id).is("revoked_at", null).order("created_at", { ascending: false })
@@ -52,15 +60,15 @@ export default async function AgentSettings() {
       <Card data-testid="claude-card">
         <CardHeader>
           <CardTitle className="flex flex-wrap items-center gap-2">
-            Claude
+            SignalForge for Claude
             <Badge tone={TONE[state]} data-testid="claude-state">{CLAUDE_STATE_LABEL[state]}</Badge>
           </CardTitle>
           <CardDescription>
-            Optional. “Investigate with Claude” on an issue works without this. Connected, Claude can also read every report on an issue,
-            your products and spikes by itself, on your own Claude plan. Read-only: Claude can&apos;t change anything in SignalForge.
+            Connect Claude to SignalForge and Claude can read {name}&apos;s feedback, issues and spikes, and investigate issues in your code. Works in
+            Claude on the web, the desktop app and Claude Code, on your own Claude plan. Needed for “Investigate with Claude”.
           </CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-3 text-[13px]">
+        <CardContent className="grid gap-4 text-[13px]">
           {state === "unavailable" && (
             <p className="text-muted-foreground">
               Claude can&apos;t reach this SignalForge server yet: it needs a public HTTPS address. Claude Code on this computer can still connect — see below.
@@ -70,17 +78,43 @@ export default async function AgentSettings() {
             <p className="text-xs text-muted-foreground">Development server: Claude&apos;s apps can&apos;t reach {site()}, so connect with Claude Code on this computer (see “Having trouble connecting?”).</p>
           )}
           {state === "connecting" && <p className="text-muted-foreground">You approved access. Waiting for Claude to connect — this page updates on its own.</p>}
-          {claudeOn && r.mcp.lastUsedAt && <p className="text-xs text-muted-foreground">Last used {at(r.mcp.lastUsedAt)}.</p>}
 
           <div className="flex flex-wrap items-center gap-2">
             {!claudeOn && state !== "unavailable" && <ConnectClaude address={mcp} state={state} />}
-            {(claudeOn || state === "connecting") && isAdmin && (
-              <a href="#manage" className="inline-flex h-8 items-center rounded-md border px-3 text-[13px] hover:bg-muted">Manage connection</a>
+            {claudeOn && (
+              <Button asChild size="sm">
+                <a href="https://claude.ai/new" target="_blank" rel="noreferrer noopener">Open Claude <ExternalLink aria-hidden /></a>
+              </Button>
             )}
-            {(claudeOn || state === "connecting") && isAdmin && (
-              <ActionForm action={disconnectClaudeAction} fields={{ workspaceId: workspace.id }} label="Disconnect" variant="ghost" />
-            )}
+            {claudeOn && r.mcp.lastUsedAt && <span className="text-xs text-muted-foreground">Claude last read SignalForge {at(r.mcp.lastUsedAt)}.</span>}
           </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <section className="grid content-start gap-1.5 rounded-md border p-3">
+              <h3 className="font-medium">Investigate issues in your code</h3>
+              <p className="text-muted-foreground">
+                “Investigate with Claude” on a bug, complaint or feature request opens Claude ready to go: it reads the issue and every report
+                through SignalForge, finds the cause in your code and suggests a fix. It asks before changing anything.
+              </p>
+            </section>
+            <section className="grid content-start gap-1.5 rounded-md border p-3" data-testid="claude-examples">
+              <h3 className="font-medium">Ask Claude about your feedback</h3>
+              <ul className="grid gap-1 text-muted-foreground">
+                {examples.map((e) => <li key={e}>“{e}”</li>)}
+              </ul>
+            </section>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Read-only: Claude sees only this workspace and can&apos;t change anything in SignalForge. Disconnect any time; access stops at once.
+          </p>
+
+          {(claudeOn || state === "connecting") && isAdmin && (
+            <div className="flex flex-wrap items-center gap-2">
+              <a href="#manage" className="inline-flex h-8 items-center rounded-md border px-3 text-[13px] hover:bg-muted">Manage connection</a>
+              <ActionForm action={disconnectClaudeAction} fields={{ workspaceId: workspace.id }} label="Disconnect" variant="ghost" />
+            </div>
+          )}
 
           <details className="rounded-md border p-3 text-xs" data-testid="claude-fallback">
             <summary className="cursor-pointer text-[13px] font-medium">Having trouble connecting?</summary>

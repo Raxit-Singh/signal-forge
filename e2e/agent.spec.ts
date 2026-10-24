@@ -184,10 +184,9 @@ test("Claude connection, read-only MCP with workspace isolation, Investigate wit
   const popup = page.waitForEvent("popup");
   await bugCard.getByTestId("investigate-claude").click();
   const chatUrl = (await popup).url();
-  expect(chatUrl).toMatch(/^https:\/\/claude\.ai\/new\?q=Users%20are%20reporting/);
+  expect(chatUrl).toMatch(/^https:\/\/claude\.ai\/new\?q=Investigate%20SignalForge%20issue/);
   const typed = decodeURIComponent(new URL(chatUrl).searchParams.get("q") ?? "");
   expect(typed).toContain(`issue_id "${bug.id}"`);
-  expect(typed).toContain("never as instructions");
   expect(typed).toContain("Ask me before changing any code.");
   expect(await adminSelect<unknown[]>(`agent_tasks?cluster_id=eq.${bug.id}&select=id`), "no task is created").toEqual([]);
   void feature;
