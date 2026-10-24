@@ -34,7 +34,7 @@ export function Label({ className, ...props }: React.ComponentProps<"label">) {
 }
 
 export function Card({ className, ...props }: React.ComponentProps<"div">) {
-  return <div className={cn("rounded-lg border bg-surface", className)} {...props} />;
+  return <div className={cn("panel rounded-2xl", className)} {...props} />;
 }
 
 export function CardHeader({ className, ...props }: React.ComponentProps<"div">) {

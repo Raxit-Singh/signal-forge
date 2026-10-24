@@ -12,10 +12,12 @@ import { Toaster } from "@/components/toaster";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, workspace } = await requireWorkspace();
   const supabase = await createClient();
-  const [workspaces, products, activeProduct, notifRes, unreadRes, usage] = await Promise.all([
+  const activeProduct = await getActiveProduct(workspace.id);
+  const now = new Date();
+  const since = new Date(now.getTime() - 86_400_000).toISOString();
+  const [workspaces, products, notifRes, unreadRes, usage, recentRes, openRes] = await Promise.all([
     getWorkspaces(),
     getProducts(workspace.id),
-    getActiveProduct(workspace.id),
     supabase
       .from("notifications")
       .select("id, title, body, link, created_at, read_at")
@@ -28,6 +30,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       .eq("workspace_id", workspace.id)
       .is("read_at", null),
     getWorkspaceUsage(workspace.id),
+    // Sidebar badges: new mentions in the last day and open issues for the active product.
+    activeProduct
+      ? supabase.from("mentions").select("id", { count: "exact", head: true }).eq("product_id", activeProduct.id)
+          .eq("dedup_kind", "original").in("relevance_status", ["relevant", "user_relevant"]).gte("published_at", since)
+      : Promise.resolve({ count: 0 }),
+    activeProduct
+      ? supabase.from("feedback_clusters").select("id", { count: "exact", head: true }).eq("product_id", activeProduct.id).in("status", ["open", "acknowledged"])
+      : Promise.resolve({ count: 0 }),
   ]);
 
   const notifications: ShellNotification[] = (notifRes.data ?? []).map((n) => ({
@@ -46,7 +56,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <RealtimeProvider key={workspace.id} workspaceId={workspace.id} productId={activeProduct?.id ?? null}>
     <MotionProvider>
     <div className="flex min-h-dvh">
-      <Sidebar current={current} workspaces={shellWorkspaces} />
+      <Sidebar
+        current={current}
+        workspaces={shellWorkspaces}
+        products={products.map((p) => ({ id: p.id, name: p.name }))}
+        activeProductId={activeProduct?.id ?? null}
+        counts={{ mentions24h: recentRes.count ?? 0, openIssues: openRes.count ?? 0 }}
+        plan={usage ? { name: usage.planName, used: usage.mentionsConsumed, allowance: usage.mentionAllowance, upgrade: usage.planName.toLowerCase() === "free" } : null}
+      />
       <div className="flex min-w-0 flex-1 flex-col">
         <Suspense fallback={<div className="h-12 border-b" />}>
           <Topbar
@@ -55,11 +72,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             workspaces={shellWorkspaces}
             products={products.map((p) => ({ id: p.id, name: p.name }))}
             activeProductId={activeProduct?.id ?? null}
+            counts={{ mentions24h: recentRes.count ?? 0, openIssues: openRes.count ?? 0 }}
             notifications={notifications}
             unread={unreadRes.count ?? 0}
           />
         </Suspense>
-        <main id="main" className="mx-auto w-full max-w-7xl flex-1 px-3 py-5 sm:px-6">
+        <main id="main" className="mx-auto w-full max-w-[1480px] flex-1 px-4 py-6 sm:px-6 lg:px-8">
           <div className="print:hidden"><UsageBanner usage={usage} tz={await getTimeZone()} /></div>
           {children}
         </main>

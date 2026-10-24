@@ -1,504 +1,601 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { AnimatePresence, motion } from "motion/react";
-import { ArrowDownRight, ArrowUpRight, ChevronRight, ExternalLink } from "lucide-react";
-import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { CountUp, EASE_OUT, GLIDE, Rise } from "@/components/motion";
-import { RelativeTime } from "@/components/time";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ArrowDownRight, ArrowUpRight, Bug, ChevronRight, Clock, Download, Inbox, MessageSquare, Plus, Sparkles, TrendingUp, Waypoints } from "lucide-react";
+import { CountUp } from "@/components/motion";
 import { cn } from "@/lib/utils";
 
-// Overview — command center. Each job gets its own form: a stacked area for who drives volume
-// over time, a donut for the platform mix, a gauge for sentiment, a heatmap for when people
-// talk, rings and a sparkline inside the KPI tiles. On first load panels rise in order, numbers
-// count up, arcs and lines draw in; live refreshes only roll changed numbers and slide in new
-// feed items. Reduced motion keeps fades and drops movement.
+// Overview in the Obsidian style: one signal red, used only for what needs attention (the worst
+// day, the bug topic, the busiest hour, the primary action); everything else is foreground ink.
 
 export interface OverviewData {
   product: string;
+  greeting: string;
+  name: string | null;
+  rangeKey: string;
   period: string;
-  kpis: {
-    mentions: number; mentionsChange: number | null;
-    today: number; yesterday: number;
-    negativeShare: number | null; classified: number;
-    openIssues: number; highIssues: number; priorities: { critical: number; high: number; medium: number; low: number };
-    sov: number | null; competitors: number;
-  };
-  series: Array<{ label: string; full: string; value: number | null; by: Record<string, number>; other: number }>;
-  stackKeys: Array<{ id: string; name: string; color: string }>;
+  from: string;
+  to: string;
+  total: number;
+  change: number | null;
+  perDay: number;
+  sentiment: { positive: number; negative: number } | null;
+  sourcesLive: number;
+  topIssue: { id: string; title: string } | null;
+  mix: Array<{ name: string; share: number; change: number | null; value: number }>;
+  platforms: Array<{ id: string; name: string; value: number; change: number | null; line: number[] }>;
+  chart: Array<{ label: string; full: string; chip: string; all: number; negative: number | null }>;
+  hourly: boolean;
+  week: Array<{ d: string; share: number | null; classified: number }>;
+  kinds: Array<{ name: string; v: number }>;
+  openIssues: number;
+  flow: { from: Array<{ id: string; name: string; v: number }>; to: Array<{ id: string; name: string; v: number }>; links: Array<[string, string, number]> };
   heat: number[][];
-  platforms: Array<{ id: string; name: string; value: number; prev: number; color: string }>;
-  otherPlatforms: { count: number; value: number };
-  issues: Array<{ id: string; title: string; kind: string; kindColor: string; people: number; trend: string | null; priority: string | null }>;
-  voice: Array<{ name: string; share: number | null; isProduct: boolean; color: string }>;
-  sentiment: { positive: number; neutral: number; negative: number; classified: number } | null;
   feed: Array<{ id: string; platform: string; author: string | null; text: string; url: string; at: string; sentiment: string | null }>;
 }
 
-const PRIORITY_COLOR: Record<string, string> = { critical: "var(--negative)", high: "var(--negative)", medium: "var(--warning)", low: "var(--muted-foreground)" };
-const SENTIMENT_COLOR: Record<string, string> = { positive: "var(--sentiment-positive)", negative: "var(--sentiment-negative)" };
-const OTHER = "var(--sentiment-neutral)";
 const fmt = (n: number) => n.toLocaleString("en-US");
+const pct = (n: number) => `${Math.round(n * 100)}%`;
+const vars = (v: Record<string, string | number | undefined>) => v as React.CSSProperties;
+/** Foreground ink at an opacity: white on dark, near-black on light. */
+const ink = (a: number) => `color-mix(in oklab, var(--foreground) ${Math.round(a * 100)}%, transparent)`;
 
-/** Recharts draws its own entrance; run it on first load only, never on live refreshes. */
-function useFirstRender(ms = 1400) {
-  const [first, setFirst] = useState(true);
-  useEffect(() => {
-    const t = setTimeout(() => setFirst(false), ms);
-    return () => clearTimeout(t);
-  }, [ms]);
-  return first;
+/** Monotone cubic path (no overshoot between points, so the curve never invents values). */
+function smoothPath(pts: Array<[number, number]>) {
+  if (pts.length < 2) return pts.length ? `M${pts[0]![0]},${pts[0]![1]}` : "";
+  const n = pts.length, dx: number[] = [], m: number[] = [], t: number[] = [];
+  for (let i = 0; i < n - 1; i++) { dx[i] = pts[i + 1]![0] - pts[i]![0]; m[i] = (pts[i + 1]![1] - pts[i]![1]) / dx[i]!; }
+  t[0] = m[0]!; t[n - 1] = m[n - 2]!;
+  for (let i = 1; i < n - 1; i++) t[i] = m[i - 1]! * m[i]! <= 0 ? 0 : (m[i - 1]! + m[i]!) / 2;
+  let d = `M${pts[0]![0]},${pts[0]![1]}`;
+  for (let i = 0; i < n - 1; i++) {
+    const [x0, y0] = pts[i]!, [x1, y1] = pts[i + 1]!, h = dx[i]! / 3;
+    d += ` C${x0 + h},${y0 + t[i]! * h} ${x1 - h},${y1 - t[i + 1]! * h} ${x1},${y1}`;
+  }
+  return d;
 }
 
-function Delta({ value, invert = false, className }: { value: number | null; invert?: boolean; className?: string }) {
-  if (value === null || !Number.isFinite(value)) return null;
-  const pct = Math.round(value * 100);
-  const good = invert ? pct < 0 : pct > 0;
-  const Icon = pct > 0 ? ArrowUpRight : pct < 0 ? ArrowDownRight : null;
+function Delta({ v, className }: { v: number | null; className?: string }) {
+  if (v === null || !Number.isFinite(v)) return null;
+  const p = Math.round(v * 100);
+  const up = p >= 0;
   return (
-    <span className={cn("inline-flex items-center gap-0.5 text-xs font-medium tabular", pct === 0 ? "text-muted-foreground" : good ? "text-positive" : "text-negative", className)}>
-      {Icon && <Icon className="size-3.5" aria-hidden />}{pct > 0 ? "+" : pct < 0 ? "−" : ""}{Math.abs(pct)}%
+    <span className={cn("inline-flex items-center gap-0.5 text-[12px] font-medium tabular-nums", up ? "text-positive" : "text-signal", className)}>
+      {up ? <ArrowUpRight className="size-3.5" aria-hidden /> : <ArrowDownRight className="size-3.5" aria-hidden />}{up ? "+" : "−"}{Math.abs(p)}%
     </span>
   );
 }
 
-function Panel({ title, href, action, index, className, children, flush = false, aside }: {
-  title: string; href?: string; action?: string; index: number; className?: string; children: React.ReactNode; flush?: boolean; aside?: React.ReactNode;
+function Card({ d, className, children }: { d: number; className?: string; children: React.ReactNode }) {
+  return <section className={cn("panel rise grid h-full content-start gap-4 rounded-[18px] p-5", className)} style={vars({ "--d": `${d}ms` })}>{children}</section>;
+}
+
+function CardHead({ title, icon: Icon, value, sub, href, action }: {
+  title: string; icon: typeof Bug; value?: React.ReactNode; sub?: React.ReactNode; href?: string; action?: string;
 }) {
   return (
-    <Rise index={index} className={cn("flex min-w-0 flex-col rounded-xl border bg-surface shadow-panel", className)}>
-      <header className="flex h-11 items-center justify-between gap-2 border-b px-4">
-        <h2 className="truncate text-[12px] font-medium uppercase tracking-[0.05em] text-muted-foreground">{title}</h2>
-        <div className="flex items-center gap-3">
-          {aside}
-          {href && (
-            <Link href={href} className="group inline-flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground">
-              {action}<ChevronRight className="size-3.5 transition-transform duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] group-hover:translate-x-0.5" aria-hidden />
-            </Link>
-          )}
-        </div>
-      </header>
-      <div className={cn("min-w-0 flex-1", !flush && "p-4")}>{children}</div>
-    </Rise>
-  );
-}
-
-// ---------------------------------------------------------------- KPI tiles
-
-function Ring({ value, color, delay = 0 }: { value: number; color: string; delay?: number }) {
-  const r = 17, len = 2 * Math.PI * r, v = Math.max(0, Math.min(1, value));
-  return (
-    <svg viewBox="0 0 44 44" className="size-11 shrink-0 -rotate-90" aria-hidden>
-      <circle cx="22" cy="22" r={r} fill="none" stroke="var(--muted)" strokeWidth="5" />
-      <circle cx="22" cy="22" r={r} fill="none" stroke={color} strokeWidth="5" strokeLinecap="round" className="ring-fill"
-        strokeDasharray={len} strokeDashoffset={len * (1 - v)} style={{ ["--len" as string]: `${len}`, ["--d" as string]: `${delay}ms` }} />
-    </svg>
-  );
-}
-
-function Spark({ data }: { data: OverviewData["series"] }) {
-  const first = useFirstRender();
-  return (
-    <div className="h-11 w-24 shrink-0" aria-hidden>
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{ top: 4, right: 0, bottom: 2, left: 0 }}>
-          <defs>
-            <linearGradient id="spark-fill" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.35} />
-              <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <Area type="linear" dataKey="value" stroke="var(--primary)" strokeWidth={1.75} fill="url(#spark-fill)" isAnimationActive={first} animationDuration={1000} animationEasing="ease-out" dot={false} />
-        </AreaChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
-function Kpi({ label, index, children, foot, viz }: { label: string; index: number; children: React.ReactNode; foot: React.ReactNode; viz?: React.ReactNode }) {
-  return (
-    <Rise index={index} className="flex min-w-0 items-center gap-3 rounded-xl border bg-surface px-4 py-3.5 shadow-panel">
-      <div className="grid min-w-0 flex-1 gap-1.5">
-        <span className="truncate text-xs text-muted-foreground">{label}</span>
-        <span className="text-[26px] font-semibold leading-none tracking-[-0.02em]">{children}</span>
-        <span className="truncate text-xs text-muted-foreground">{foot}</span>
+    <div className="flex items-start justify-between gap-3">
+      <div className="grid min-w-0 gap-1">
+        <h2 className="flex items-center gap-2 text-[13px] font-normal text-muted-foreground"><Icon className="size-3.5" aria-hidden />{title}</h2>
+        {value !== undefined && <span className="text-[26px] font-semibold leading-none tracking-[-0.03em]">{value}</span>}
+        {sub && <span className="text-[12px] text-muted-foreground">{sub}</span>}
       </div>
-      {viz}
-    </Rise>
-  );
-}
-
-function PriorityStack({ p }: { p: OverviewData["kpis"]["priorities"] }) {
-  const total = p.critical + p.high + p.medium + p.low;
-  if (!total) return null;
-  const parts = [["critical", p.critical], ["high", p.high], ["medium", p.medium], ["low", p.low]] as const;
-  return (
-    <div className="flex h-11 w-3 shrink-0 flex-col-reverse gap-0.5 overflow-hidden rounded-full" aria-hidden>
-      {parts.filter(([, n]) => n > 0).map(([k, n], i) => (
-        <span key={k} className="rise w-full rounded-[2px]" style={{ height: `${(n / total) * 100}%`, background: PRIORITY_COLOR[k], ["--d" as string]: `${300 + i * 60}ms` }} />
-      ))}
+      {href && (
+        <Link href={href} className="press panel flex h-8 shrink-0 items-center gap-0.5 rounded-full pl-3 pr-2 text-[12px] text-muted-foreground transition-colors hover:text-foreground">
+          {action}<ChevronRight className="size-3.5" aria-hidden />
+        </Link>
+      )}
     </div>
   );
 }
 
-// ---------------------------------------------------------------- Mentions over time
+function Empty({ children }: { children: React.ReactNode }) {
+  return <p className="grid min-h-40 place-content-center rounded-xl border border-dashed px-4 text-center text-[13px] text-muted-foreground">{children}</p>;
+}
 
-function Segmented<T extends string>({ value, options, onChange, id }: { value: T; options: Array<[T, string]>; onChange: (v: T) => void; id: string }) {
+// ---------------------------------------------------------------- hero
+
+const PERIODS = [["7d", "Week"], ["30d", "Month"], ["90d", "Quarter"]] as const;
+
+function Periods({ value }: { value: string }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const pick = (key: string) => {
+    const sp = new URLSearchParams(params.toString());
+    sp.set("range", key);
+    sp.delete("from");
+    sp.delete("to");
+    router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
+  };
   return (
-    <div role="radiogroup" className="relative flex rounded-md bg-muted p-0.5 text-[11px]">
-      {options.map(([v, label]) => (
-        <button key={v} type="button" role="radio" aria-checked={value === v} onClick={() => onChange(v)}
-          className={cn("relative h-6 rounded px-2 font-medium transition-colors", value === v ? "text-foreground" : "text-muted-foreground hover:text-foreground")}>
-          {value === v && <motion.span layoutId={`seg-${id}`} transition={GLIDE} className="absolute inset-0 rounded bg-surface shadow-sm" aria-hidden />}
-          <span className="relative">{label}</span>
+    <div role="radiogroup" aria-label="Period" className="panel flex rounded-full p-1 text-[13px]">
+      {PERIODS.map(([k, label]) => (
+        <button key={k} type="button" role="radio" aria-checked={value === k} onClick={() => pick(k)}
+          className={cn("press h-8 rounded-full px-4 transition-colors duration-200",
+            value === k ? "bg-foreground/[0.09] text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]" : "text-muted-foreground hover:text-foreground")}>
+          {label}
         </button>
       ))}
     </div>
   );
 }
 
-function TrendTooltip({ active, payload, stacked, keys }: { active?: boolean; payload?: Array<{ payload: OverviewData["series"][number] }>; stacked: boolean; keys: OverviewData["stackKeys"] }) {
-  if (!active || !payload?.length) return null;
-  const r = payload[0]!.payload;
+/** Where the conversation is: the top platforms' shares as bars (the largest in red), the rest striped. */
+function MixBar({ d }: { d: OverviewData }) {
+  if (d.mix.length === 0) return <Empty>No mentions in this period yet.</Empty>;
   return (
-    <div className="min-w-40 rounded-lg border bg-surface px-3 py-2 text-xs shadow-lg">
-      <p className="text-muted-foreground">{r.full}</p>
-      <p className="mt-0.5 text-[13px] font-semibold tabular">{r.value === null ? "Not monitored" : `${fmt(r.value)} mentions`}</p>
-      {stacked && r.value !== null && (
-        <ul className="mt-1.5 grid gap-0.5">
-          {keys.map((k) => <li key={k.id} className="flex items-center gap-1.5"><span className="size-2 rounded-sm" style={{ background: k.color }} /><span className="flex-1">{k.name}</span><span className="tabular">{r.by[k.id] ?? 0}</span></li>)}
-          {r.other > 0 && <li className="flex items-center gap-1.5"><span className="size-2 rounded-sm" style={{ background: OTHER }} /><span className="flex-1">Other</span><span className="tabular">{r.other}</span></li>}
-        </ul>
-      )}
+    <div className="grid content-end gap-3">
+      <div className="flex items-baseline justify-between gap-3 text-[13px] text-muted-foreground">
+        <span>Where the conversation is</span>
+        <span className="tabular-nums">≈ {fmt(d.perDay)} a day</span>
+      </div>
+      <div className="mt-3 flex items-end gap-3">
+        {d.mix.map((m, i) => {
+          const kind = i === 0 ? "solid" : i < 3 ? "dense" : "sparse";
+          return (
+            <div key={m.name} className="rise grid min-w-0 gap-2" style={vars({ flex: Math.max(m.share, 0.08), "--d": `${120 + i * 90}ms` })} title={`${m.name}: ${fmt(m.value)} mentions`}>
+              <div className="flex min-w-0 items-baseline gap-1.5 whitespace-nowrap text-[13px]">
+                <span className={kind === "solid" ? "font-semibold" : "font-medium text-foreground/85"}>{pct(m.share)}</span>
+                <span className="truncate text-muted-foreground">{m.name}</span>
+              </div>
+              <div className="grow-y h-[86px]" style={vars({
+                "--d": `${300 + i * 110}ms`,
+                background: kind === "solid"
+                  ? "linear-gradient(180deg, color-mix(in oklab, var(--signal) 80%, white), var(--signal))"
+                  : kind === "dense"
+                    ? `repeating-linear-gradient(90deg, ${ink(0.72)} 0 5px, transparent 5px 11px)`
+                    : `repeating-linear-gradient(90deg, ${ink(0.3)} 0 5px, transparent 5px 14px)`,
+                boxShadow: kind === "solid" ? "0 10px 40px -10px color-mix(in oklab, var(--signal) 70%, transparent)" : undefined,
+                borderRadius: kind === "solid" ? 14 : 6,
+              })} />
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex justify-between text-[12px] text-muted-foreground/80"><span>{d.from}</span><span>{d.to}</span></div>
     </div>
   );
 }
 
-function Trend({ d }: { d: OverviewData }) {
-  const [mode, setMode] = useState<"total" | "platform">("platform");
-  const data = d.series.map((s) => ({ ...s, ...Object.fromEntries(d.stackKeys.map((k) => [k.id, s.value === null ? null : s.by[k.id] ?? 0])), __other: s.value === null ? null : s.other }));
+function Hero({ d }: { d: OverviewData }) {
   return (
-    <Panel index={5} title="Mentions over time" href="/buzz" action="Trends" className="lg:col-span-8"
-      aside={<Segmented id="trend" value={mode} onChange={setMode} options={[["platform", "By platform"], ["total", "Total"]]} />}>
-      {d.series.some((s) => s.value !== null) ? (
-        <div className="grid gap-3">
-          <div className="h-[268px] w-full min-w-0">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={data} margin={{ top: 10, right: 6, bottom: 0, left: -8 }}>
-                <defs>
-                  <linearGradient id="ov-total" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.32} />
-                    <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="2 4" />
-                <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} interval="preserveStartEnd" minTickGap={28} />
-                <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} width={38} allowDecimals={false} />
-                <Tooltip cursor={{ stroke: "var(--muted-foreground)", strokeDasharray: "2 3" }} content={<TrendTooltip stacked={mode === "platform"} keys={d.stackKeys} />} />
-                {mode === "total" ? (
-                  <Area key="total" type="linear" dataKey="value" stroke="var(--primary)" strokeWidth={2} fill="url(#ov-total)" connectNulls={false}
-                    animationDuration={700} animationEasing="ease-out"
-                    activeDot={{ r: 4, stroke: "var(--surface)", strokeWidth: 2, fill: "var(--primary)" }} />
-                ) : (
-                  [...d.stackKeys.map((k) => ({ id: k.id, color: k.color })), { id: "__other", color: OTHER }].map((k) => (
-                    <Area key={k.id} type="linear" dataKey={k.id} stackId="p" stroke={k.color} strokeWidth={1.25} fill={k.color} fillOpacity={0.55}
-                      connectNulls={false} animationDuration={700} animationEasing="ease-out" activeDot={false} />
-                  ))
-                )}
-              </AreaChart>
-            </ResponsiveContainer>
+    <section className="grid gap-8 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+      <div className="rise grid content-start gap-6">
+        <h1 className="text-[34px] font-medium leading-[1.05] tracking-[-0.035em] sm:text-[44px]">
+          {d.greeting}{d.name && <>, <span className="text-foreground/45">{d.name}</span></>}
+        </h1>
+        <div className="grid gap-2">
+          <span className="text-[14px] text-muted-foreground">{d.product} · mentions, {d.period}</span>
+          <div className="flex flex-wrap items-center gap-3">
+            <CountUp value={d.total} className="text-[56px] font-semibold leading-none tracking-[-0.045em] sm:text-[64px]" />
+            {d.change !== null && (
+              <span className={cn("panel flex items-center gap-1 rounded-full px-2.5 py-1 text-[13px] tabular-nums", d.change >= 0 ? "text-positive" : "text-signal")}>
+                {d.change >= 0 ? <ArrowUpRight className="size-3.5" aria-hidden /> : <ArrowDownRight className="size-3.5" aria-hidden />}
+                {d.change >= 0 ? "+" : "−"}{Math.abs(Math.round(d.change * 1000) / 10)}%
+                <span className="sr-only"> vs the previous period</span>
+              </span>
+            )}
           </div>
-          {mode === "platform" && (
-            <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground" aria-label="Legend">
-              {d.stackKeys.map((k) => <li key={k.id} className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm" style={{ background: k.color }} />{k.name}</li>)}
-              <li className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm" style={{ background: OTHER }} />Other</li>
-            </ul>
-          )}
+          <span className="text-[14px] text-muted-foreground">
+            {d.sentiment && <>Positive <span className="text-foreground">{pct(d.sentiment.positive)}</span> · Negative <span className="text-signal">{pct(d.sentiment.negative)}</span> · </>}
+            {d.sourcesLive} {d.sourcesLive === 1 ? "source" : "sources"} live
+          </span>
         </div>
-      ) : <p className="py-16 text-center text-[13px] text-muted-foreground">Nothing monitored in this period yet.</p>}
-    </Panel>
+        <div className="flex flex-wrap items-center gap-2">
+          {d.topIssue ? (
+            <Link href={`/feedback#issue-${d.topIssue.id}`} title={d.topIssue.title}
+              className="press flex h-11 items-center gap-2 rounded-full bg-primary px-5 text-[14px] font-medium text-primary-foreground shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12),0_8px_24px_-8px_color-mix(in_oklab,var(--signal)_80%,transparent)]">
+              <Sparkles className="size-4" aria-hidden />Investigate top issue
+            </Link>
+          ) : (
+            <Link href="/mentions" className="press flex h-11 items-center gap-2 rounded-full bg-primary px-5 text-[14px] font-medium text-primary-foreground">
+              <MessageSquare className="size-4" aria-hidden />Read mentions
+            </Link>
+          )}
+          <Link href="/reports" className="press panel flex h-11 items-center gap-2 rounded-full px-5 text-[14px] transition-colors hover:bg-foreground/[0.06]">
+            <Download className="size-4" aria-hidden />Reports
+          </Link>
+        </div>
+      </div>
+      <div className="rise grid content-between gap-5" style={vars({ "--d": "120ms" })}>
+        <div className="flex justify-end"><Periods value={d.rangeKey} /></div>
+        <MixBar d={d} />
+      </div>
+    </section>
   );
 }
 
-// ---------------------------------------------------------------- Platform mix (donut)
+// ---------------------------------------------------------------- platforms
 
-function PlatformMix({ d }: { d: OverviewData }) {
-  const first = useFirstRender();
-  const [hover, setHover] = useState<number | null>(null);
-  const slices = [...d.platforms.map((p) => ({ name: p.name, value: p.value, color: p.color })),
-    ...(d.otherPlatforms.value > 0 ? [{ name: `${d.otherPlatforms.count} more`, value: d.otherPlatforms.value, color: OTHER }] : [])];
-  const total = slices.reduce((t, s) => t + s.value, 0);
-  const focus = hover !== null ? slices[hover] : null;
+function Sparkline({ data, red, delay }: { data: number[]; red: boolean; delay: number }) {
+  const id = `sp${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
+  const max = Math.max(...data, 1), min = Math.min(...data, 0);
+  const pts = data.map((v, i) => [(i / Math.max(1, data.length - 1)) * 100, 34 - ((v - min) / (max - min || 1)) * 28] as [number, number]);
+  const path = smoothPath(pts);
   return (
-    <Panel index={6} title="Platform mix" href="/integrations" action="Sources" className="lg:col-span-4">
-      {total === 0 ? <p className="py-16 text-center text-[13px] text-muted-foreground">No mentions yet.</p> : (
-        <div className="grid gap-4">
-          <div className="relative mx-auto size-[184px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={slices} dataKey="value" nameKey="name" innerRadius={64} outerRadius={88} paddingAngle={2} cornerRadius={4} stroke="none"
-                  startAngle={90} endAngle={-270} isAnimationActive={first} animationBegin={250} animationDuration={1000} animationEasing="ease-out"
-                  onMouseEnter={(_, i) => setHover(i)} onMouseLeave={() => setHover(null)}>
-                  {slices.map((s, i) => <Cell key={s.name} fill={s.color} opacity={hover === null || hover === i ? 1 : 0.35} style={{ transition: "opacity 150ms ease" }} />)}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="pointer-events-none absolute inset-0 grid place-content-center text-center">
-              <span className="text-[24px] font-semibold leading-none tracking-[-0.02em]">{focus ? fmt(focus.value) : <CountUp value={total} />}</span>
-              <span className="mt-1 max-w-28 truncate text-xs text-muted-foreground">{focus ? `${focus.name} · ${Math.round((focus.value / total) * 100)}%` : "mentions"}</span>
+    <svg viewBox="0 0 100 40" className="h-10 w-[100px] shrink-0" aria-hidden>
+      <defs>
+        <linearGradient id={id} x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor={red ? "var(--signal)" : "var(--foreground)"} stopOpacity={red ? 0.3 : 0.16} />
+          <stop offset="100%" stopColor="var(--foreground)" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={`${path} L100,40 L0,40 Z`} fill={`url(#${id})`} className="fade-in" style={vars({ "--d": `${delay + 400}ms` })} />
+      <path d={path} fill="none" stroke={red ? "var(--signal)" : ink(0.85)} strokeWidth="1.6" pathLength={1} className="draw" style={vars({ "--d": `${delay}ms` })} />
+    </svg>
+  );
+}
+
+function Platforms({ d }: { d: OverviewData }) {
+  if (d.platforms.length === 0) return null;
+  return (
+    <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5" aria-label="Top platforms">
+      {d.platforms.map((s, i) => (
+        <div key={s.id} className="panel lift rise grid gap-4 rounded-[18px] p-4" style={vars({ "--d": `${180 + i * 70}ms` })}>
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex min-w-0 items-center gap-2 text-[13px] text-muted-foreground">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-full border bg-foreground/[0.04] text-[11px] font-semibold text-foreground">{s.name.slice(0, 1)}</span>
+              <span className="truncate">{s.name}</span>
+            </span>
+            <Delta v={s.change} />
+          </div>
+          <div className="flex items-end justify-between gap-2">
+            <div className="grid gap-0.5">
+              <CountUp value={s.value} className="text-[24px] font-semibold leading-none tracking-[-0.03em]" />
+              <span className="text-[12px] text-muted-foreground/80">{d.period}</span>
+            </div>
+            <Sparkline data={s.line} red={(s.change ?? 0) < 0} delay={300 + i * 80} />
+          </div>
+        </div>
+      ))}
+      <Link href="/integrations"
+        className={cn("press rise grid place-content-center gap-1 rounded-[18px] border border-dashed p-4 text-center text-[13px] text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground",
+          d.platforms.length % 2 === 0 && "hidden xl:grid")}
+        style={vars({ "--d": "460ms" })}>
+        <span className="mx-auto mb-1 flex size-9 items-center justify-center rounded-full border"><Plus className="size-4" aria-hidden /></span>
+        Add another platform<span className="text-[11px] text-muted-foreground/80">or a competitor to compare</span>
+      </Link>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------- mentions chart
+
+function MainChart({ d }: { d: OverviewData }) {
+  // Drawn at the container's real pixel width (no stretching), re-measured on resize.
+  const box = useRef<HTMLDivElement>(null);
+  const [W, setW] = useState(760);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setW(Math.max(200, Math.round(e!.contentRect.width))));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const pts = d.chart;
+  const n = pts.length;
+  const H = 250, PAD = 12;
+  const max = Math.max(1, ...pts.map((p) => p.all)) * 1.12;
+  const x = (i: number) => PAD + (n > 1 ? i / (n - 1) : 0.5) * (W - PAD * 2);
+  const y = (v: number) => H - 18 - (v / max) * (H - 40);
+  const hasNeg = pts.some((p) => p.negative !== null);
+  const paths = useMemo(() => {
+    const px = (i: number) => PAD + (n > 1 ? i / (n - 1) : 0.5) * (W - PAD * 2);
+    const py = (v: number) => H - 18 - (v / max) * (H - 40);
+    return {
+      all: smoothPath(pts.map((p, i) => [px(i), py(p.all)])),
+      neg: hasNeg ? smoothPath(pts.map((p, i) => [px(i), py(p.negative ?? 0)])) : "",
+    };
+  }, [pts, n, W, max, hasNeg]);
+  const peak = pts.reduce((b, p, i) => (p.all > pts[b]!.all ? i : b), 0);
+  const [sel, setSel] = useState(peak);
+  const at = Math.min(sel, Math.max(0, n - 1));
+  const onMove = (e: React.PointerEvent) => {
+    const r = box.current!.getBoundingClientRect();
+    setSel(Math.max(0, Math.min(n - 1, Math.round(((e.clientX - r.left - PAD) / (r.width - PAD * 2)) * (n - 1)))));
+  };
+  const left = (x(at) / W) * 100;
+  const chips = !d.hourly && n <= 31;
+  const p = pts[at];
+  return (
+    <Card d={420}>
+      <CardHead title="Mentions" icon={TrendingUp} value={<CountUp value={d.total} />} sub={d.period} href="/buzz" action="Trends" />
+      {!p ? <Empty>No mentions in this period yet.</Empty> : (
+        <>
+          <div className="flex items-center gap-4 text-[12px] text-muted-foreground">
+            <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded bg-foreground" />All</span>
+            {hasNeg && <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded bg-signal" />Negative</span>}
+          </div>
+          <div ref={box} className="dots relative h-[250px] cursor-crosshair touch-pan-y rounded-xl" onPointerMove={onMove} onPointerDown={onMove}>
+            <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 size-full overflow-visible" role="img" aria-label={`Mentions per ${d.hourly ? "hour" : "day"}${hasNeg ? ", all and negative" : ""}`}>
+              <defs>
+                <linearGradient id="ov-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="var(--foreground)" stopOpacity="0.13" /><stop offset="100%" stopColor="var(--foreground)" stopOpacity="0" /></linearGradient>
+                <filter id="ov-glow" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="4" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
+              </defs>
+              <path d={`${paths.all} L${x(n - 1)},${H} L${x(0)},${H} Z`} fill="url(#ov-area)" className="fade-in" style={vars({ "--d": "900ms" })} />
+              <path d={paths.all} fill="none" stroke="var(--foreground)" strokeWidth="2" pathLength={1} className="draw" style={vars({ "--d": "500ms" })} />
+              {hasNeg && <path d={paths.neg} fill="none" stroke="var(--signal)" strokeWidth="2" pathLength={1} filter="url(#ov-glow)" className="draw" style={vars({ "--d": "700ms" })} />}
+            </svg>
+            <div className="pointer-events-none absolute inset-y-0 w-px bg-foreground/20 transition-[left] duration-150 ease-out" style={{ left: `${left}%` }} />
+            <span className="pointer-events-none absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-surface bg-foreground transition-[left,top] duration-150 ease-out"
+              style={{ left: `${left}%`, top: `${(y(p.all) / H) * 100}%` }} />
+            {p.negative !== null && (
+              <span className="pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-surface bg-signal shadow-[var(--signal-glow)] transition-[left,top] duration-150 ease-out"
+                style={{ left: `${left}%`, top: `${(y(p.negative) / H) * 100}%` }} />
+            )}
+            <div className="pointer-events-none absolute top-3 rounded-lg border bg-surface/95 px-3 py-2 text-[12px] shadow-xl transition-[left] duration-150 ease-out"
+              style={{ left: `clamp(8px, calc(${left}% + 12px), calc(100% - 180px))` }}>
+              <p className="text-muted-foreground">{p.full}</p>
+              <p className="mt-1 flex items-center gap-1.5 tabular-nums"><span className="size-1.5 rounded-full bg-foreground" />{fmt(p.all)} mentions</p>
+              {p.negative !== null && <p className="flex items-center gap-1.5 tabular-nums text-signal"><span className="size-1.5 rounded-full bg-signal" />{fmt(p.negative)} negative</p>}
             </div>
           </div>
-          <ul className="grid grid-cols-2 gap-x-4 gap-y-2 text-[13px]" aria-label="Mentions by platform">
-            {slices.map((s, i) => (
-              <li key={s.name} className="flex min-w-0 items-center gap-2" onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
-                <span className="size-2.5 shrink-0 rounded-sm" style={{ background: s.color }} aria-hidden />
-                <span className="min-w-0 flex-1 truncate">{s.name}</span>
-                <span className="tabular text-muted-foreground">{Math.round((s.value / total) * 100)}%</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </Panel>
-  );
-}
-
-// ---------------------------------------------------------------- When people talk (heatmap)
-
-const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const hourLabel = (h: number) => (h === 0 ? "12a" : h < 12 ? `${h}a` : h === 12 ? "12p" : `${h - 12}p`);
-const heatColor = (t: number) => (t <= 0 ? "var(--muted)" : `color-mix(in oklch, var(--primary) ${18 + Math.round(t * 82)}%, var(--muted))`);
-
-function Heatmap({ d }: { d: OverviewData }) {
-  const max = Math.max(1, ...d.heat.flat());
-  const [cell, setCell] = useState<[number, number] | null>(null);
-  let peak: [number, number] = [0, 0];
-  d.heat.forEach((row, i) => row.forEach((v, h) => { if (v > d.heat[peak[0]]![peak[1]]!) peak = [i, h]; }));
-  const shown = cell ?? peak;
-  const v = d.heat[shown[0]]![shown[1]]!;
-  return (
-    <Panel index={7} title="When people talk" className="lg:col-span-5">
-      <p className="mb-3 text-[13px]">
-        <span className="font-medium">{DAYS[shown[0]]} {hourLabel(shown[1])}–{hourLabel((shown[1] + 1) % 24)}</span>
-        <span className="text-muted-foreground"> · {v} mention{v === 1 ? "" : "s"}{!cell && v > 0 ? " · busiest hour" : ""}</span>
-      </p>
-      <div className="grid grid-cols-[28px_1fr] gap-x-2" role="img" aria-label={`Mentions by weekday and hour. Busiest: ${DAYS[peak[0]]} ${hourLabel(peak[1])}.`}>
-        <div className="grid grid-rows-7 gap-[3px] text-[10px] leading-none text-muted-foreground">
-          {DAYS.map((day) => <span key={day} className="flex items-center">{day}</span>)}
-        </div>
-        <div className="grid gap-[3px]" onMouseLeave={() => setCell(null)}>
-          {d.heat.map((row, i) => (
-            <div key={i} className="grid grid-cols-24 gap-[3px]">
-              {row.map((n, h) => (
-                <span key={h} onMouseEnter={() => setCell([i, h])}
-                  className={cn("fade-in aspect-square min-h-2 rounded-[3px] outline outline-1", cell && cell[0] === i && cell[1] === h ? "outline-foreground" : "outline-transparent")}
-                  style={{ background: heatColor(n / max), ["--d" as string]: `${200 + h * 18}ms` }} />
+          {chips && (
+            <div className="hidden gap-1 sm:grid" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
+              {pts.map((q, i) => (
+                <button key={i} type="button" onClick={() => setSel(i)} aria-label={q.full} aria-pressed={i === at}
+                  className={cn("pop mx-auto flex aspect-square w-full max-w-7 items-center justify-center rounded-full text-[10px] tabular-nums transition-colors",
+                    i === at ? "bg-foreground font-semibold text-background" : "border border-foreground/[0.08] text-muted-foreground/80 hover:text-foreground")}
+                  style={vars({ "--d": `${900 + i * 25}ms` })}>{q.chip}</button>
               ))}
             </div>
-          ))}
-          <div className="mt-1 grid grid-cols-24 text-[10px] text-muted-foreground">
-            {Array.from({ length: 24 }, (_, h) => <span key={h} className={h % 6 ? "invisible" : ""}>{hourLabel(h)}</span>)}
-          </div>
-        </div>
-      </div>
-      <div className="mt-3 flex items-center justify-end gap-1.5 text-[10px] text-muted-foreground">
-        Fewer
-        {[0, 0.25, 0.5, 0.75, 1].map((t) => <span key={t} className="size-2.5 rounded-[3px]" style={{ background: heatColor(t) }} />)}
-        More
-      </div>
-    </Panel>
+          )}
+          <div className={cn("flex justify-between text-[11px] text-muted-foreground/80", chips && "sm:hidden")}><span>{pts[0]!.label}</span><span>{pts[Math.floor(n / 2)]!.label}</span><span>{pts[n - 1]!.label}</span></div>
+        </>
+      )}
+    </Card>
   );
 }
 
-// ---------------------------------------------------------------- Sentiment (gauge)
+// ---------------------------------------------------------------- negative by weekday
 
-function Sentiment({ d }: { d: OverviewData }) {
-  const first = useFirstRender();
-  const s = d.sentiment;
-  const total = s ? s.positive + s.neutral + s.negative : 0;
-  const net = s && total ? Math.round(((s.positive - s.negative) / total) * 100) : 0;
-  const data = s ? [
-    { name: "Positive", value: s.positive, color: "var(--sentiment-positive)" },
-    { name: "Neutral", value: s.neutral, color: OTHER },
-    { name: "Negative", value: s.negative, color: "var(--sentiment-negative)" },
-  ] : [];
+function Capsules({ d }: { d: OverviewData }) {
+  const known = d.week.filter((w) => w.share !== null);
+  const worst = d.week.reduce((w, x, i) => ((x.share ?? -1) > (d.week[w]!.share ?? -1) ? i : w), 0);
+  const top = Math.max(0.01, ...known.map((w) => w.share!));
+  const [hover, setHover] = useState<number | null>(null);
+  const shown = d.week[hover ?? worst]!;
   return (
-    <Panel index={8} title="Sentiment" href="/feedback" action="Feedback" className="lg:col-span-3">
-      {!s || total === 0 ? <p className="py-16 text-center text-[13px] text-muted-foreground">Not enough classified mentions yet.</p> : (
-        <div className="grid gap-3">
-          <div className="relative mx-auto h-[108px] w-[196px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={data} dataKey="value" cx="50%" cy="100%" startAngle={180} endAngle={0} innerRadius={68} outerRadius={92} paddingAngle={2} cornerRadius={4} stroke="none"
-                  isAnimationActive={first} animationBegin={300} animationDuration={1000} animationEasing="ease-out">
-                  {data.map((x) => <Cell key={x.name} fill={x.color} />)}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="absolute inset-x-0 bottom-0 grid justify-items-center">
-              <span className={cn("text-[26px] font-semibold leading-none tracking-[-0.02em]", net > 0 ? "text-positive" : net < 0 ? "text-negative" : "")}>
-                <CountUp value={net} format={{ signDisplay: "exceptZero" }} />
+    <Card d={500}>
+      <CardHead title="Negative by weekday" icon={Bug}
+        value={known.length ? (shown.share === null ? "—" : <CountUp value={Math.round(shown.share * 100)} suffix="%" />) : undefined}
+        sub={known.length ? `${shown.d}${hover === null ? " · most negative day" : ` · ${fmt(shown.classified)} classified`}` : undefined} />
+      {known.length === 0 ? <Empty>Sentiment appears once mentions are classified.</Empty> : (
+        <div className="flex h-[218px] items-end justify-between gap-2" onMouseLeave={() => setHover(null)}>
+          {d.week.map((w, i) => (
+            <button key={w.d} type="button" className="grid h-full flex-1 grid-rows-[1fr_auto] justify-items-center gap-2"
+              onMouseEnter={() => setHover(i)} onFocus={() => setHover(i)} onBlur={() => setHover(null)}
+              aria-label={`${w.d}: ${w.share === null ? "no data" : `${pct(w.share)} negative`}`}>
+              <span className="relative flex h-full w-full max-w-9 items-end overflow-hidden rounded-full bg-gradient-to-b from-foreground/[0.07] to-foreground/[0.02]">
+                <span className="grow-y w-full rounded-full" style={vars({
+                  height: `${Math.max(4, ((w.share ?? 0) / top) * 100)}%`, "--d": `${600 + i * 70}ms`,
+                  background: i === worst ? "linear-gradient(180deg, color-mix(in oklab, var(--signal) 75%, white), var(--signal))" : `linear-gradient(180deg, ${ink(0.42)}, ${ink(0.12)})`,
+                  boxShadow: i === worst ? "0 0 28px color-mix(in oklab, var(--signal) 55%, transparent)" : undefined,
+                  opacity: hover === null || hover === i ? 1 : 0.45, transition: "opacity 160ms ease",
+                })} />
               </span>
-              <span className="mt-1 text-xs text-muted-foreground">net sentiment</span>
+              <span className={cn("text-[12px]", i === worst ? "font-medium text-foreground" : "text-muted-foreground/80")}>{w.d}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------- issues by kind
+
+function IssueDonut({ d }: { d: OverviewData }) {
+  const r = 62, c = 2 * Math.PI * r;
+  const sum = d.kinds.reduce((t, k) => t + k.v, 0);
+  const gap = d.kinds.length > 1 ? 10 : 0;
+  const starts = d.kinds.map((_, i) => d.kinds.slice(0, i).reduce((t, k) => t + (k.v / Math.max(1, sum)) * c, 0));
+  const colors = ["var(--signal)", ink(0.85), ink(0.5), ink(0.25), ink(0.14)];
+  return (
+    <Card d={580}>
+      <CardHead title="Open issues by kind" icon={Inbox} href="/feedback" action="Issues" />
+      {sum === 0 ? <Empty>No open issues. New ones appear as reports come in.</Empty> : (
+        <>
+          <div className="relative mx-auto size-[170px]">
+            <svg viewBox="0 0 160 160" className="size-full -rotate-90" role="img" aria-label="Open issues by kind">
+              {d.kinds.map((k, i) => (
+                <circle key={k.name} cx="80" cy="80" r={r} fill="none" stroke={colors[i] ?? ink(0.14)} strokeWidth="16" strokeLinecap={gap ? "round" : "butt"}
+                  strokeDasharray={`${Math.max(0.5, (k.v / sum) * c - gap)} ${c}`} strokeDashoffset={-starts[i]!}
+                  className="fade-in" style={vars({ "--d": `${700 + i * 120}ms`, filter: i === 0 ? "drop-shadow(0 0 8px color-mix(in oklab, var(--signal) 60%, transparent))" : undefined })} />
+              ))}
+            </svg>
+            <div className="absolute inset-0 grid place-content-center text-center">
+              <CountUp value={d.openIssues} className="text-[30px] font-semibold leading-none tracking-[-0.03em]" />
+              <span className="mt-1 text-[12px] text-muted-foreground/80">open issues</span>
             </div>
           </div>
-          <ul className="grid gap-1.5 text-[13px]">
-            {data.map((x) => (
-              <li key={x.name} className="flex items-center gap-2">
-                <span className="size-2.5 rounded-sm" style={{ background: x.color }} aria-hidden />
-                <span className="flex-1">{x.name}</span>
-                <span className="tabular text-muted-foreground">{Math.round((x.value / total) * 100)}%</span>
+          <ul className="grid grid-cols-2 gap-x-3 gap-y-2 text-[12px] xl:grid-cols-1">
+            {d.kinds.map((k, i) => (
+              <li key={k.name} className="flex items-center gap-2">
+                <span className="h-3 w-1 rounded-full" style={{ background: colors[i] ?? ink(0.14), boxShadow: i === 0 ? "var(--signal-glow)" : undefined }} />
+                <span className="min-w-0 flex-1 truncate text-muted-foreground">{k.name}</span>
+                <span className="tabular-nums">{k.v}</span>
               </li>
             ))}
           </ul>
-        </div>
+        </>
       )}
-    </Panel>
+    </Card>
   );
 }
 
-// ---------------------------------------------------------------- Share of voice
+// ---------------------------------------------------------------- platform → topic flow
 
-function Voice({ d }: { d: OverviewData }) {
+function Flow({ d }: { d: OverviewData }) {
+  const { from, to, links } = d.flow;
+  // Drawn at the card's real width so labels keep their size; ribbons take what's left between them.
+  const box = useRef<HTMLDivElement>(null);
+  const [CW, setCW] = useState(480);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setCW(Math.max(260, Math.round(e!.contentRect.width))));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const LEFT = 92, RIGHT = 118;
+  const W = CW - LEFT - RIGHT, H = 230, NODE = 10, GAP = 10;
+  const total = from.reduce((t, n) => t + n.v, 0);
+  const [hover, setHover] = useState<string | null>(null);
+  if (total === 0) {
+    return <Card d={660}><CardHead title="From platforms to topics" icon={Waypoints} /><div ref={box}><Empty>Topics appear once mentions are classified.</Empty></div></Card>;
+  }
+  const scaleL = (H - GAP * (from.length - 1)) / total;
+  const scaleR = (H - GAP * (to.length - 1)) / total;
+  const yL: Record<string, number> = {}, yR: Record<string, number> = {};
+  let acc = 0; for (const n of from) { yL[n.id] = acc; acc += n.v * scaleL + GAP; }
+  acc = 0; for (const n of to) { yR[n.id] = acc; acc += n.v * scaleR + GAP; }
+  const outL = { ...yL }, inR = { ...yR };
+  const ribbons = links.map(([a, b, v]) => {
+    const h1 = v * scaleL, h2 = v * scaleR;
+    const y1 = outL[a]!, y2 = inR[b]!;
+    outL[a] = y1 + h1; inR[b] = y2 + h2;
+    const x0 = NODE, x1 = W - NODE, mx = W / 2;
+    return { a, b, v, d: `M${x0},${y1} C${mx},${y1} ${mx},${y2} ${x1},${y2} L${x1},${y2 + h2} C${mx},${y2 + h2} ${mx},${y1 + h1} ${x0},${y1 + h1} Z` };
+  });
+  const short = (s: string) => (s.length > 11 ? `${s.slice(0, 10)}…` : s);
   return (
-    <Panel index={9} title="Share of voice" href="/competitors" action="Competitors" className="lg:col-span-4">
-      {d.voice.length > 1 && d.voice.some((v) => v.share !== null) ? (
-        <ul className="grid gap-3.5 text-[13px]">
-          {d.voice.map((v, i) => (
-            <li key={v.name} className="grid gap-1.5">
-              <div className="flex items-baseline gap-2">
-                <span className={cn("min-w-0 flex-1 truncate", v.isProduct && "font-medium")}>{v.name}</span>
-                <span className="font-medium tabular">{v.share === null ? "—" : `${Math.round(v.share * 100)}%`}</span>
+    <Card d={660}>
+      <CardHead title="From platforms to topics" icon={Waypoints} value={<CountUp value={total} />} sub="classified mentions on the top platforms" />
+      <div ref={box}>
+      <svg viewBox={`${-LEFT} 0 ${CW} ${H}`} width={CW} height={H} className="block max-w-full overflow-visible" role="img" aria-label="Mentions flowing from platforms to topics">
+        <defs>
+          <linearGradient id="ov-flow-red" x1="0" x2="1"><stop offset="0%" stopColor="var(--signal)" stopOpacity="0.15" /><stop offset="100%" stopColor="var(--signal)" stopOpacity="0.55" /></linearGradient>
+        </defs>
+        {ribbons.map((p, i) => (
+          <path key={i} d={p.d} fill={p.b === "bug" ? "url(#ov-flow-red)" : ink(0.09)} className="fade-in"
+            style={vars({ "--d": `${800 + i * 40}ms`, opacity: hover !== null && hover !== p.a && hover !== p.b ? 0.25 : 1, transition: "opacity 180ms ease" })}>
+            <title>{`${from.find((f) => f.id === p.a)?.name} → ${to.find((t) => t.id === p.b)?.name}: ${fmt(p.v)}`}</title>
+          </path>
+        ))}
+        {from.map((n) => (
+          <g key={n.id} onMouseEnter={() => setHover(n.id)} onMouseLeave={() => setHover(null)}>
+            <rect x={0} y={yL[n.id]} width={NODE} height={Math.max(2, n.v * scaleL)} rx={3} fill={ink(0.85)} />
+            <text x={-8} y={yL[n.id]! + (n.v * scaleL) / 2} textAnchor="end" dominantBaseline="middle" className="fill-foreground text-[13px]">{short(n.name)}</text>
+            <text x={-8} y={yL[n.id]! + (n.v * scaleL) / 2 + 16} textAnchor="end" dominantBaseline="middle" className="fill-muted-foreground text-[12px]">{fmt(n.v)}</text>
+          </g>
+        ))}
+        {to.map((n) => (
+          <g key={n.id} onMouseEnter={() => setHover(n.id)} onMouseLeave={() => setHover(null)}>
+            <rect x={W - NODE} y={yR[n.id]} width={NODE} height={Math.max(2, n.v * scaleR)} rx={3} fill={n.id === "bug" ? "var(--signal)" : ink(0.85)}
+              style={n.id === "bug" ? { filter: "drop-shadow(0 0 6px color-mix(in oklab, var(--signal) 80%, transparent))" } : undefined} />
+            <text x={W + 8} y={yR[n.id]! + (n.v * scaleR) / 2} dominantBaseline="middle" className={n.id === "bug" ? "fill-signal text-[13px]" : "fill-foreground text-[13px]"}>{n.name}</text>
+            <text x={W + 8} y={yR[n.id]! + (n.v * scaleR) / 2 + 16} dominantBaseline="middle" className="fill-muted-foreground text-[12px]">{fmt(n.v)}</text>
+          </g>
+        ))}
+      </svg>
+      </div>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------- when people talk
+
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const hourLabel = (h: number) => (h === 0 ? "12am" : h < 12 ? `${h}am` : h === 12 ? "12pm" : `${h - 12}pm`);
+
+function PixelHeat({ d }: { d: OverviewData }) {
+  let peak: [number, number] = [0, 0];
+  d.heat.forEach((row, a) => row.forEach((v, h) => { if (v > d.heat[peak[0]]![peak[1]]!) peak = [a, h]; }));
+  const max = d.heat[peak[0]]![peak[1]]!;
+  const [cell, setCell] = useState<[number, number] | null>(null);
+  const shown = cell ?? peak;
+  const count = d.heat[shown[0]]![shown[1]]!;
+  return (
+    <Card d={740}>
+      <CardHead title="When people talk" icon={Clock}
+        value={max > 0 ? <span className="text-[22px]">{DAYS[shown[0]]} {hourLabel(shown[1])}</span> : undefined}
+        sub={max > 0 ? (cell ? `${fmt(count)} ${count === 1 ? "mention" : "mentions"}` : `busiest hour, ${d.period}`) : undefined} />
+      {max === 0 ? <Empty>Not enough dated mentions in this period.</Empty> : (
+        <>
+          <div className="grid w-full max-w-[460px] gap-[3px]" onMouseLeave={() => setCell(null)} role="img" aria-label={`Mentions by weekday and hour; busiest ${DAYS[peak[0]]} ${hourLabel(peak[1])}`}>
+            {d.heat.map((row, a) => (
+              <div key={a} className="grid grid-cols-24 gap-[3px]">
+                {row.map((v, h) => {
+                  const hot = a === peak[0] && h === peak[1];
+                  return (
+                    <span key={h} onMouseEnter={() => setCell([a, h])} className="pop aspect-square rounded-[2px]"
+                      style={vars({
+                        "--d": `${850 + (a * 24 + h) * 3}ms`,
+                        background: hot ? "var(--signal)" : v === 0 ? ink(0.05) : ink(0.12 + (v / max) * 0.78),
+                        boxShadow: hot ? "0 0 12px color-mix(in oklab, var(--signal) 90%, transparent)" : cell && cell[0] === a && cell[1] === h ? "0 0 0 1px var(--foreground)" : undefined,
+                      })} />
+                  );
+                })}
               </div>
-              <span className="block h-2 overflow-hidden rounded-full bg-muted" aria-hidden>
-                <span className="grow-x block h-full rounded-full" style={{ width: `${(v.share ?? 0) * 100}%`, background: v.color, ["--d" as string]: `${400 + i * 70}ms` }} />
-              </span>
+            ))}
+          </div>
+          <div className="flex w-full max-w-[460px] justify-between text-[11px] text-muted-foreground/80"><span>12am</span><span>6am</span><span>12pm</span><span>6pm</span><span>11pm</span></div>
+        </>
+      )}
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------- latest mentions
+
+function ago(iso: string, now: number) {
+  const m = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60000));
+  if (m < 60) return `${m}m`;
+  const h = Math.round(m / 60);
+  return h < 48 ? `${h}h` : `${Math.round(h / 24)}d`;
+}
+
+function Recent({ d }: { d: OverviewData }) {
+  // Relative times only after hydration, so server and client markup agree.
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => { const t = requestAnimationFrame(() => setNow(Date.now())); return () => cancelAnimationFrame(t); }, []);
+  return (
+    <Card d={620} className="gap-2">
+      <CardHead title="Latest mentions" icon={MessageSquare} href="/mentions" action="See all" />
+      {d.feed.length === 0 ? <Empty>No mentions yet.</Empty> : (
+        <ul className="grid">
+          {d.feed.map((m, i) => (
+            <li key={m.id} className="rise border-b border-foreground/[0.06] last:border-b-0" style={vars({ "--d": `${760 + i * 70}ms` })}>
+              <a href={m.url} target="_blank" rel="noopener noreferrer nofollow ugc" className="group flex items-center gap-3 py-3">
+                <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold",
+                  m.sentiment === "negative" ? "border-signal/40 bg-signal-soft text-signal" : "bg-foreground/[0.04]")}>
+                  {m.platform.slice(0, 1)}
+                </span>
+                <span className="grid min-w-0 flex-1 gap-0.5">
+                  <span className="truncate text-[13px] group-hover:underline group-hover:underline-offset-2">{m.text}</span>
+                  <span className="truncate text-[11px] text-muted-foreground/80">{m.author ? `${m.author} · ` : ""}{m.platform}</span>
+                </span>
+                <time dateTime={m.at} className="shrink-0 text-[11px] tabular-nums text-muted-foreground/80">{now === null ? "" : ago(m.at, now)}</time>
+              </a>
             </li>
           ))}
         </ul>
-      ) : (
-        <div className="grid h-full content-center gap-3 py-4 text-center">
-          <div className="mx-auto flex -space-x-2" aria-hidden>
-            {["var(--entity-1)", "var(--entity-2)", "var(--entity-3)"].map((c, i) => <span key={c} className="rise size-8 rounded-full border-2 border-surface" style={{ background: c, ["--d" as string]: `${400 + i * 80}ms` }} />)}
-          </div>
-          <p className="text-[13px] text-muted-foreground">See how much people talk about {d.product} compared with your competitors.</p>
-          <Link href="/competitors" className="press mx-auto inline-flex h-8 items-center rounded-md bg-primary px-3 text-[13px] font-medium text-primary-foreground">Add a competitor</Link>
-        </div>
       )}
-    </Panel>
+    </Card>
   );
 }
 
-// ---------------------------------------------------------------- Issues and feed
-
-function Issues({ d }: { d: OverviewData }) {
-  return (
-    <Panel index={10} title="Open issues" href="/feedback" action="Triage" className="lg:col-span-7" flush>
-      {d.issues.length === 0 ? <p className="px-4 py-12 text-center text-[13px] text-muted-foreground">No open issues. Issues appear once two or more people report the same thing.</p> : (
-        <table className="w-full table-fixed text-[13px]">
-          <thead className="text-left text-[11px] uppercase tracking-[0.05em] text-muted-foreground">
-            <tr className="border-b">
-              <th className="py-2.5 pl-4 font-medium">Issue</th>
-              <th className="w-16 text-right font-medium">People</th>
-              <th className="hidden w-32 pl-5 font-medium xl:table-cell">Trend</th>
-              <th className="w-28 pl-5 pr-4 font-medium">Priority</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {d.issues.map((i, n) => (
-              <tr key={i.id} className="fade-in group transition-colors hover:bg-muted/50" style={{ ["--d" as string]: `${450 + n * 40}ms` }}>
-                <td className="py-3 pl-4">
-                  <Link href={`/feedback#issue-${i.id}`} className="flex min-w-0 items-center gap-2">
-                    <span className="size-1.5 shrink-0 rounded-full" style={{ background: i.kindColor }} aria-label={i.kind} />
-                    <span className="truncate group-hover:underline group-hover:underline-offset-4">{i.title}</span>
-                  </Link>
-                </td>
-                <td className="text-right font-medium tabular">{i.people}</td>
-                <td className="hidden whitespace-nowrap pl-5 text-muted-foreground xl:table-cell">{i.trend ?? "—"}</td>
-                <td className="whitespace-nowrap pl-5 pr-4">
-                  {i.priority ? (
-                    <span className="inline-flex items-center gap-1.5 capitalize">
-                      <span className="relative flex size-2">
-                        {(i.priority === "high" || i.priority === "critical") && <span className="pulse-ring absolute inset-0 rounded-full" style={{ background: PRIORITY_COLOR[i.priority] }} aria-hidden />}
-                        <span className="relative size-2 rounded-full" style={{ background: PRIORITY_COLOR[i.priority] }} />
-                      </span>
-                      {i.priority}
-                    </span>
-                  ) : <span className="text-muted-foreground">—</span>}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </Panel>
-  );
-}
-
-function Feed({ d }: { d: OverviewData }) {
-  return (
-    <Panel index={11} title="Live feed" href="/mentions" action="All mentions" className="lg:col-span-5" flush>
-      {d.feed.length === 0 ? <p className="px-4 py-10 text-center text-[13px] text-muted-foreground">No mentions collected yet.</p> : (
-        <ul className="divide-y">
-          <AnimatePresence initial={false}>
-            {d.feed.map((m) => (
-              <motion.li key={m.id} layout="position" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.3, ease: EASE_OUT }}>
-                <a href={m.url} target="_blank" rel="noopener noreferrer nofollow ugc" className="group grid gap-0.5 px-4 py-2.5 text-[13px] transition-colors hover:bg-muted/50">
-                  <span className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span className="size-1.5 shrink-0 rounded-full" style={{ background: SENTIMENT_COLOR[m.sentiment ?? ""] ?? OTHER }} aria-label={`${m.sentiment ?? "unclassified"} sentiment`} />
-                    {m.author && <span className="truncate font-medium text-foreground">{m.author}</span>}
-                    <span className="shrink-0">{m.platform}</span>
-                    <span className="ml-auto flex shrink-0 items-center gap-1 tabular"><RelativeTime value={m.at} /><ExternalLink className="size-3 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden /></span>
-                  </span>
-                  <span className="line-clamp-1 min-w-0" dir="auto">{m.text}</span>
-                </a>
-              </motion.li>
-            ))}
-          </AnimatePresence>
-        </ul>
-      )}
-    </Panel>
-  );
-}
-
-// ---------------------------------------------------------------- Board
+// ---------------------------------------------------------------- page
 
 export function OverviewBoard({ d }: { d: OverviewData }) {
-  const k = d.kpis;
   return (
-    <div className="grid gap-3 lg:grid-cols-12">
-      <section aria-label="Key numbers" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:col-span-12 lg:grid-cols-5">
-        <Kpi index={0} label={`Mentions · ${d.period}`} viz={<Spark data={d.series} />}
-          foot={k.mentionsChange === null ? "No earlier period to compare" : <span className="inline-flex items-center gap-1.5"><Delta value={k.mentionsChange} /><span>vs previous</span></span>}>
-          <CountUp value={k.mentions} />
-        </Kpi>
-        <Kpi index={1} label="So far today" foot={`Yesterday: ${fmt(k.yesterday)}`}
-          viz={k.yesterday > 0 ? <Ring value={k.today / Math.max(k.today, k.yesterday)} color="var(--entity-2)" delay={150} /> : undefined}>
-          <CountUp value={k.today} />
-        </Kpi>
-        <Kpi index={2} label="Negative share" foot={k.classified ? `of ${fmt(k.classified)} classified` : "Nothing classified yet"}
-          viz={k.negativeShare !== null ? <Ring value={k.negativeShare} color="var(--sentiment-negative)" delay={250} /> : undefined}>
-          {k.negativeShare === null ? <span className="text-muted-foreground">—</span> : <CountUp value={k.negativeShare} format={{ style: "percent" }} />}
-        </Kpi>
-        <Kpi index={3} label="Open issues" viz={<PriorityStack p={k.priorities} />}
-          foot={k.highIssues ? <span className="text-negative">{k.highIssues} high priority</span> : "None high priority"}>
-          <CountUp value={k.openIssues} />
-        </Kpi>
-        <Kpi index={4} label="Share of voice"
-          viz={k.sov !== null ? <Ring value={k.sov} color="var(--primary)" delay={350} /> : undefined}
-          foot={k.competitors ? `vs ${k.competitors} competitor${k.competitors === 1 ? "" : "s"}` : <Link href="/competitors" className="underline underline-offset-2 hover:text-foreground">Add competitors</Link>}>
-          {k.sov === null ? <span className="text-muted-foreground">—</span> : <CountUp value={k.sov} format={{ style: "percent" }} />}
-        </Kpi>
-      </section>
-
-      <Trend d={d} />
-      <PlatformMix d={d} />
-      <Heatmap d={d} />
-      <Sentiment d={d} />
-      <Voice d={d} />
-      <Issues d={d} />
-      <Feed d={d} />
+    <div className="grid gap-5 pb-10">
+      <Hero d={d} />
+      <Platforms d={d} />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-12">
+        <div className="sm:col-span-2 xl:col-span-6"><MainChart d={d} /></div>
+        <div className="xl:col-span-3"><Capsules d={d} /></div>
+        <div className="xl:col-span-3"><IssueDonut d={d} /></div>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-12">
+        <div className="sm:col-span-2 xl:col-span-4"><Recent d={d} /></div>
+        <div className="xl:col-span-5"><Flow d={d} /></div>
+        <div className="xl:col-span-3"><PixelHeat d={d} /></div>
+      </div>
     </div>
   );
 }

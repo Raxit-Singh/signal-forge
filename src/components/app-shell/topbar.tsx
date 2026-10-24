@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  Bell, Box, CalendarRange, Check, ChevronDown, LogOut, Menu, Plus, Search, Settings, User,
+  Bell, CalendarRange, LogOut, Menu, Search, Settings, User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Kbd } from "@/components/ui/primitives";
@@ -13,11 +13,9 @@ import {
   Popover, PopoverContent, PopoverTrigger, Sheet, SheetContent, SheetTrigger,
 } from "@/components/ui/overlays";
 import { ThemeSwitcher } from "@/components/theme-provider";
-import { Logo } from "@/components/brand";
-import { switchProductAction } from "@/app/actions/workspace";
 import { signOutAction } from "@/app/(auth)/actions";
 import { markNotificationsReadAction } from "@/app/actions/notifications";
-import { SidebarNav, WorkspaceSwitcher, type ShellWorkspace } from "./sidebar";
+import { Mark, ProductCard, SidebarNav, WorkspaceSwitcher, type ShellCounts, type ShellWorkspace } from "./sidebar";
 import { NAV } from "./nav";
 import { CommandMenu, useCommandMenuShortcut } from "./command-menu";
 import { LiveIndicator } from "@/components/realtime/realtime-provider";
@@ -28,60 +26,25 @@ export interface ShellProduct { id: string; name: string }
 export interface ShellNotification { id: string; title: string; body: string | null; link: string | null; createdAt: string; read: boolean }
 
 // ---------------------------------------------------------------------------
-function MobileNav({ current, workspaces }: { current: ShellWorkspace; workspaces: ShellWorkspace[] }) {
+function MobileNav({ current, workspaces, products, activeProductId, counts }: {
+  current: ShellWorkspace; workspaces: ShellWorkspace[]; products: ShellProduct[]; activeProductId: string | null; counts: ShellCounts;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open navigation"><Menu /></Button>
+        <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open navigation"><Menu /></Button>
       </SheetTrigger>
-      <SheetContent title="Navigation" className="gap-3 py-3">
-        <div className="px-4 py-1"><Logo /></div>
-        <div className="px-2"><WorkspaceSwitcher current={current} workspaces={workspaces} /></div>
-        <SidebarNav onNavigate={() => setOpen(false)} />
+      <SheetContent title="Navigation" className="gap-4 px-3 py-4">
+        <div className="flex items-center gap-2.5 px-2"><Mark /><span className="text-[16px] font-semibold tracking-[-0.02em]">SignalForge</span></div>
+        <ProductCard products={products} activeId={activeProductId} />
+        <SidebarNav counts={counts} onNavigate={() => setOpen(false)} />
+        <div className="mt-auto grid gap-1">
+          <Link href="/settings" onClick={() => setOpen(false)} className="flex h-9 items-center gap-3 rounded-xl px-3 text-[13px] text-muted-foreground hover:text-foreground"><Settings className="size-4" aria-hidden />Settings</Link>
+          <WorkspaceSwitcher current={current} workspaces={workspaces} />
+        </div>
       </SheetContent>
     </Sheet>
-  );
-}
-
-// ---------------------------------------------------------------------------
-function ProductSwitcher({ products, activeId }: { products: ShellProduct[]; activeId: string | null }) {
-  const pathname = usePathname();
-  const [pending, startTransition] = useTransition();
-  const active = products.find((p) => p.id === activeId);
-  const section = `/${pathname.split("/")[1] ?? "overview"}`;
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="min-w-0 max-w-52 shrink gap-1 px-1.5 font-medium" disabled={pending} aria-label="Select product">
-          <Box className="text-muted-foreground" aria-hidden />
-          <span className="truncate">{active?.name ?? "No product"}</span>
-          <ChevronDown className="text-muted-foreground" aria-hidden />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        <DropdownMenuLabel>Products</DropdownMenuLabel>
-        {products.map((p) => (
-          <DropdownMenuItem
-            key={p.id}
-            onSelect={() => {
-              if (p.id === activeId) return;
-              const fd = new FormData();
-              fd.set("productId", p.id);
-              fd.set("returnTo", section);
-              startTransition(() => switchProductAction(fd));
-            }}
-          >
-            <span className="flex-1 truncate">{p.name}</span>
-            {p.id === activeId && <Check aria-hidden />}
-          </DropdownMenuItem>
-        ))}
-        {products.length > 0 && <DropdownMenuSeparator />}
-        <DropdownMenuItem asChild>
-          <Link href="/onboarding/product"><Plus aria-hidden /> Add product</Link>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 
@@ -151,9 +114,9 @@ function SearchTrigger({ onOpen }: { onOpen: () => void }) {
   return (
     <>
       <button type="button" onClick={onOpen}
-        className="press hidden h-8 w-60 items-center gap-2 rounded-md border bg-surface px-2.5 text-[13px] text-muted-foreground shadow-panel hover:text-foreground lg:flex">
+        className="press panel hidden h-9 w-full max-w-[420px] items-center gap-2.5 rounded-full px-3.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground lg:flex">
         <Search className="size-3.5" aria-hidden />
-        <span className="flex-1 text-left">Search or jump to…</span>
+        <span className="flex-1 text-left">Search mentions, issues or jump to…</span>
         <Kbd>⌘K</Kbd>
       </button>
       <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Search or jump to (⌘K)" onClick={onOpen}><Search /></Button>
@@ -255,6 +218,7 @@ export function Topbar(props: {
   workspaces: ShellWorkspace[];
   products: ShellProduct[];
   activeProductId: string | null;
+  counts: ShellCounts;
   notifications: ShellNotification[];
   unread: number;
 }) {
@@ -262,18 +226,18 @@ export function Topbar(props: {
   const [open, setOpen] = useState(false);
   useCommandMenuShortcut(setOpen);
   const page = NAV.find((n) => pathname === n.href || pathname.startsWith(`${n.href}/`));
+  const product = props.products.find((p) => p.id === props.activeProductId);
   return (
-    <header className="sticky top-0 z-30 flex min-h-12 items-center gap-2 border-b bg-background/85 px-3 pt-[env(safe-area-inset-top)] backdrop-blur-md sm:px-4 print:hidden">
-      <MobileNav current={props.current} workspaces={props.workspaces} />
-      <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1 text-[13px]">
-        <span className="hidden max-w-40 truncate text-muted-foreground md:inline">{props.current.name}</span>
-        <span className="hidden text-muted-foreground/60 md:inline" aria-hidden>/</span>
-        <ProductSwitcher products={props.products} activeId={props.activeProductId} />
-        {page && <><span className="hidden text-muted-foreground/60 sm:inline" aria-hidden>/</span><span className="hidden truncate text-muted-foreground sm:inline" aria-current="page">{page.label}</span></>}
+    <header className="sticky top-0 z-30 flex min-h-14 items-center gap-3 border-b bg-background/80 px-3 pt-[env(safe-area-inset-top)] backdrop-blur-md sm:px-6 lg:px-8 print:hidden">
+      <MobileNav current={props.current} workspaces={props.workspaces} products={props.products} activeProductId={props.activeProductId} counts={props.counts} />
+      <nav aria-label="Breadcrumb" className="flex min-w-0 shrink items-center gap-1.5 text-[13px]">
+        {product && <span className="max-w-40 truncate text-muted-foreground">{product.name}</span>}
+        {product && page && <span className="text-muted-foreground/50" aria-hidden>/</span>}
+        {page && <span className="truncate font-medium" aria-current="page">{page.label}</span>}
       </nav>
-      <div className="ml-auto flex items-center gap-1.5">
+      <div className="flex min-w-0 flex-1 justify-center"><SearchTrigger onOpen={() => setOpen(true)} /></div>
+      <div className="flex items-center gap-1.5">
         <span className="mr-1 hidden sm:inline-flex"><LiveIndicator /></span>
-        <SearchTrigger onOpen={() => setOpen(true)} />
         <DateRangePicker />
         <NotificationCenter workspaceId={props.current.id} items={props.notifications} unread={props.unread} />
         <AccountMenu email={props.email} />

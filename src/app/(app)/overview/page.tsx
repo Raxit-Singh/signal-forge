@@ -7,10 +7,8 @@ import { CoverageNotice, EmptyState, PageHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { getCoverageSummary } from "@/lib/server/collection/status";
 import { getBuzzDashboard } from "@/lib/server/analytics/buzz";
-import { getCompetitorComparison } from "@/lib/server/analytics/competitors";
 import { integrationInfo } from "@/lib/domain/integrations";
 import { parseRange } from "@/lib/domain/date-range";
-import { categoryLabel } from "@/lib/ai/cluster";
 import type { FeedbackCategory } from "@/lib/ai/types";
 import { getTimeZone } from "@/lib/server/timezone";
 import { OverviewBoard, type OverviewData } from "./overview-board";
@@ -19,23 +17,24 @@ export const metadata: Metadata = { title: "Overview" };
 
 const NOTICES: Record<string, string> = { password_updated: "Your password was updated." };
 
-/**
- * Platforms shown on the page take the six identity colours in order, so the donut, bars and
- * stacked area agree and no two shown platforms share a colour; the rest are grey "Other".
- */
-const IDENTITY = ["var(--entity-1)", "var(--entity-2)", "var(--entity-3)", "var(--entity-4)", "var(--entity-5)", "var(--entity-6)"];
-const KIND: Partial<Record<FeedbackCategory, { label: string; color: string }>> = {
-  bug_report: { label: "Bug", color: "var(--feedback-bug)" }, security_concern: { label: "Security", color: "var(--feedback-bug)" },
-  feature_request: { label: "Feature request", color: "var(--feedback-feature)" },
-  complaint: { label: "Complaint", color: "var(--feedback-complaint)" }, usability_complaint: { label: "Usability", color: "var(--feedback-complaint)" },
-  pricing_complaint: { label: "Pricing", color: "var(--feedback-complaint)" }, performance_issue: { label: "Performance", color: "var(--feedback-complaint)" },
+// Open issues grouped for the donut (largest groups first in the legend).
+const KIND_GROUP: Partial<Record<FeedbackCategory, string>> = {
+  bug_report: "Bugs", security_concern: "Bugs", performance_issue: "Bugs",
+  complaint: "Complaints", usability_complaint: "Complaints", pricing_complaint: "Complaints",
+  feature_request: "Feature requests", support_question: "Questions",
 };
-const TREND: Record<string, string> = { new: "New this week", worsening: "Worsening", growing: "Growing", steady: "Steady", declining: "Declining" };
+// Topics a classified mention flows into on the platform → topic chart.
+const TOPIC: Partial<Record<FeedbackCategory, { id: string; name: string }>> = {
+  bug_report: { id: "bug", name: "Bugs" }, security_concern: { id: "bug", name: "Bugs" }, performance_issue: { id: "bug", name: "Bugs" },
+  complaint: { id: "cmp", name: "Complaints" }, usability_complaint: { id: "cmp", name: "Complaints" }, pricing_complaint: { id: "cmp", name: "Complaints" },
+  feature_request: { id: "ftr", name: "Feature requests" }, positive_review: { id: "prs", name: "Praise" }, support_question: { id: "q", name: "Questions" },
+};
 const nameOf = (id: string) => integrationInfo(id as never)?.name.replace(/ \/ Stack Exchange$/, "").replace(/ \((Twitter|Google Search|Google News)\)$/, "") ?? id;
+const change = (cur: number, prev: number) => (prev > 0 ? cur / prev - 1 : null);
 
 export default async function OverviewPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const tz = await getTimeZone();
-  const { workspace } = await requireWorkspace();
+  const { user, workspace } = await requireWorkspace();
   const product = await getActiveProduct(workspace.id);
   const sp = await searchParams;
   const notice = NOTICES[sp.notice ?? ""];
@@ -66,25 +65,27 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
     );
   }
 
-  const [{ data: p }, dash, feedback, { data: issueRows }, { data: openRows }, { data: feedRows }, { data: timeRows }] = await Promise.all([
-    supabase.from("products").select("created_at").eq("id", product.id).single(),
+  const relevant = ["relevant", "user_relevant"];
+  const [dash, feedback, { data: openRows }, { data: feedRows }, { data: timeRows }, { data: flowRows }] = await Promise.all([
     getBuzzDashboard(supabase, product.id, range, tz, null, now),
     supabase.rpc("feedback_daily", { p_product_id: product.id, p_from: range.from.toISOString(), p_to: range.to.toISOString(), p_tz: tz }),
-    supabase.from("feedback_clusters").select("id, category, title, report_count, unique_reporters, suggested_priority, priority_evidence")
+    supabase.from("feedback_clusters").select("id, title, category")
       .eq("product_id", product.id).in("status", ["open", "acknowledged"])
-      .order("priority_score", { ascending: false, nullsFirst: false }).order("report_count", { ascending: false }).limit(6),
-    supabase.from("feedback_clusters").select("suggested_priority").eq("product_id", product.id).in("status", ["open", "acknowledged"]).limit(1000),
+      .order("priority_score", { ascending: false, nullsFirst: false }).order("report_count", { ascending: false }).limit(1000),
     supabase.from("mentions").select("id, source, source_url, title, content, author_display, published_at, sentiment")
-      .eq("product_id", product.id).eq("dedup_kind", "original").in("relevance_status", ["relevant", "user_relevant"])
-      .order("published_at", { ascending: false }).limit(8),
-    // When people talk: publication times in the period (for the weekday × hour heatmap).
+      .eq("product_id", product.id).eq("dedup_kind", "original").in("relevance_status", relevant)
+      .order("published_at", { ascending: false }).limit(6),
+    // When people talk: publication times in the period (weekday × hour).
     supabase.from("mentions").select("published_at")
-      .eq("product_id", product.id).eq("dedup_kind", "original").in("relevance_status", ["relevant", "user_relevant"]).eq("published_at_estimated", false)
+      .eq("product_id", product.id).eq("dedup_kind", "original").in("relevance_status", relevant).eq("published_at_estimated", false)
+      .gte("published_at", range.from.toISOString()).lt("published_at", range.to.toISOString()).limit(5000),
+    // Platform → topic: classified mentions in the period.
+    supabase.from("mentions").select("source, feedback_category")
+      .eq("product_id", product.id).eq("dedup_kind", "original").in("relevance_status", relevant).eq("processing_status", "classified")
+      .not("feedback_category", "is", null)
       .gte("published_at", range.from.toISOString()).lt("published_at", range.to.toISOString()).limit(5000),
   ]);
-  const priorities = { critical: 0, high: 0, medium: 0, low: 0 };
-  for (const r of (openRows ?? []) as Array<{ suggested_priority: keyof typeof priorities | null }>) if (r.suggested_priority) priorities[r.suggested_priority]++;
-  const openCount = (openRows ?? []).length;
+
   // Weekday (Mon=0) × hour grid in the viewer's time zone.
   const heat = Array.from({ length: 7 }, () => new Array<number>(24).fill(0));
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short", hour: "numeric", hourCycle: "h23" });
@@ -95,70 +96,114 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
     const hr = Number(f.find((x) => x.type === "hour")?.value ?? -1);
     if (wd >= 0 && hr >= 0 && hr < 24) heat[wd]![hr]!++;
   }
-  // Competitors are a bonus panel: if they can't load, the rest of the page still renders.
-  const comparison = await getCompetitorComparison(supabase, { id: product.id, name: product.name, createdAt: p?.created_at as string }, range, tz).catch(() => null);
 
-  type Sent = { positive: number; negative: number; neutral: number; classified: number };
-  const sent = ((feedback.data ?? []) as Array<Record<string, number>>).reduce<Sent>(
-    (a, d) => ({ positive: a.positive + Number(d.positive ?? 0), negative: a.negative + Number(d.negative ?? 0), neutral: a.neutral + Number(d.neutral ?? 0) + Number(d.mixed ?? 0) + Number(d.uncertain ?? 0), classified: a.classified + Number(d.classified ?? 0) }),
-    { positive: 0, negative: 0, neutral: 0, classified: 0 },
-  );
-  const fmt = new Intl.DateTimeFormat("en-US", dash.bucket === "hour" ? { hour: "numeric", timeZone: tz } : { month: "short", day: "numeric", timeZone: tz });
-  const full = new Intl.DateTimeFormat("en-US", dash.bucket === "hour" ? { weekday: "short", hour: "numeric", minute: "2-digit", timeZone: tz } : { weekday: "short", month: "short", day: "numeric", timeZone: tz });
+  // Sentiment per day: totals for the hero, negatives for the chart, and the weekday capsules.
+  const daily = (feedback.data ?? []) as Array<{ day: string } & Record<string, number>>;
+  const sent = { positive: 0, negative: 0, classified: 0 };
+  const negByDay = new Map<string, number>();
+  const week = DAYS.map((d) => ({ d, negative: 0, classified: 0 }));
+  for (const r of daily) {
+    sent.positive += Number(r.positive ?? 0);
+    sent.negative += Number(r.negative ?? 0);
+    sent.classified += Number(r.classified ?? 0);
+    negByDay.set(r.day, Number(r.negative ?? 0));
+    const w = week[(new Date(`${r.day}T00:00:00Z`).getUTCDay() + 6) % 7]!;
+    w.negative += Number(r.negative ?? 0);
+    w.classified += Number(r.classified ?? 0);
+  }
+
+  // Platforms: shares of the period, change against the previous period, a line per platform.
   const prev = new Map(dash.previousTotals.bySource.map((r) => [r.source, Number(r.relevant)]));
   const sources = dash.totals.bySource.map((r) => ({ id: r.source, value: Number(r.relevant) })).filter((r) => r.value > 0).sort((a, b) => b.value - a.value);
-  const top = sources.slice(0, 6);
-  const topIds = top.slice(0, 5).map((t) => t.id);
-  const colorOf = new Map(top.map((t, i) => [t.id, IDENTITY[i]!]));
-  const rest = sources.slice(6);
-  const voiceColors = ["var(--entity-1)", "var(--entity-2)", "var(--entity-3)", "var(--entity-4)", "var(--entity-5)", "var(--entity-6)"];
-  const voice = (comparison?.voice ?? []).map((v, i) => ({ name: v.name, share: v.share, isProduct: v.isProduct, color: voiceColors[i % voiceColors.length]! }));
+  const total = dash.totals.relevant;
+  const rest = sources.slice(3);
+
+  const dayKey = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
+  const hourly = dash.bucket === "hour";
+  const short = new Intl.DateTimeFormat("en-US", hourly ? { hour: "numeric", timeZone: tz } : { month: "short", day: "numeric", timeZone: tz });
+  const full = new Intl.DateTimeFormat("en-US", hourly ? { weekday: "short", hour: "numeric", minute: "2-digit", timeZone: tz } : { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: tz });
+  const dom = new Intl.DateTimeFormat("en-US", { day: "numeric", timeZone: tz });
+
+  // Open issues by kind, and the top one for the hero action.
+  const open = (openRows ?? []) as Array<{ id: string; title: string; category: FeedbackCategory }>;
+  const kindCount = new Map<string, number>();
+  for (const c of open) { const k = KIND_GROUP[c.category] ?? "Other"; kindCount.set(k, (kindCount.get(k) ?? 0) + 1); }
+
+  // Flow: top three platforms by classified volume into the topics they talk about.
+  const flowCount = new Map<string, Map<string, number>>();
+  const bySrc = new Map<string, number>();
+  for (const r of (flowRows ?? []) as Array<{ source: string; feedback_category: FeedbackCategory }>) {
+    const t = TOPIC[r.feedback_category];
+    if (!t) continue;
+    bySrc.set(r.source, (bySrc.get(r.source) ?? 0) + 1);
+    const m = flowCount.get(r.source) ?? new Map<string, number>();
+    m.set(t.id, (m.get(t.id) ?? 0) + 1);
+    flowCount.set(r.source, m);
+  }
+  const flowFrom = [...bySrc.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
+  const topics = new Map<string, { id: string; name: string; v: number }>();
+  const links: Array<[string, string, number]> = [];
+  for (const [src] of flowFrom) for (const [tid, v] of flowCount.get(src)!) {
+    const t = Object.values(TOPIC).find((x) => x!.id === tid)!;
+    topics.set(tid, { ...t, v: (topics.get(tid)?.v ?? 0) + v });
+    links.push([src, tid, v]);
+  }
+  const ORDER = ["bug", "cmp", "ftr", "q", "prs"];
+
+  const hourNow = Number(new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hourCycle: "h23" }).format(now));
+  const meta = user.user_metadata as { full_name?: string; name?: string } | undefined;
+  const first = (meta?.full_name ?? meta?.name ?? "").trim().split(/\s+/)[0] || null;
 
   const data: OverviewData = {
     product: product.name,
-    period: range.label.toLowerCase().replace(/^last /, ""),
-    kpis: {
-      mentions: dash.totals.relevant, mentionsChange: dash.rangeGrowth.change,
-      today: dash.today, yesterday: dash.yesterday,
-      negativeShare: sent.classified > 0 ? sent.negative / sent.classified : null, classified: sent.classified,
-      openIssues: openCount, highIssues: priorities.critical + priorities.high, priorities,
-      sov: voice.find((v) => v.isProduct)?.share ?? null, competitors: Math.max(0, voice.length - 1),
-    },
-    series: dash.series.map((s) => {
-      const by: Record<string, number> = {};
-      let other = 0;
-      for (const [src, v] of Object.entries(s.bySource)) {
-        if (topIds.includes(src)) by[src] = Number(v ?? 0);
-        else other += Number(v ?? 0);
-      }
-      return { label: fmt.format(new Date(s.start)), full: full.format(new Date(s.start)), value: s.relevant, by, other };
-    }),
-    stackKeys: top.slice(0, 5).map((t) => ({ id: t.id, name: nameOf(t.id), color: colorOf.get(t.id)! })),
-    heat,
-    platforms: top.map((s) => ({ id: s.id, name: nameOf(s.id), value: s.value, prev: prev.get(s.id) ?? 0, color: colorOf.get(s.id)! })),
-    otherPlatforms: { count: rest.length, value: rest.reduce((t, r) => t + r.value, 0) },
-    issues: ((issueRows ?? []) as Array<{ id: string; category: FeedbackCategory; title: string; report_count: number; unique_reporters: number | null; suggested_priority: string | null; priority_evidence: { observed?: { trend?: string } } | null }>).map((c) => ({
-      id: c.id, title: c.title, kind: KIND[c.category]?.label ?? categoryLabel(c.category), kindColor: KIND[c.category]?.color ?? "var(--muted-foreground)",
-      people: c.unique_reporters ?? c.report_count, trend: TREND[c.priority_evidence?.observed?.trend ?? ""] ?? null, priority: c.suggested_priority,
+    greeting: hourNow < 5 ? "Good evening" : hourNow < 12 ? "Good morning" : hourNow < 18 ? "Good afternoon" : "Good evening",
+    name: first,
+    rangeKey: range.custom ? "custom" : range.key,
+    period: range.label.replace(/^Last /, "last "),
+    from: new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", timeZone: tz }).format(range.from),
+    to: new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", timeZone: tz }).format(range.to),
+    total,
+    change: dash.rangeGrowth.change,
+    perDay: Math.round(total / Math.max(1, range.days)),
+    sentiment: sent.classified > 0 ? { positive: sent.positive / sent.classified, negative: sent.negative / sent.classified } : null,
+    sourcesLive: coverage.included.length,
+    topIssue: open[0] ? { id: open[0].id, title: open[0].title } : null,
+    mix: [
+      ...sources.slice(0, 3).map((s) => ({ name: nameOf(s.id), share: s.value / Math.max(1, total), change: change(s.value, prev.get(s.id) ?? 0), value: s.value })),
+      ...(rest.length ? [{ name: rest.length === 1 ? nameOf(rest[0]!.id) : `${rest.length} others`, share: rest.reduce((t, r) => t + r.value, 0) / Math.max(1, total), change: null, value: rest.reduce((t, r) => t + r.value, 0) }] : []),
+    ],
+    platforms: sources.slice(0, 4).map((s) => ({
+      id: s.id, name: nameOf(s.id), value: s.value, change: change(s.value, prev.get(s.id) ?? 0),
+      line: dash.series.map((p) => Number(p.bySource[s.id] ?? 0)),
     })),
-    voice,
-    sentiment: sent.classified > 0 ? sent : null,
+    chart: dash.series.map((p) => {
+      const d = new Date(p.start);
+      return { label: short.format(d), full: full.format(d), chip: dom.format(d), all: p.relevant ?? 0, negative: hourly ? null : negByDay.get(dayKey.format(d)) ?? 0 };
+    }),
+    hourly,
+    week: week.map((w) => ({ d: w.d, share: w.classified > 0 ? w.negative / w.classified : null, classified: w.classified })),
+    kinds: [...kindCount.entries()].sort((a, b) => b[1] - a[1]).map(([name, v]) => ({ name, v })),
+    openIssues: open.length,
+    flow: {
+      from: flowFrom.map(([id, v]) => ({ id, name: nameOf(id), v })),
+      to: [...topics.values()].sort((a, b) => ORDER.indexOf(a.id) - ORDER.indexOf(b.id)),
+      links: links.sort((a, b) => ORDER.indexOf(a[1]) - ORDER.indexOf(b[1])),
+    },
+    heat,
     feed: ((feedRows ?? []) as Array<{ id: string; source: string; source_url: string; title: string | null; content: string | null; author_display: string | null; published_at: string; sentiment: string | null }>).map((m) => ({
-      id: m.id, platform: nameOf(m.source), author: m.author_display, text: (m.title || m.content || m.source_url).replace(/\s+/g, " ").slice(0, 220),
+      id: m.id, platform: nameOf(m.source), author: m.author_display, text: (m.title || m.content || m.source_url).replace(/\s+/g, " ").slice(0, 200),
       url: m.source_url, at: m.published_at, sentiment: m.sentiment,
     })),
   };
 
   return (
     <>
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <div className="grid gap-0.5">
-          <h1 className="text-xl font-semibold tracking-[-0.02em]">{product.name}</h1>
-          <p className="text-[13px] text-muted-foreground">Overview · {range.label}</p>
-        </div>
-        {product.onboardingStep < 6 && <Button asChild size="sm"><Link href="/onboarding">Finish setup</Link></Button>}
-      </div>
       {notice && <p role="status" className="mb-4 rounded-md border bg-muted px-3 py-2 text-[13px]">{notice}</p>}
+      {product.onboardingStep < 6 && (
+        <p className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2 text-[13px]">
+          Setup isn&apos;t finished yet.<Button asChild size="sm"><Link href="/onboarding">Finish setup</Link></Button>
+        </p>
+      )}
       <CoverageNotice />
       <OverviewBoard d={data} />
     </>
