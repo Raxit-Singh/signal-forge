@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import {
-  adminInsert, adminSelect, createUser, createWorkspaceWithProduct, deleteUser, seedMentions, signInPath, type FixtureMention, type TestUser,
+  adminInsert, createUser, createWorkspaceWithProduct, deleteUser, seedMentions, signInPath, type FixtureMention, type TestUser,
 } from "./support";
 
 // Discovery Engine V2 in the browser: realtime updates, the new-mentions notice,
@@ -151,7 +151,7 @@ test("historical search progress: real states per platform, provider limits, no 
   await expect(progress).toContainText("4 of 4 platforms finished");
 });
 
-test("smart monitoring shows product-relative share and overflow risk; buzz shows spike confidence", async ({ page }) => {
+test("smart monitoring shows product-relative share and overflow risk", async ({ page }) => {
   await adminInsert("platform_activity", {
     product_id: ids.productId, workspace_id: ids.workspaceId, platform: "hackernews", phase: "ranked", score: 64, rank: 1,
     trend: "stable", coverage_confidence: "high", recommended_interval: 1440, interval_minutes: 1440, reasons: ["Busy search: checked within 1 h so results don't overflow what one check can read"],
@@ -170,42 +170,4 @@ test("smart monitoring shows product-relative share and overflow risk; buzz show
   await expect(details).toContainText("some may be missed and coverage is marked partial");
   await expect(details).toContainText("About 40 relevant mentions a day here");
 
-  const day = (n: number) => new Date(Math.floor(Date.now() / 86_400_000) * 86_400_000 - n * 86_400_000).toISOString();
-  await adminInsert("buzz_spikes", {
-    workspace_id: ids.workspaceId, product_id: ids.productId, platform: null, granularity: "day", period_start: day(2), period_end: day(1),
-    observed: 30, expected: 4, baseline_periods: 20, robust_z: 9, ratio: 7.5, severity: "major", confidence: "confirmed", p_value: 1e-9,
-  });
-  await adminInsert("buzz_spikes", {
-    workspace_id: ids.workspaceId, product_id: ids.productId, platform: "hackernews", granularity: "day", period_start: day(1), period_end: day(0),
-    observed: 18, expected: 3, baseline_periods: 4, robust_z: 5, ratio: 6, severity: "notable", confidence: "possible", p_value: 1e-5,
-    note: "This period was only partly monitored, so the count may be incomplete.",
-  });
-  await adminInsert("buzz_keyword_spikes", {
-    workspace_id: ids.workspaceId, product_id: ids.productId, keyword: "fixtureflow", granularity: "day", period_start: day(2), period_end: day(1),
-    observed: 22, expected: 2, baseline_periods: 20, severity: "major", confidence: "confirmed",
-  });
-  await adminInsert("spike_evaluations", {
-    product_id: ids.productId, workspace_id: ids.workspaceId, scope: "product", scope_key: "", granularity: "day",
-    status: "insufficient_data", baseline_periods: 2, needed_periods: 3,
-  });
-  await page.goto("/buzz?range=30d");
-  // All activity: the confirmed product spike. Hacker News: its possible spike. Keyword: the keyword spike.
-  await expect(page.getByTestId("spike-marker-confirmed")).toHaveCount(1);
-  await page.getByTestId("spike-marker-confirmed").click();
-  await expect(page.getByRole("dialog", { name: "Confirmed spike" })).toContainText("Major");
-  await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: /^Show:/ }).click();
-  await page.getByRole("menuitemradio", { name: "Hacker News", exact: true }).click();
-  await expect(page.getByTestId("spike-marker-possible")).toHaveCount(1);
-  await page.getByTestId("spike-marker-possible").click();
-  await expect(page.getByRole("dialog", { name: "Possible spike" })).toContainText("only partly monitored");
-  await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: /^Show:/ }).click();
-  await page.getByRole("menuitemradio", { name: "FixtureFlow", exact: true }).click();
-  await expect(page.getByTestId("spike-marker-confirmed")).toHaveCount(1);
-  await page.getByTestId("spike-marker-confirmed").click();
-  await expect(page.getByRole("dialog", { name: "Confirmed spike" })).toContainText("Keyword “fixtureflow”");
-  await page.keyboard.press("Escape");
-  await expect(page.getByTestId("spike-insufficient")).toContainText("2 of 3 completely monitored days");
-  expect((await adminSelect<unknown[]>(`buzz_spikes?product_id=eq.${ids.productId}&select=id`)).length).toBe(2);
 });

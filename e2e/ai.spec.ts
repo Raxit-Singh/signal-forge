@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
-  adminInsert, adminSelect, adminUpdate, createUser, createWorkspaceWithProduct, deleteUser, seedMentions, signInPath, type FixtureMention, type TestUser,
+  adminSelect, adminUpdate, createUser, createWorkspaceWithProduct, deleteUser, seedMentions, signInPath, type FixtureMention, type TestUser,
 } from "./support";
 
 // SignalForge Intelligence in the browser with the development-only test
@@ -117,67 +117,3 @@ test("classification → semantic issue with priority evidence → analytics →
   await expect(page.getByTestId("feedback-issue").first()).toContainText("Acknowledged");
 });
 
-test("spike explanations: product and keyword spikes cite posts and show measured facts; too few posts → insufficient data, no call", async ({ page }) => {
-  const now = Date.now();
-  const d3 = new Date(now - 3 * 86_400_000);
-  const start = new Date(Date.UTC(d3.getUTCFullYear(), d3.getUTCMonth(), d3.getUTCDate())).toISOString();
-  const end = new Date(Date.parse(start) + 86_400_000).toISOString();
-  const at = (minutesAfterNoon: number) => (now - (Date.parse(start) + 12 * 3_600_000 + minutesAfterNoon * 60_000)) / 3_600_000;
-  await seedMentions(ids.productId, ids.workspaceId, [
-    { source: "hackernews", externalId: "sp-1", title: "FixtureFlow launches offline mode", content: "FixtureFlow offline mode launched today", hoursAgo: at(0), author: "p1" },
-    { source: "reddit", externalId: "sp-2", title: "Offline mode in FixtureFlow", content: "Tried the new FixtureFlow offline mode, works well", hoursAgo: at(10), author: "p2" },
-    { source: "github", externalId: "sp-3", title: "Offline mode feedback", content: "FixtureFlow offline mode sync question", hoursAgo: at(20), author: "p3" },
-    { source: "bluesky", externalId: "sp-4", title: "FixtureFlow offline", content: "FixtureFlow offline mode is here", hoursAgo: at(30), author: "p4" },
-  ], 30);
-  await adminInsert("buzz_spikes", {
-    workspace_id: ids.workspaceId, product_id: ids.productId, platform: null, granularity: "day", period_start: start, period_end: end,
-    observed: 4, expected: 0.5, baseline_periods: 20, robust_z: 5, ratio: 6, severity: "major", confidence: "confirmed",
-  });
-  await adminInsert("buzz_keyword_spikes", {
-    workspace_id: ids.workspaceId, product_id: ids.productId, keyword: "FixtureFlow", granularity: "day", period_start: start, period_end: end,
-    observed: 4, expected: 0.5, baseline_periods: 20, severity: "major", confidence: "confirmed",
-  });
-  const empty = new Date(Date.parse(start) - 5 * 86_400_000).toISOString(); // 8 days ago: no posts
-  await adminInsert("buzz_spikes", {
-    workspace_id: ids.workspaceId, product_id: ids.productId, platform: null, granularity: "day", period_start: empty,
-    period_end: new Date(Date.parse(empty) + 86_400_000).toISOString(), observed: 2, expected: 0.2, baseline_periods: 20,
-    robust_z: 4, ratio: 10, severity: "notable", confidence: "possible",
-  });
-
-  await useTestClassifier(page);
-  await page.goto("/buzz?range=30d");
-  // Each spike is a marker on the graph; its panel has "Explain with AI" (never automatic).
-  const panelFor = async (kind: "confirmed" | "possible") => {
-    await page.getByTestId(`spike-marker-${kind}`).first().click();
-    return page.getByRole("dialog", { name: kind === "confirmed" ? "Confirmed spike" : "Possible spike" });
-  };
-  const explain = async (kind: "confirmed" | "possible", resultId: string) => {
-    const panel = await panelFor(kind);
-    await panel.getByRole("button", { name: "Explain with AI" }).click();
-    await expect(async () => {
-      if (!(await page.getByRole("dialog").isVisible())) await panelFor(kind);
-      await expect(page.getByRole("dialog").getByTestId(resultId)).toBeVisible({ timeout: 2000 });
-    }).toPass({ timeout: 45_000 });
-    return page.getByRole("dialog");
-  };
-  await expect(page.getByTestId("spike-marker-confirmed")).toHaveCount(1);
-  await expect(page.getByTestId("spike-marker-possible")).toHaveCount(1);
-  const product = await explain("confirmed", "investigation-result");
-  await expect(product.getByTestId("investigation-result")).toContainText("Test classifier — not AI analysis");
-  await expect(product.getByTestId("spike-facts")).toContainText("Measured in collected posts");
-  await expect(product.getByTestId("spike-facts")).toContainText("By platform:");
-  await page.keyboard.press("Escape");
-
-  const quiet = await explain("possible", "investigation-insufficient");
-  await expect(quiet.getByTestId("investigation-insufficient")).toContainText("Fewer than 3 collected posts");
-  await page.keyboard.press("Escape");
-
-  await page.getByRole("button", { name: /^Show:/ }).click();
-  await page.getByRole("menuitemradio", { name: "FixtureFlow", exact: true }).click();
-  await expect(page).toHaveURL(/keyword=FixtureFlow/);
-  const keyword = await explain("confirmed", "investigation-result");
-  await expect(keyword.getByTestId("spike-facts")).toContainText("Keyword: “FixtureFlow”");
-
-  const usage = await adminSelect<Array<{ purpose: string }>>(`ai_usage_records?workspace_id=eq.${ids.workspaceId}&purpose=eq.spike_explanation&select=purpose`);
-  expect(usage.length, "only the two spikes with enough posts used a model call").toBe(2);
-});

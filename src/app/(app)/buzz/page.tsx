@@ -14,10 +14,8 @@ import { CoverageNotice, EmptyState, PageHeader } from "@/components/page";
 import { Badge } from "@/components/ui/primitives";
 import { CountUp } from "@/components/motion";
 import { cn } from "@/lib/utils";
-import { SpikeGraph, type GraphPoint, type GraphSpike } from "./spike-graph";
-import type { InvestigationView } from "@/components/ai/investigation-result";
-import { spikeSubject } from "@/lib/server/ai/investigate";
-import { hasRole } from "@/lib/server/session";
+import { TrendGraph, type GraphPoint } from "./trend-graph";
+import { getCoverageSummary } from "@/lib/server/collection/status";
 
 export const metadata: Metadata = { title: "Trends" };
 
@@ -52,12 +50,10 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
     throw new Error("Trends couldn't be loaded. Try again in a moment.");
   }
 
-  const { data: invs } = await supabase.from("ai_investigations").select("subject_key, status, report, error, model, completed_at")
-    .eq("product_id", product.id).eq("kind", "spike_explanation");
-  const explanations = new Map((invs ?? []).map((i) => [i.subject_key as string, i as unknown as InvestigationView]));
-  const canExplain = hasRole(workspace.role, "member");
-
-  const sources = d.sources.map((id) => ({ id, name: nameOf(id) }));
+  // The platform choices come from what's monitored for the product, not from the filtered view
+  // (otherwise picking a platform would leave only that platform to choose from).
+  const coverageSummary = await getCoverageSummary(product.id);
+  const sources = coverageSummary.included.map((x) => ({ id: x.id as string, name: nameOf(x.id) })).sort((a, b) => a.name.localeCompare(b.name));
 
   // One graph: the selected scope (all activity, one platform or one keyword) over the selected range.
   const { data: aliasRows } = await supabase.from("product_aliases").select("term").eq("product_id", product.id).eq("enabled", true).order("term");
@@ -74,41 +70,18 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
   }
   const scope = keyword ? { kind: "keyword" as const, value: keyword, label: `“${keyword}”` }
     : source ? { kind: "platform" as const, value: source, label: nameOf(source) } : { kind: "all" as const, value: null, label: "all activity" };
-  const graphFrom = d.series.length ? new Date(d.series[0]!.start).getTime() : range.from.getTime();
-  // A "possible" spike needs a baseline: with no fully monitored days before it, the first days of
-  // monitoring would always look like a jump from nothing. Those aren't shown.
-  const noBaseline = d.spikeEvaluation?.status === "insufficient_data" && (d.spikeEvaluation.baselinePeriods ?? 0) === 0;
-  const graphSpikes: GraphSpike[] = d.spikes
-    .filter((x) => {
-      const t = new Date(x.period_start).getTime();
-      if (t < graphFrom || t >= range.to.getTime()) return false;
-      if (noBaseline && x.confidence === "possible") return false;
-      if (scope.kind === "keyword") return (x.keyword ?? "").toLowerCase() === keyword!.toLowerCase();
-      if (x.keyword) return false;
-      return scope.kind === "platform" ? x.platform === source : !x.platform;
-    })
-    .map((x) => {
-      const key = spikeSubject({ granularity: x.granularity as "hour" | "day", platform: x.keyword ? null : x.platform, periodStart: x.period_start, keyword: x.keyword ?? null });
-      return {
-        id: x.id, start: x.period_start, end: x.period_end, granularity: x.granularity as "hour" | "day",
-        observed: Number(x.observed), expected: Number(x.expected), ratio: x.ratio === null ? null : Number(x.ratio),
-        confidence: x.confidence, severity: x.severity, note: x.note, platform: x.keyword ? null : x.platform, keyword: x.keyword ?? null,
-        scopeLabel: x.keyword ? `Keyword “${x.keyword}”` : x.platform ? nameOf(x.platform) : "All platforms",
-        explanation: explanations.get(key) ?? null,
-      };
-    });
   const nothingMonitored = d.sources.length === 0;
   const t = d.totals;
   const totalTyped = t.posts + t.comments;
 
-  const growthPct = (g: Growth) => (g.change === null ? null : Math.round(g.change * 1000) / 10);
   const momentum = [
     { label: "Today", value: d.today, hint: `Yesterday: ${formatCount(d.yesterday)}`, growth: null as Growth | null },
     { label: "Last 24 h vs previous 24 h", value: d.daily.current, growth: d.daily },
     { label: "Last 7 days vs previous 7", value: d.weekly.current, growth: d.weekly },
-    { label: "Last 30 days vs previous 30", value: d.monthly.current, growth: d.monthly },
   ];
   const coverage = Math.round(d.coverage.range * 100);
+  const growthPct = d.rangeGrowth.change === null ? null : Math.round(d.rangeGrowth.change * 1000) / 10;
+  const platformItems = t.bySource.filter((r) => r.relevant > 0).map((r) => ({ id: r.source, label: nameOf(r.source), value: Number(r.relevant) })).sort((a, b) => b.value - a.value);
 
   return (
     <>
@@ -116,7 +89,7 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
 
       {nothingMonitored ? (
         <>
-          <PageHeader title="Trends" description={<>How much attention {product.name} gets, where, and whether it&apos;s rising</>} />
+          <PageHeader title="Trends" description={<>How much attention {product.name} gets and whether it&apos;s rising</>} />
           <EmptyState icon={Waves} title="No monitoring data in this period" action={{ href: "/monitoring", label: "Open Smart Monitoring" }}>
             Nothing was monitored for {product.name} in this date range{source ? ` on ${nameOf(source)}` : ""}, so there is nothing to count yet.
             Periods without monitoring are shown as gaps, never as zero mentions.
@@ -124,78 +97,117 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
         </>
       ) : (
         <div className="grid grid-cols-[minmax(0,1fr)] gap-5 pb-10">
-          {/* Hero: the period's volume and whether it's rising, at three speeds. */}
+          {/* Hero: the period's total once, with momentum at three speeds and how complete the data is. */}
           <section className="grid grid-cols-[minmax(0,1fr)] gap-8 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
             <div className="rise grid content-start gap-5">
               <div className="grid gap-1.5">
                 <h1 className="text-[34px] font-medium leading-[1.05] tracking-[-0.035em] sm:text-[44px]">Trends</h1>
-                <p className="max-w-[60ch] text-[14px] text-muted-foreground">How much attention {product.name} gets, where, and whether it&apos;s rising · {range.label.toLowerCase()} · days in {tz}</p>
+                <p className="text-[14px] text-muted-foreground">How much attention {product.name} gets and whether it&apos;s rising{source ? ` on ${nameOf(source)}` : ""}</p>
               </div>
               <div className="grid gap-2">
+                <span className="text-[13px] text-muted-foreground">{`Mentions · ${range.label.toLowerCase()}`}</span>
                 <div className="flex flex-wrap items-center gap-3">
                   <CountUp value={t.relevant} className="text-[56px] font-semibold leading-none tracking-[-0.045em] sm:text-[64px]" />
-                  {growthPct(d.rangeGrowth) !== null && (
-                    <span className={cn("panel flex items-center gap-1 rounded-full px-2.5 py-1 text-[13px] tabular-nums",
-                      d.rangeGrowth.change! >= 0 ? "text-positive" : "text-signal")}>
-                      {d.rangeGrowth.change! >= 0 ? <ArrowUpRight className="size-3.5" aria-hidden /> : <ArrowDownRight className="size-3.5" aria-hidden />}
-                      {d.rangeGrowth.change! >= 0 ? "+" : "−"}{Math.abs(growthPct(d.rangeGrowth)!)}%
-                      <span className="sr-only"> vs the previous period</span>
+                  {growthPct !== null && (
+                    <span className={cn("panel flex items-center gap-1 rounded-full px-2.5 py-1 text-[13px] tabular-nums", growthPct >= 0 ? "text-positive" : "text-signal")}>
+                      {growthPct >= 0 ? <ArrowUpRight className="size-3.5" aria-hidden /> : <ArrowDownRight className="size-3.5" aria-hidden />}
+                      {growthPct >= 0 ? "+" : "−"}{Math.abs(growthPct)}%<span className="sr-only"> vs the previous period</span>
                     </span>
                   )}
                 </div>
-                <p className="text-[14px] text-muted-foreground">
-                  mentions {scope.kind === "all" ? "" : `(${nameOf(source ?? "")}) `}{range.label.toLowerCase()} · {formatCount(t.uniqueAuthors)} people · {formatCount(t.engagement)} engagement
-                </p>
+                <span className="text-[12px] text-muted-foreground/80">
+                  {t.duplicatesExcluded ? `${t.duplicatesExcluded} duplicate/repost${t.duplicatesExcluded === 1 ? "" : "s"} not counted` : "No duplicates or reposts in this period"}
+                </span>
               </div>
+              <dl className="flex flex-wrap gap-x-8 gap-y-3 border-t border-foreground/[0.06] pt-4">
+                <div className="grid gap-0.5">
+                  <dt className="text-[12px] text-muted-foreground">Unique authors</dt>
+                  <dd className="text-[22px] font-semibold leading-none tracking-[-0.03em]">{t.withAuthor ? <CountUp value={t.uniqueAuthors} /> : "—"}</dd>
+                </div>
+                <div className="grid gap-0.5">
+                  <dt className="text-[12px] text-muted-foreground">Engagement</dt>
+                  <dd className="text-[22px] font-semibold leading-none tracking-[-0.03em]"><CountUp value={t.engagement} format={{ notation: "compact", maximumFractionDigits: 1 }} /></dd>
+                </div>
+                <div className="grid gap-0.5">
+                  <dt className="text-[12px] text-muted-foreground">Needs review</dt>
+                  <dd className="text-[22px] font-semibold leading-none tracking-[-0.03em]">{formatCount(t.pending)}</dd>
+                </div>
+              </dl>
             </div>
             <div className="rise grid grid-cols-2 gap-3 self-end" style={{ ["--d" as string]: "120ms" }}>
               {momentum.map((m, i) => <Momentum key={m.label} i={i} {...m} />)}
-            </div>
-          </section>
-
-          <section aria-labelledby="kpis" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-            <h2 id="kpis" className="sr-only">Key numbers</h2>
-            <Kpi i={0} label={`Mentions · ${range.label.toLowerCase()}`} value={t.relevant} growth={d.rangeGrowth}
-              hint={t.duplicatesExcluded ? `${t.duplicatesExcluded} duplicate/repost${t.duplicatesExcluded === 1 ? "" : "s"} not counted` : "No duplicates or reposts in this period"} />
-            <Kpi i={1} label="Unique authors" value={t.withAuthor ? t.uniqueAuthors : null}
-              hint={t.withAuthor < t.relevant ? `Measurable for ${t.withAuthor} of ${t.relevant} mentions` : "Per-platform identities"} />
-            <Kpi i={2} label="Engagement" value={t.engagement} hint="Likes, comments, points… as each platform reports them" />
-            <div className="panel rise flex items-center gap-4 rounded-[18px] p-4" style={{ ["--d" as string]: "330ms" }}>
-              <Ring value={d.coverage.range} />
-              <div className="grid min-w-0 gap-1">
-                <span className="text-[13px] text-muted-foreground">Monitoring coverage</span>
-                <span className="text-[24px] font-semibold leading-none tracking-[-0.03em] tabular">{coverage}%</span>
-                <span className="text-[12px] text-muted-foreground/80">
-                  {[
+              <div className="panel rise flex min-w-0 items-center gap-3 rounded-[18px] p-4" style={{ ["--d" as string]: "340ms" }}>
+                <Ring value={d.coverage.range} />
+                <div className="grid min-w-0 gap-1">
+                  <span className="text-[12px] text-muted-foreground">Monitoring coverage</span>
+                  <span className="text-[26px] font-semibold leading-none tracking-[-0.03em] tabular">{coverage}%</span>
+                  <span className="truncate text-[12px] text-muted-foreground/80" title={[
                     d.coverage.gaps ? `${d.coverage.gaps} period${d.coverage.gaps === 1 ? "" : "s"} not monitored` : null,
                     d.coverage.complete < d.coverage.range - 0.01 ? `${Math.round(d.coverage.complete * 100)}% complete — some checks hit page limits` : null,
-                  ].filter(Boolean).join(" · ") || "Every period fully monitored"}
-                </span>
+                  ].filter(Boolean).join(" · ") || undefined}>
+                    {d.coverage.gaps ? `${d.coverage.gaps} period${d.coverage.gaps === 1 ? "" : "s"} not monitored` : "Every period monitored"}
+                  </span>
+                </div>
               </div>
             </div>
           </section>
 
           <section className="panel rise grid gap-4 rounded-[18px] p-5 sm:p-6" style={{ ["--d" as string]: "380ms" }}>
             <div className="grid gap-1">
-              <h2 className="text-[20px] font-medium tracking-[-0.02em]">Mentions and spikes</h2>
+              <h2 className="text-[20px] font-medium tracking-[-0.02em]">Mentions over time</h2>
               <p className="max-w-[90ch] text-[12px] text-muted-foreground">
-                Mentions by publication time ({d.bucket === "hour" ? "hourly" : "daily"}, {tz}) with detected spikes marked. Shaded periods weren&apos;t
-                (fully) monitored — gaps, not zeros. Click a spike for what made it up.
+                By publication time ({d.bucket === "hour" ? "hourly" : "daily"}, {tz}). Shaded periods weren&apos;t (fully) monitored — gaps, not zeros.
                 {t.undated > 0 && ` ${t.undated} web result${t.undated === 1 ? "" : "s"} without a publication date ${t.undated === 1 ? "is" : "are"} not charted.`}
                 {scope.kind === "keyword" && " The numbers above are for all activity; this graph shows only this keyword."}
               </p>
             </div>
-            <SpikeGraph
-              points={points} bucket={d.bucket} tz={tz} spikes={graphSpikes} events={d.events} scope={scope}
+            <TrendGraph
+              points={points} bucket={d.bucket} tz={tz} events={d.events} scope={scope}
               platforms={sources} keywords={keywords}
               range={{ key: range.key, from: range.fromDate, to: range.toDate }}
-              insufficient={d.spikeEvaluation?.status === "insufficient_data" ? { baseline: d.spikeEvaluation.baselinePeriods, needed: d.spikeEvaluation.neededPeriods } : null}
-              canExplain={canExplain} workspaceId={workspace.id} productId={product.id}
             />
           </section>
 
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <section className="panel rise grid content-start gap-4 rounded-[18px] p-5" style={{ ["--d" as string]: "440ms" }}>
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-2 xl:grid-cols-12">
+            <section className="panel rise grid content-start gap-5 rounded-[18px] p-5 md:col-span-2 xl:col-span-6" style={{ ["--d" as string]: "440ms" }}>
+              <div className="grid gap-1">
+                <h2 className="text-[13px] text-muted-foreground">Where the conversation is</h2>
+                <p className="text-[12px] text-muted-foreground/80">Relevant mentions by platform · {range.label.toLowerCase()} · pick one to chart it</p>
+              </div>
+              <PlatformDonut items={platformItems} total={t.relevant} active={source} hrefFor={(id) => {
+                // Same page and range; choosing the active platform again goes back to all platforms.
+                const q = new URLSearchParams(Object.entries(sp).filter((e): e is [string, string] => !!e[1] && e[0] !== "source" && e[0] !== "keyword"));
+                if (id !== source) q.set("source", id);
+                return `/buzz${q.size ? `?${q}` : ""}`;
+              }} />
+            </section>
+
+            <section className="panel rise grid content-start gap-4 rounded-[18px] p-5 xl:col-span-3" style={{ ["--d" as string]: "500ms" }}>
+              <div className="grid gap-1">
+                <h2 className="text-[13px] text-muted-foreground">Posts vs comments</h2>
+                <p className="text-[12px] text-muted-foreground/80">Comments include replies and quote posts.</p>
+              </div>
+              {totalTyped > 0 && (
+                <div className="flex h-24 gap-1.5" aria-hidden>
+                  <div className="grow-y grid content-end rounded-2xl bg-gradient-to-b from-foreground/85 to-foreground/55 p-3 text-background" style={{ flex: Math.max(t.posts, 0.0001), ["--d" as string]: "650ms" }}>
+                    <span className="text-[20px] font-semibold leading-none">{Math.round((t.posts / totalTyped) * 100)}%</span>
+                  </div>
+                  {t.comments > 0 && (
+                    <div className="grow-y grid content-end rounded-2xl p-3" style={{ flex: Math.max(t.comments, 0.0001), ["--d" as string]: "720ms",
+                      background: "repeating-linear-gradient(90deg, color-mix(in oklab, var(--foreground) 35%, transparent) 0 3px, transparent 3px 8px)" }}>
+                      <span className="w-fit rounded-full bg-background/85 px-1.5 text-[13px] font-semibold">{Math.round((t.comments / totalTyped) * 100)}%</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              <Distribution
+                items={[{ label: "Posts, videos, articles & reviews", value: t.posts }, { label: "Comments & replies", value: t.comments }].filter((x) => x.value > 0)}
+                empty="No relevant mentions in this period." label="Mentions by type"
+              />
+              {totalTyped !== t.relevant && <p className="text-[12px] text-muted-foreground">Some mentions have no type and aren&apos;t split.</p>}
+            </section>
+
+            <section className="panel rise grid content-start gap-4 rounded-[18px] p-5 xl:col-span-3" style={{ ["--d" as string]: "560ms" }}>
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-[13px] text-muted-foreground">Virality score</h2>
                 <Badge tone="info">Experimental</Badge>
@@ -205,62 +217,22 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
               ) : (
                 <>
                   <Gauge score={d.virality.score} confidence={d.virality.confidence} />
-                  {d.virality.basis.length < d.sources.length && (
-                    <p className="text-[12px] text-muted-foreground">Based on {d.virality.basis.map(nameOf).join(", ")} — the platforms monitored completely over the last 4 weeks.</p>
-                  )}
-                  <ul className="grid gap-3" aria-label="Contributing factors">
-                    {d.virality.factors.map((f, i) => (
-                      <li key={f.key} className="grid gap-1.5">
-                        <div className="flex justify-between gap-2 text-[13px]"><span>{f.label}</span><span className="tabular text-[12px] text-muted-foreground">{Math.round(f.value * 100)}% · weight {Math.round(f.weight * 100)}%</span></div>
-                        <div className="h-1.5 overflow-hidden rounded-full bg-foreground/[0.07]" aria-hidden>
-                          <div className="grow-x h-full rounded-full bg-foreground/70" style={{ width: `${Math.round(f.value * 100)}%`, ["--d" as string]: `${600 + i * 60}ms` }} />
-                        </div>
-                        <p className="text-[12px] text-muted-foreground/80">{f.detail}</p>
+                  <ul className="grid gap-2" aria-label="Contributing factors">
+                    {d.virality.factors.map((f) => (
+                      <li key={f.key} className="grid grid-cols-[minmax(0,1fr)_64px_36px] items-center gap-2 text-[12px]" title={`${f.detail} · weight ${Math.round(f.weight * 100)}%`}>
+                        <span className="truncate text-foreground/85">{f.label}</span>
+                        <span className="block h-1.5 overflow-hidden rounded-full bg-foreground/[0.07]" aria-hidden>
+                          <span className="grow-x block h-full rounded-full bg-foreground/70" style={{ width: `${Math.round(f.value * 100)}%` }} />
+                        </span>
+                        <span className="text-right tabular-nums text-muted-foreground">{Math.round(f.value * 100)}%</span>
                       </li>
                     ))}
                   </ul>
-                  <p className="text-[12px] text-muted-foreground/80">{d.virality.note}</p>
+                  <p className="text-[11px] text-muted-foreground/80" title={d.virality.basis.length < d.sources.length ? `Based on ${d.virality.basis.map(nameOf).join(", ")}` : undefined}>
+                    How fast attention grows against your usual level — not whether it&apos;s positive.
+                  </p>
                 </>
               )}
-            </section>
-
-            <section className="panel rise grid content-start gap-4 rounded-[18px] p-5" style={{ ["--d" as string]: "500ms" }}>
-              <div className="grid gap-1">
-                <h2 className="text-[13px] text-muted-foreground">Platform distribution</h2>
-                <p className="text-[12px] text-muted-foreground/80">Relevant mentions · {range.label.toLowerCase()}</p>
-              </div>
-              <Distribution
-                items={t.bySource.filter((r) => r.relevant > 0).map((r) => ({ label: nameOf(r.source), value: Number(r.relevant) }))}
-                empty="No relevant mentions in this period." label="Mentions by platform" highlightTop
-              />
-            </section>
-
-            <section className="panel rise grid content-start gap-4 rounded-[18px] p-5 md:col-span-2 xl:col-span-1" style={{ ["--d" as string]: "560ms" }}>
-              <div className="grid gap-1">
-                <h2 className="text-[13px] text-muted-foreground">Posts vs comments</h2>
-                <p className="text-[12px] text-muted-foreground/80">Comments include replies and quote posts.</p>
-              </div>
-              {totalTyped > 0 && (
-                <div className="flex h-14 gap-1.5" aria-hidden>
-                  <div className="grow-x grid place-content-center rounded-xl bg-foreground text-[13px] font-semibold text-background" style={{ flex: Math.max(t.posts, 0.0001), ["--d" as string]: "650ms" }}>
-                    {t.posts > 0 && `${Math.round((t.posts / totalTyped) * 100)}%`}
-                  </div>
-                  <div className="grow-x grid place-content-center rounded-xl text-[13px] font-semibold" style={{ flex: Math.max(t.comments, 0.0001), ["--d" as string]: "720ms",
-                    background: "repeating-linear-gradient(90deg, color-mix(in oklab, var(--foreground) 55%, transparent) 0 4px, transparent 4px 9px)" }}>
-                    {t.comments > 0 && <span className="rounded-full bg-background/80 px-1.5">{Math.round((t.comments / totalTyped) * 100)}%</span>}
-                  </div>
-                </div>
-              )}
-              <Distribution
-                items={[{ label: "Posts, videos, articles & reviews", value: t.posts }, { label: "Comments & replies", value: t.comments }].filter((x) => x.value > 0)}
-                empty="No relevant mentions in this period." label="Mentions by type"
-              />
-              <dl className="grid grid-cols-3 gap-2 border-t border-foreground/[0.06] pt-3 text-[12px]">
-                <div><dt className="text-muted-foreground">Relevant</dt><dd className="tabular text-[16px] font-semibold">{formatCount(t.relevant)}</dd></div>
-                <div><dt className="text-muted-foreground">Needs review</dt><dd className="tabular text-[16px] font-semibold">{formatCount(t.pending)}</dd></div>
-                <div><dt className="text-muted-foreground">Not relevant</dt><dd className="tabular text-[16px] font-semibold">{formatCount(t.irrelevant)}</dd></div>
-              </dl>
-              {totalTyped !== t.relevant && <p className="text-[12px] text-muted-foreground">Some mentions have no type and aren&apos;t split.</p>}
             </section>
           </div>
 
@@ -281,12 +253,65 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
   );
 }
 
+const DONUT = ["var(--entity-1)", "var(--entity-2)", "var(--entity-3)", "var(--entity-4)", "var(--entity-5)"];
+
+/** Platform share as a donut (top five in identity colours, the rest grey) with a legend that filters the graph. */
+function PlatformDonut({ items, total, active, hrefFor }: { items: Array<{ id: string; label: string; value: number }>; total: number; active: string | null; hrefFor: (id: string) => string }) {
+  const sum = items.reduce((a, i) => a + i.value, 0);
+  if (sum === 0) return <p className="grid min-h-40 place-content-center rounded-xl border border-dashed text-[13px] text-muted-foreground">No relevant mentions in this period.</p>;
+  const top = items.slice(0, 5);
+  const rest = items.slice(5);
+  const slices = [...top.map((x, i) => ({ ...x, color: DONUT[i]! })), ...(rest.length ? [{ id: "", label: `${rest.length} other${rest.length === 1 ? "" : "s"}`, value: rest.reduce((a, x) => a + x.value, 0), color: "color-mix(in oklab, var(--foreground) 22%, transparent)" }] : [])];
+  const r = 62, c = 2 * Math.PI * r, gap = slices.length > 1 ? 6 : 0;
+  let acc = 0;
+  return (
+    <div className="grid items-center gap-6 sm:grid-cols-[200px_minmax(0,1fr)]">
+      <div className="relative mx-auto size-[200px]">
+        <svg viewBox="0 0 160 160" className="size-full -rotate-90" aria-hidden>
+          {slices.map((sl, i) => {
+            const len = (sl.value / sum) * c;
+            const el = (
+              <circle key={sl.label} cx="80" cy="80" r={r} fill="none" stroke={sl.color} strokeWidth="18"
+                strokeDasharray={`${Math.max(0.5, len - gap)} ${c}`} strokeDashoffset={-acc}
+                className="fade-in" style={{ ["--d" as string]: `${500 + i * 90}ms`, opacity: active && sl.id !== active ? 0.3 : 1 }} />
+            );
+            acc += len;
+            return el;
+          })}
+        </svg>
+        <div className="absolute inset-0 grid place-content-center text-center">
+          <CountUp value={total} className="text-[32px] font-semibold leading-none tracking-[-0.04em]" />
+          <span className="mt-1 text-[12px] text-muted-foreground/80">mentions</span>
+        </div>
+      </div>
+      <ul className="grid gap-1" aria-label="Mentions by platform">
+        {items.map((it, i) => {
+          const color = i < 5 ? DONUT[i]! : "color-mix(in oklab, var(--foreground) 22%, transparent)";
+          const on = active === it.id;
+          return (
+            <li key={it.id} className={i >= 7 ? "hidden" : undefined}>
+              <Link href={hrefFor(it.id)} scroll={false} aria-current={on ? "true" : undefined}
+                className={cn("flex items-center gap-2.5 rounded-xl px-2 py-1.5 text-[13px] transition-colors hover:bg-foreground/[0.04]", on && "bg-foreground/[0.06]")}>
+                <span className="size-2.5 shrink-0 rounded-full" style={{ background: color }} aria-hidden />
+                <span className="min-w-0 flex-1 truncate">{it.label}</span>
+                <span className="tabular-nums text-[12px] text-muted-foreground">{it.value} · {Math.round((it.value / sum) * 100)}%</span>
+              </Link>
+            </li>
+          );
+        })}
+        {items.length > 7 && <li className="px-2 pt-1 text-[12px] text-muted-foreground">+{items.length - 7} more platforms</li>}
+      </ul>
+    </div>
+  );
+}
+
 function GrowthLine({ growth }: { growth: Growth }) {
   const Icon = growth.change === 0 ? Minus : growth.change === null || growth.change > 0 ? ArrowUpRight : ArrowDownRight;
   return (
-    <span className={cn("flex items-center gap-1 text-[12px]", !growth.reliable ? "text-warning" : growth.change !== null && growth.change < 0 ? "text-signal" : growth.change ? "text-positive" : "text-muted-foreground")}>
+    <span className={cn("flex items-center gap-1 text-[12px]", !growth.reliable ? "text-warning" : growth.change !== null && growth.change < 0 ? "text-signal" : growth.change ? "text-positive" : "text-muted-foreground")}
+      title={!growth.reliable ? "Compares periods that weren't fully monitored" : undefined}>
       <Icon className="size-3.5 shrink-0" aria-hidden />
-      <span className="truncate">{growth.label}{growth.change !== null && ` (was ${formatCount(growth.previous)})`}{!growth.reliable && " · incomplete data"}</span>
+      <span className="truncate">{growth.label}{growth.change !== null && ` (was ${formatCount(growth.previous)})`}</span>
     </span>
   );
 }
@@ -294,21 +319,9 @@ function GrowthLine({ growth }: { growth: Growth }) {
 function Momentum({ i, label, value, growth, hint }: { i: number; label: string; value: number; growth: Growth | null; hint?: string }) {
   return (
     <div className="panel rise grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 rounded-[18px] p-4" style={{ ["--d" as string]: `${160 + i * 60}ms` }}>
-      <span className="text-[12px] text-muted-foreground">{label}</span>
+      <span className="truncate text-[12px] text-muted-foreground">{label}</span>
       <CountUp value={value} className="text-[26px] font-semibold leading-none tracking-[-0.03em]" />
       {growth ? <GrowthLine growth={growth} /> : <span className="text-[12px] text-muted-foreground">{hint}</span>}
-    </div>
-  );
-}
-
-function Kpi({ i, label, value, growth, hint }: { i: number; label: string; value: number | null; growth?: Growth; hint?: string }) {
-  return (
-    <div className="panel rise grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-2 rounded-[18px] p-4" style={{ ["--d" as string]: `${240 + i * 45}ms` }}>
-      <span className="text-[13px] text-muted-foreground">{label}</span>
-      {value === null ? <span className="text-[24px] font-semibold leading-none">—</span>
-        : <CountUp value={value} className="text-[24px] font-semibold leading-none tracking-[-0.03em]" />}
-      {growth && <GrowthLine growth={growth} />}
-      {hint && <span className="text-[12px] text-muted-foreground/80">{hint}</span>}
     </div>
   );
 }
@@ -318,47 +331,41 @@ function Ring({ value }: { value: number }) {
   const c = 2 * Math.PI * 22;
   const low = value < 0.5;
   return (
-    <svg viewBox="0 0 56 56" className="size-14 shrink-0 -rotate-90" aria-hidden>
+    <svg viewBox="0 0 56 56" className="size-12 shrink-0 -rotate-90" aria-hidden>
       <circle cx="28" cy="28" r="22" fill="none" stroke="color-mix(in oklab, var(--foreground) 8%, transparent)" strokeWidth="6" />
-      <circle cx="28" cy="28" r="22" fill="none" stroke={low ? "var(--signal)" : "var(--foreground)"} strokeWidth="6" strokeLinecap="round"
-        strokeDasharray={`${Math.max(0.01, value) * c} ${c}`} className="ring-fill" style={{ ["--len" as string]: c, ["--d" as string]: "500ms" }} />
+      {value > 0 && <circle cx="28" cy="28" r="22" fill="none" stroke={low ? "var(--signal)" : "var(--foreground)"} strokeWidth="6" strokeLinecap="round"
+        strokeDasharray={`${value * c} ${c}`} className="ring-fill" style={{ ["--len" as string]: c, ["--d" as string]: "500ms" }} />}
     </svg>
   );
 }
 
-/** Virality as a half gauge, 0–100; the needle zone turns red from 70. */
+/** Virality as a half gauge, 0–100; red from 70. */
 function Gauge({ score, confidence }: { score: number; confidence: string }) {
-  const r = 70, len = Math.PI * r;
+  const len = Math.PI * 70;
   const hot = score >= 70;
   return (
-    <div className="relative mx-auto w-full max-w-[240px]">
+    <div className="relative mx-auto w-full max-w-[220px]">
       <svg viewBox="0 0 180 100" className="w-full" aria-hidden>
         <path d="M20 90 A70 70 0 0 1 160 90" fill="none" stroke="color-mix(in oklab, var(--foreground) 8%, transparent)" strokeWidth="14" strokeLinecap="round" />
-        <path d="M20 90 A70 70 0 0 1 160 90" fill="none" stroke={hot ? "var(--signal)" : "var(--foreground)"} strokeWidth="14" strokeLinecap="round"
+        {score > 0 && <path d="M20 90 A70 70 0 0 1 160 90" fill="none" stroke={hot ? "var(--signal)" : "var(--foreground)"} strokeWidth="14" strokeLinecap="round"
           strokeDasharray={`${(score / 100) * len} ${len}`} className="ring-fill" style={{ ["--len" as string]: len, ["--d" as string]: "600ms",
-            filter: hot ? "drop-shadow(0 0 8px color-mix(in oklab, var(--signal) 60%, transparent))" : undefined }} />
+            filter: hot ? "drop-shadow(0 0 8px color-mix(in oklab, var(--signal) 60%, transparent))" : undefined }} />}
       </svg>
       <div className="absolute inset-x-0 bottom-0 grid justify-items-center">
-        <span className="text-[36px] font-semibold leading-none tracking-[-0.04em] tabular" aria-label={`Virality ${score} out of 100`}>{score}</span>
-        <span className="text-[12px] text-muted-foreground">/ 100 · {confidence} confidence</span>
+        <span className="text-[34px] font-semibold leading-none tracking-[-0.04em] tabular" aria-label={`Virality ${score} out of 100`}>{score}</span>
+        <span className="text-[11px] text-muted-foreground">/ 100 · {confidence} confidence</span>
       </div>
     </div>
   );
 }
 
-function Distribution({ items, empty, label, highlightTop = false }: { items: Array<{ label: string; value: number }>; empty: string; label: string; highlightTop?: boolean }) {
+function Distribution({ items, empty, label }: { items: Array<{ label: string; value: number }>; empty: string; label: string }) {
   const total = items.reduce((a, i) => a + i.value, 0);
   if (total === 0) return <p className="text-[13px] text-muted-foreground">{empty}</p>;
   return (
-    <ul className="grid gap-3" aria-label={label}>
-      {[...items].sort((a, b) => b.value - a.value).map((i, n) => (
-        <li key={i.label} className="grid gap-1.5">
-          <div className="flex justify-between gap-2 text-[13px]"><span className="truncate">{i.label}</span><span className="tabular text-[12px] text-muted-foreground">{i.value} · {Math.round((i.value / total) * 100)}%</span></div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-foreground/[0.07]" aria-hidden>
-            <div className="grow-x h-full rounded-full" style={{ width: `${(i.value / total) * 100}%`, ["--d" as string]: `${550 + n * 50}ms`,
-              background: highlightTop && n === 0 ? "var(--foreground)" : "color-mix(in oklab, var(--foreground) 45%, transparent)" }} />
-          </div>
-        </li>
+    <ul className="grid gap-2" aria-label={label}>
+      {[...items].sort((a, b) => b.value - a.value).map((i) => (
+        <li key={i.label} className="flex justify-between gap-2 text-[12px]"><span className="truncate text-foreground/85">{i.label}</span><span className="shrink-0 whitespace-nowrap tabular text-muted-foreground">{i.value} · {Math.round((i.value / total) * 100)}%</span></li>
       ))}
     </ul>
   );
