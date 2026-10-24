@@ -310,7 +310,7 @@ export default async function MentionsPage({ searchParams }: { searchParams: Pro
                   : "Nothing that matched your keywords was published in this period on the included sources. Try a longer range."}
               </EmptyState>
             ) : (
-              <ul aria-label="Mentions" className="grid items-start gap-3 2xl:grid-cols-2">
+              <ul aria-label="Mentions" className="grid items-stretch gap-3 2xl:grid-cols-2">
                 {rows.map((m, i) => <MentionItem key={m.id} i={i} m={m} canEdit={canEdit} at={at} />)}
               </ul>
             )}
@@ -423,15 +423,19 @@ function Pagination({ page, pages, params }: { page: number; pages: number; para
 function MentionItem({ i, m, canEdit, at }: { i: number; m: MentionRow; canEdit: boolean; at: (d: string) => string }) {
   const name = integrationInfo(m.source as never)?.name.replace(/ \/ Stack Exchange$/, "") ?? m.source;
   const late = new Date(m.discovered_at).getTime() - new Date(m.published_at).getTime() > 86_400_000;
-  const engagement = Object.entries(m.engagement ?? {}).filter(([k, v]) => ENGAGEMENT_LABEL[k] && typeof v === "number");
+  // Zero counts say nothing ("0 likes · 0 views"); only real engagement is shown.
+  const engagement = Object.entries(m.engagement ?? {}).filter(([k, v]) => ENGAGEMENT_LABEL[k] && typeof v === "number" && v > 0);
   const status = STATUS_BADGE[m.relevance_status];
   const title = m.title?.trim() || null;
   const body = m.content && m.content.trim() !== title ? m.content : null;
+  const category = m.feedback_category && m.feedback_category !== "general_discussion" ? categoryLabel(m.feedback_category as FeedbackCategory).replace(/s$/, "") : null;
+  // Sentiment already shows as the pill; the "AI labels" row appears only when it has more to say.
+  const hasLabels = Boolean(m.ai_model && (category || m.sentiment === "uncertain" || m.ai_about_product === "no"));
   const neg = m.sentiment === "negative";
   const tone = m.ai_model && m.sentiment && m.sentiment !== "uncertain" ? m.sentiment : null;
 
   return (
-    <li className={cn("panel lift rise relative grid gap-3 overflow-hidden rounded-[18px] p-4 sm:p-5", neg && "border-signal/25")}
+    <li className={cn("panel lift rise relative flex flex-col gap-3 overflow-hidden rounded-[18px] p-4 sm:p-5", neg && "border-signal/25")}
       style={{ ["--d" as string]: `${240 + Math.min(i, 10) * 40}ms` }}>
       {neg && <span className="pointer-events-none absolute -left-16 -top-16 size-40 rounded-full bg-signal/20 blur-3xl" aria-hidden />}
       {neg && <span className="absolute inset-y-5 left-0 w-[3px] rounded-r-full bg-signal shadow-[var(--signal-glow)]" aria-hidden />}
@@ -480,11 +484,11 @@ function MentionItem({ i, m, canEdit, at }: { i: number; m: MentionRow; canEdit:
       {(m.ai_model || m.matched_terms.length > 0) && (
         <div className="relative flex flex-wrap items-center gap-1.5 text-[12px] sm:pl-[52px]">
           {m.ai_model && (
-            <span className="flex flex-wrap items-center gap-1" data-testid="mention-ai-labels">
+            <span className={hasLabels ? "flex flex-wrap items-center gap-1" : "sr-only"} data-testid="mention-ai-labels">
               <span className="text-muted-foreground" title={m.ai_reason ?? undefined}>{m.ai_model.startsWith("test:") ? "Test labels:" : "AI labels:"}</span>
               {m.sentiment === "uncertain" && <Badge>sentiment unclear</Badge>}
               {m.sentiment && m.sentiment !== "uncertain" && <span className="sr-only">{m.sentiment} toward product</span>}
-              {m.feedback_category && m.feedback_category !== "general_discussion" && <Badge tone="info">{categoryLabel(m.feedback_category as FeedbackCategory).replace(/s$/, "")}</Badge>}
+              {category && <Badge tone="info">{category}</Badge>}
               {m.ai_about_product === "no" && (
                 <Badge tone="warning" title={m.ai_reason ?? undefined}>Possibly not about this product — review</Badge>
               )}
@@ -499,7 +503,7 @@ function MentionItem({ i, m, canEdit, at }: { i: number; m: MentionRow; canEdit:
         </div>
       )}
 
-      <div className="relative flex flex-wrap items-center gap-x-2 gap-y-2 border-t border-foreground/[0.06] pt-3 text-[12px] text-muted-foreground sm:pl-[52px]">
+      <div className="relative mt-auto flex flex-wrap items-center gap-x-2 gap-y-2 border-t border-foreground/[0.06] pt-3 text-[12px] text-muted-foreground sm:pl-[52px]">
         {engagement.map(([k, v]) => (
           <span key={k} className="rounded-full bg-foreground/[0.05] px-2.5 py-1 tabular">{formatCount(v)} {ENGAGEMENT_LABEL[k]![v === 1 ? 0 : 1]}</span>
         ))}
