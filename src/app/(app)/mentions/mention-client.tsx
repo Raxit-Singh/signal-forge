@@ -4,13 +4,11 @@ import { useActionState, useEffect, useLayoutEffect, useOptimistic, useRef, useS
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Check, Search, ThumbsDown, ThumbsUp, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { FilterSelect } from "@/components/ui/filter-select";
 import { idle } from "@/lib/action-state";
 import { countNewMentionsAction, setMentionRelevanceAction } from "@/app/actions/mentions";
 import { useRealtime } from "@/components/realtime/realtime-provider";
 import { cn } from "@/lib/utils";
-
-const selectCls =
-  "panel h-9 cursor-pointer rounded-full bg-transparent pl-3 pr-2 text-[13px] text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring";
 
 type Option = { id: string; name: string };
 
@@ -92,29 +90,17 @@ export function MentionFilters({ sources, types, sentiments, counts }: {
         </form>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <label className="sr-only" htmlFor="mention-source">Platform</label>
-        <select id="mention-source" className={selectCls} value={params.get("source") ?? ""} onChange={(e) => apply({ source: e.target.value || null })}>
-          <option value="">All platforms</option>
-          {sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-        <label className="sr-only" htmlFor="mention-type">Type</label>
-        <select id="mention-type" className={selectCls} value={params.get("type") ?? ""} onChange={(e) => apply({ type: e.target.value || null })}>
-          <option value="">All types</option>
-          {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
-        <label className="sr-only" htmlFor="mention-sentiment">Sentiment</label>
-        <select id="mention-sentiment" className={selectCls} value={sentiment} onChange={(e) => apply({ sentiment: e.target.value || null })}>
-          <option value="">Any sentiment</option>
-          {sentiments.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
-        <label className="sr-only" htmlFor="mention-status">Relevance</label>
-        <select id="mention-status" className={selectCls} value={status} onChange={(e) => apply({ status: e.target.value || null })}>
-          <option value="">Relevant + needs review</option>
-          <option value="review">Needs review</option>
-          <option value="relevant">Relevant only</option>
-          <option value="irrelevant">Not relevant</option>
-          <option value="all">Everything</option>
-        </select>
+        <FilterSelect label="Platform" value={params.get("source") ?? ""} onChange={(v) => apply({ source: v || null })}
+          options={[{ value: "", label: "All platforms" }, ...sources.map((o) => ({ value: o.id, label: o.name }))]} />
+        <FilterSelect label="Type" value={params.get("type") ?? ""} onChange={(v) => apply({ type: v || null })}
+          options={[{ value: "", label: "All types" }, ...types.map((o) => ({ value: o.id, label: o.name }))]} />
+        <FilterSelect label="Sentiment" value={sentiment} onChange={(v) => apply({ sentiment: v || null })}
+          options={[{ value: "", label: "Any sentiment" }, ...sentiments.map((o) => ({ value: o.id, label: o.name }))]} />
+        <FilterSelect label="Relevance" value={status} onChange={(v) => apply({ status: v || null })}
+          options={[
+            { value: "", label: "Relevant + needs review" }, { value: "review", label: "Needs review" },
+            { value: "relevant", label: "Relevant only" }, { value: "irrelevant", label: "Not relevant" }, { value: "all", label: "Everything" },
+          ]} />
         <label className="flex min-h-9 cursor-pointer items-center gap-1.5 px-1 text-[13px] text-muted-foreground">
           <input
             type="checkbox"

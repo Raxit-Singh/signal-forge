@@ -263,11 +263,7 @@ export default async function MentionsPage({ searchParams }: { searchParams: Pro
               </div>
             </div>
             <div className="rise grid content-between gap-5" style={{ ["--d" as string]: "120ms" }}>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <span className="flex items-center gap-4 text-[12px] text-muted-foreground">
-                  <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-foreground/60" />Mentions</span>
-                  <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-signal shadow-[var(--signal-glow)]" />Negative</span>
-                </span>
+              <div className="flex justify-end">
                 <Periods value={range.custom ? "custom" : range.key} />
               </div>
               <DailyBars bars={bars} />
@@ -328,12 +324,12 @@ export default async function MentionsPage({ searchParams }: { searchParams: Pro
 
 /** Mentions per day as capsules; the negative share of each day fills from the bottom in red. */
 function DailyBars({ bars }: { bars: Array<{ label: string; all: number; negative: number }> }) {
-  if (bars.length === 0) return <div className="grid h-[170px] place-content-center rounded-2xl border border-dashed text-[13px] text-muted-foreground">No mentions in this period yet.</div>;
+  if (bars.length === 0) return <div style={{ height: 170 }} className="grid place-content-center rounded-2xl border border-dashed text-[13px] text-muted-foreground">No mentions in this period yet.</div>;
   const max = Math.max(1, ...bars.map((b) => b.all));
   const peak = bars.reduce((p, b, i) => (b.all > bars[p]!.all ? i : p), 0);
   return (
     <div className="grid gap-2 overflow-x-clip">
-      <div className="flex h-[170px] items-end gap-[3px] sm:gap-1" role="img" aria-label={`Mentions per day; busiest ${bars[peak]!.label} with ${bars[peak]!.all}`}>
+      <div className="flex items-end gap-[3px] sm:gap-1" style={{ height: 170 }} role="img" aria-label={`Mentions per day; busiest ${bars[peak]!.label} with ${bars[peak]!.all}`}>
         {bars.map((b, i) => (
           <div key={i} className="group relative flex h-full min-w-0 flex-1 items-end">
             <span className="relative block w-full overflow-hidden rounded-full bg-gradient-to-b from-foreground/[0.55] to-foreground/[0.18] grow-y"

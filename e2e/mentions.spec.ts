@@ -37,6 +37,11 @@ test.afterEach(async () => {
 
 const items = (page: import("@playwright/test").Page) => page.getByRole("list", { name: "Mentions" }).getByRole("listitem");
 const pager = (page: import("@playwright/test").Page) => page.getByRole("navigation", { name: "Pagination" });
+/** Picks an option in one of the themed filter dropdowns (a pill that opens a menu). */
+const pick = async (page: import("@playwright/test").Page, label: string, option: string) => {
+  await page.getByRole("button", { name: new RegExp(`^${label}:`) }).click();
+  await page.getByRole("menuitemradio", { name: option, exact: true }).click();
+};
 const titles = (page: import("@playwright/test").Page) => items(page).locator("h3").allInnerTexts();
 
 test("numbered pagination: ranges, current page, boundaries, stable order, back/forward", async ({ page }) => {
@@ -84,14 +89,14 @@ test("numbered pagination: ranges, current page, boundaries, stable order, back/
 });
 
 test("filters persist across pages, reset to page 1 when changed, and work with every filter", async ({ page }) => {
-  await page.getByLabel("Platform", { exact: true }).selectOption("hackernews");
+  await pick(page, "Platform", "Hacker News");
   await expect(page).toHaveURL(/source=hackernews/);
   await expect(page.getByText("Showing 1–20 of 40 mentions")).toBeVisible();
   await pager(page).getByRole("link", { name: "Page 2" }).click();
   await expect(page).toHaveURL(/source=hackernews.*page=2|page=2.*source=hackernews/);
   await expect(page.getByText("Showing 21–40 of 40 mentions")).toBeVisible();
   for (const name of await items(page).locator("h3").allInnerTexts()) expect(name).toMatch(/HN post/);
-  await expect(page.getByLabel("Platform", { exact: true })).toHaveValue("hackernews");
+  await expect(page.getByRole("button", { name: /^Platform:/ })).toHaveAccessibleName("Platform: Hacker News");
 
   // Changing a filter goes back to page 1 and keeps the others.
   await page.getByLabel("Search text").fill("post 3");
@@ -104,7 +109,7 @@ test("filters persist across pages, reset to page 1 when changed, and work with 
   await page.getByRole("button", { name: "Clear" }).click();
   await expect(page.getByText(`Showing 1–20 of ${TOTAL} mentions`)).toBeVisible();
 
-  await page.getByLabel("Type", { exact: true }).selectOption("comment");
+  await pick(page, "Type", "Comment");
   await expect(page).toHaveURL(/type=comment/);
   await expect(page.getByText("Showing 1–2 of 2 mentions")).toBeVisible();
   await expect(items(page).first()).toContainText("Comment");
@@ -138,7 +143,7 @@ test("relevance feedback: selected state is visible, stored as the user's decisi
   await expect(page.getByText(`Showing 1–20 of ${TOTAL - 1} mentions`)).toBeVisible();
   await expect.poll(() => readMention(productId, "e2e-gh-1").then((m) => m?.relevance_status)).toBe("user_irrelevant");
 
-  await page.getByLabel("Relevance", { exact: true }).selectOption("irrelevant");
+  await pick(page, "Relevance", "Not relevant");
   const hidden = items(page).filter({ hasText: "FixtureFlow crashes on export" });
   await expect(hidden).toContainText("Not relevant");
   await expect(hidden.getByRole("button", { name: "Not relevant" })).toHaveAttribute("aria-pressed", "true");
