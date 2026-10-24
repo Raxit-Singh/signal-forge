@@ -182,7 +182,8 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
     }),
     hourly,
     week: week.map((w) => ({ d: w.d, share: w.classified > 0 ? w.negative / w.classified : null, classified: w.classified })),
-    kinds: [...kindCount.entries()].sort((a, b) => b[1] - a[1]).map(([name, v]) => ({ name, v })),
+    // Bugs first: the donut's red segment always means bugs, never just the largest kind.
+    kinds: [...kindCount.entries()].sort((a, b) => Number(b[0] === "Bugs") - Number(a[0] === "Bugs") || b[1] - a[1]).map(([name, v]) => ({ name, v })),
     openIssues: open.length,
     flow: {
       from: flowFrom.map(([id, v]) => ({ id, name: nameOf(id), v })),

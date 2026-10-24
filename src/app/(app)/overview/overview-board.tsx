@@ -334,12 +334,11 @@ function MainChart({ d }: { d: OverviewData }) {
             </div>
           </div>
           {chips && (
-            <div className="hidden gap-1 sm:grid" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
+            <div className="grid gap-1 max-sm:hidden" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
               {pts.map((q, i) => (
                 <button key={i} type="button" onClick={() => setSel(i)} aria-label={q.full} aria-pressed={i === at}
-                  className={cn("pop mx-auto flex aspect-square w-full max-w-7 items-center justify-center rounded-full text-[10px] tabular-nums transition-colors",
-                    i === at ? "bg-foreground font-semibold text-background" : "border border-foreground/[0.08] text-muted-foreground/80 hover:text-foreground")}
-                  style={vars({ "--d": `${900 + i * 25}ms` })}>{q.chip}</button>
+                  className={cn("mx-auto flex aspect-square w-full max-w-7 items-center justify-center rounded-full text-[10px] tabular-nums transition-colors",
+                    i === at ? "bg-foreground font-semibold text-background" : "border border-foreground/[0.08] text-muted-foreground/80 hover:text-foreground")}>{q.chip}</button>
               ))}
             </div>
           )}
@@ -393,7 +392,7 @@ function IssueDonut({ d }: { d: OverviewData }) {
   const sum = d.kinds.reduce((t, k) => t + k.v, 0);
   const gap = d.kinds.length > 1 ? 10 : 0;
   const starts = d.kinds.map((_, i) => d.kinds.slice(0, i).reduce((t, k) => t + (k.v / Math.max(1, sum)) * c, 0));
-  const colors = ["var(--signal)", ink(0.85), ink(0.5), ink(0.25), ink(0.14)];
+  const colors = (d.kinds[0]?.name === "Bugs" ? ["var(--signal)"] : []).concat([ink(0.85), ink(0.55), ink(0.32), ink(0.18), ink(0.12)]);
   return (
     <Card d={580}>
       <CardHead title="Open issues by kind" icon={Inbox} href="/feedback" action="Issues" />
@@ -404,7 +403,7 @@ function IssueDonut({ d }: { d: OverviewData }) {
               {d.kinds.map((k, i) => (
                 <circle key={k.name} cx="80" cy="80" r={r} fill="none" stroke={colors[i] ?? ink(0.14)} strokeWidth="16" strokeLinecap={gap ? "round" : "butt"}
                   strokeDasharray={`${Math.max(0.5, (k.v / sum) * c - gap)} ${c}`} strokeDashoffset={-starts[i]!}
-                  className="fade-in" style={vars({ "--d": `${700 + i * 120}ms`, filter: i === 0 ? "drop-shadow(0 0 8px color-mix(in oklab, var(--signal) 60%, transparent))" : undefined })} />
+                  className="fade-in" style={vars({ "--d": `${700 + i * 120}ms`, filter: colors[i] === "var(--signal)" ? "drop-shadow(0 0 8px color-mix(in oklab, var(--signal) 60%, transparent))" : undefined })} />
               ))}
             </svg>
             <div className="absolute inset-0 grid place-content-center text-center">
@@ -415,7 +414,7 @@ function IssueDonut({ d }: { d: OverviewData }) {
           <ul className="grid grid-cols-2 gap-x-3 gap-y-2 text-[12px] xl:grid-cols-1">
             {d.kinds.map((k, i) => (
               <li key={k.name} className="flex items-center gap-2">
-                <span className="h-3 w-1 rounded-full" style={{ background: colors[i] ?? ink(0.14), boxShadow: i === 0 ? "var(--signal-glow)" : undefined }} />
+                <span className="h-3 w-1 rounded-full" style={{ background: colors[i] ?? ink(0.14), boxShadow: colors[i] === "var(--signal)" ? "var(--signal-glow)" : undefined }} />
                 <span className="min-w-0 flex-1 truncate text-muted-foreground">{k.name}</span>
                 <span className="tabular-nums">{k.v}</span>
               </li>
@@ -504,36 +503,58 @@ const hourLabel = (h: number) => (h === 0 ? "12am" : h < 12 ? `${h}am` : h === 1
 
 function PixelHeat({ d }: { d: OverviewData }) {
   let peak: [number, number] = [0, 0];
-  d.heat.forEach((row, a) => row.forEach((v, h) => { if (v > d.heat[peak[0]]![peak[1]]!) peak = [a, h]; }));
+  let total = 0;
+  d.heat.forEach((row, a) => row.forEach((v, h) => { total += v; if (v > d.heat[peak[0]]![peak[1]]!) peak = [a, h]; }));
   const max = d.heat[peak[0]]![peak[1]]!;
   const [cell, setCell] = useState<[number, number] | null>(null);
   const shown = cell ?? peak;
   const count = d.heat[shown[0]]![shown[1]]!;
+  const shade = (v: number) => (v === 0 ? ink(0.05) : ink(0.12 + (v / max) * 0.78));
+  const until = (h: number) => hourLabel((h + 1) % 24);
   return (
     <Card d={740}>
       <CardHead title="When people talk" icon={Clock}
-        value={max > 0 ? <span className="text-[22px]">{DAYS[shown[0]]} {hourLabel(shown[1])}</span> : undefined}
-        sub={max > 0 ? (cell ? `${fmt(count)} ${count === 1 ? "mention" : "mentions"}` : `busiest hour, ${d.period}`) : undefined} />
+        value={max > 0 ? <span className="text-[22px]">{DAYS[shown[0]]} {hourLabel(shown[1])}–{until(shown[1])}</span> : undefined}
+        sub={max > 0 ? (cell ? `${fmt(count)} ${count === 1 ? "mention" : "mentions"} in this hour, ${d.period}` : `busiest hour · ${fmt(count)} ${count === 1 ? "mention" : "mentions"}`) : undefined} />
       {max === 0 ? <Empty>Not enough dated mentions in this period.</Empty> : (
         <>
-          <div className="grid w-full max-w-[460px] gap-[3px]" onMouseLeave={() => setCell(null)} role="img" aria-label={`Mentions by weekday and hour; busiest ${DAYS[peak[0]]} ${hourLabel(peak[1])}`}>
+          <p className="-mt-1 text-[12px] leading-relaxed text-muted-foreground">
+            Each square is one hour of the week, in your time zone, adding up {fmt(total)} mentions from {d.from} to {d.to}. Brighter means more people posted then.
+          </p>
+          <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-[3px]" onMouseLeave={() => setCell(null)}
+            role="img" aria-label={`Mentions by weekday and hour; busiest ${DAYS[peak[0]]} ${hourLabel(peak[1])}`}>
             {d.heat.map((row, a) => (
-              <div key={a} className="grid grid-cols-24 gap-[3px]">
-                {row.map((v, h) => {
-                  const hot = a === peak[0] && h === peak[1];
-                  return (
-                    <span key={h} onMouseEnter={() => setCell([a, h])} className="pop aspect-square rounded-[2px]"
-                      style={vars({
-                        "--d": `${850 + (a * 24 + h) * 3}ms`,
-                        background: hot ? "var(--signal)" : v === 0 ? ink(0.05) : ink(0.12 + (v / max) * 0.78),
-                        boxShadow: hot ? "0 0 12px color-mix(in oklab, var(--signal) 90%, transparent)" : cell && cell[0] === a && cell[1] === h ? "0 0 0 1px var(--foreground)" : undefined,
-                      })} />
-                  );
-                })}
+              <div key={a} className="contents">
+                <span className={cn("text-[11px]", a === shown[0] ? "text-foreground" : "text-muted-foreground/80")}>{DAYS[a]}</span>
+                <div className="grid grid-cols-24 gap-[3px]">
+                  {row.map((v, h) => {
+                    const hot = a === peak[0] && h === peak[1];
+                    return (
+                      <span key={h} onMouseEnter={() => setCell([a, h])} className="pop aspect-square rounded-[3px]"
+                        style={vars({
+                          "--d": `${850 + (a * 24 + h) * 3}ms`,
+                          background: hot ? "var(--signal)" : shade(v),
+                          boxShadow: hot ? "0 0 12px color-mix(in oklab, var(--signal) 90%, transparent)" : cell && cell[0] === a && cell[1] === h ? "0 0 0 1.5px var(--foreground)" : undefined,
+                        })} />
+                    );
+                  })}
+                </div>
               </div>
             ))}
+            <span />
+            <div className="grid grid-cols-4 pt-1 text-[11px] text-muted-foreground/80" aria-hidden>
+              <span>12am</span><span>6am</span><span>12pm</span><span>6pm</span>
+            </div>
           </div>
-          <div className="flex w-full max-w-[460px] justify-between text-[11px] text-muted-foreground/80"><span>12am</span><span>6am</span><span>12pm</span><span>6pm</span><span>11pm</span></div>
+          <div className="mt-auto flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-foreground/[0.06] pt-3 text-[11px] text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              Fewer
+              {[0, 0.25, 0.5, 0.75, 1].map((t) => <span key={t} className="size-3 rounded-[3px]" style={{ background: t === 0 ? ink(0.05) : ink(0.12 + t * 0.78) }} />)}
+              More
+            </span>
+            <span className="flex items-center gap-1.5"><span className="size-3 rounded-[3px] bg-signal shadow-[var(--signal-glow)]" />Busiest hour</span>
+            <span>Darkest: no mentions</span>
+          </div>
         </>
       )}
     </Card>
@@ -593,8 +614,8 @@ export function OverviewBoard({ d }: { d: OverviewData }) {
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-12">
         <div className="sm:col-span-2 xl:col-span-4"><Recent d={d} /></div>
-        <div className="xl:col-span-5"><Flow d={d} /></div>
-        <div className="xl:col-span-3"><PixelHeat d={d} /></div>
+        <div className="xl:col-span-4"><Flow d={d} /></div>
+        <div className="xl:col-span-4"><PixelHeat d={d} /></div>
       </div>
     </div>
   );
