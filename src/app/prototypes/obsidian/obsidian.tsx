@@ -154,9 +154,9 @@ function Sparkline({ data, red, d }: { data: number[]; red?: boolean; d: number 
   const pts = data.map((v, i) => [(i / (data.length - 1)) * 100, 34 - ((v - min) / (max - min || 1)) * 28] as [number, number]);
   const path = smoothPath(pts);
   return (
-    <svg viewBox="0 0 100 40" className="h-10 w-28" preserveAspectRatio="none" aria-hidden>
+    <svg viewBox="0 0 100 40" className="h-10 w-[100px] shrink-0" aria-hidden>
       <path d={`${path} L100,40 L0,40 Z`} fill={red ? "url(#ob-spark-red)" : "url(#ob-spark-white)"} className="ob-fade" style={style({ "--d": `${d + 400}ms` })} />
-      <path d={path} fill="none" stroke={red ? "var(--ob-red)" : "rgba(255,255,255,0.85)"} strokeWidth="1.6" vectorEffect="non-scaling-stroke" pathLength={1}
+      <path d={path} fill="none" stroke={red ? "var(--ob-red)" : "rgba(255,255,255,0.85)"} strokeWidth="1.6" pathLength={1}
         className="ob-draw" style={style({ "--len": 1, "--d": `${d}ms`, strokeDasharray: 1 })} />
     </svg>
   );
@@ -175,7 +175,7 @@ function SourceCard({ s, i }: { s: (typeof SOURCES)[number]; i: number }) {
       <div className="flex items-end justify-between gap-2">
         <div className="grid gap-0.5">
           <Count to={s.value} delay={200 + i * 70} className="text-[24px] font-semibold leading-none tracking-[-0.03em]" />
-          <span className="text-[12px] text-[var(--ob-faint)]">mentions this month</span>
+          <span className="text-[12px] text-[var(--ob-faint)]">this month</span>
         </div>
         <Sparkline data={s.line} red={s.change < 0} d={300 + i * 80} />
       </div>
@@ -193,8 +193,8 @@ function MixBar() {
       </div>
       <div className="relative mt-6 flex items-end gap-3">
         {/* average line */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-[118px] border-t border-dashed border-white/25" aria-hidden>
-          <span className="ob-pill absolute -top-3.5 right-[18%] bg-[#0b0b0c] px-2.5 py-0.5 text-[11px] text-white/80">Average · {fmt(avg * 1000)}/day</span>
+        <div className="pointer-events-none absolute inset-x-0 bottom-[52px] z-10 border-t border-dashed border-white/40" aria-hidden>
+          <span className="ob-pill absolute -top-3 right-2 bg-[#0b0b0c] px-2.5 py-0.5 text-[11px] text-white/85">Average · {fmt(avg * 1000)}/day</span>
         </div>
         {MIX.map((m, i) => (
           <div key={m.name} className="ob-rise grid min-w-0 gap-2" style={style({ flex: m.share, "--d": `${120 + i * 90}ms` })}>
@@ -221,14 +221,23 @@ function MixBar() {
 }
 
 function MainChart() {
-  const W = 760, H = 250, PAD = 12;
+  // Drawn at the container's real pixel width (no stretching), re-measured on resize.
+  const box = useRef<HTMLDivElement>(null);
+  const [W, setW] = useState(760);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setW(Math.max(200, Math.round(e!.contentRect.width))));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const H = 250, PAD = 12;
   const max = Math.max(...TOTAL) * 1.1;
   const x = (i: number) => PAD + (i / (TOTAL.length - 1)) * (W - PAD * 2);
   const y = (v: number) => H - 18 - (v / max) * (H - 40);
-  const total = useMemo(() => smoothPath(TOTAL.map((v, i) => [x(i), y(v)])), []); // eslint-disable-line react-hooks/exhaustive-deps
-  const neg = useMemo(() => smoothPath(NEGATIVE.map((v, i) => [x(i), y(v * 2.6)])), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const total = useMemo(() => smoothPath(TOTAL.map((v, i) => [PAD + (i / (TOTAL.length - 1)) * (W - PAD * 2), H - 18 - (v / max) * (H - 40)])), [W, max]);
+  const neg = useMemo(() => smoothPath(NEGATIVE.map((v, i) => [PAD + (i / (TOTAL.length - 1)) * (W - PAD * 2), H - 18 - ((v * 2.6) / max) * (H - 40)])), [W, max]);
   const [sel, setSel] = useState(14);
-  const box = useRef<HTMLDivElement>(null);
   const onMove = (e: React.PointerEvent) => {
     const r = box.current!.getBoundingClientRect();
     const i = Math.round(((e.clientX - r.left) / r.width) * (TOTAL.length - 1));
@@ -236,7 +245,7 @@ function MainChart() {
   };
   const left = (x(sel) / W) * 100;
   return (
-    <div className="ob-card ob-rise grid gap-4 p-5" style={style({ "--d": "420ms" })}>
+    <div className="ob-card ob-rise grid h-full content-start gap-4 p-5" style={style({ "--d": "420ms" })}>
       <CardHead title="Mentions" icon={TrendingUp} value={<><Count to={16957} delay={400} /><span className="ml-2 align-middle text-[13px] font-normal text-[var(--ob-dim)]">this month</span></>}
         action={
           <div className="flex items-center gap-3 text-[12px] text-[var(--ob-dim)]">
@@ -245,7 +254,7 @@ function MainChart() {
           </div>
         } />
       <div ref={box} className="ob-dots relative h-[250px] cursor-crosshair rounded-xl" onPointerMove={onMove}>
-        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="absolute inset-0 size-full overflow-visible" aria-label="Mentions per day, all and negative">
+        <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 size-full overflow-visible" aria-label="Mentions per day, all and negative">
           <defs>
             <linearGradient id="ob-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#fff" stopOpacity="0.14" /><stop offset="100%" stopColor="#fff" stopOpacity="0" /></linearGradient>
             <linearGradient id="ob-spark-white" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#fff" stopOpacity="0.18" /><stop offset="100%" stopColor="#fff" stopOpacity="0" /></linearGradient>
@@ -253,8 +262,8 @@ function MainChart() {
             <filter id="ob-red-glow" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="4" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
           </defs>
           <path d={`${total} L${x(TOTAL.length - 1)},${H} L${x(0)},${H} Z`} fill="url(#ob-area)" className="ob-fade" style={style({ "--d": "900ms" })} />
-          <path d={total} fill="none" stroke="#fff" strokeWidth="2" vectorEffect="non-scaling-stroke" pathLength={1} className="ob-draw" style={style({ "--len": 1, "--d": "500ms", strokeDasharray: 1 })} />
-          <path d={neg} fill="none" stroke="var(--ob-red)" strokeWidth="2" vectorEffect="non-scaling-stroke" pathLength={1} filter="url(#ob-red-glow)" className="ob-draw" style={style({ "--len": 1, "--d": "700ms", strokeDasharray: 1 })} />
+          <path d={total} fill="none" stroke="#fff" strokeWidth="2" pathLength={1} className="ob-draw" style={style({ "--len": 1, "--d": "500ms", strokeDasharray: 1 })} />
+          <path d={neg} fill="none" stroke="var(--ob-red)" strokeWidth="2" pathLength={1} filter="url(#ob-red-glow)" className="ob-draw" style={style({ "--len": 1, "--d": "700ms", strokeDasharray: 1 })} />
         </svg>
         {/* crosshair + points + tooltip */}
         <div className="pointer-events-none absolute inset-y-0 w-px bg-white/20 transition-[left] duration-150 ease-out" style={{ left: `${left}%` }} />
@@ -270,10 +279,10 @@ function MainChart() {
         </div>
       </div>
       {/* day chips (Vaulto) */}
-      <div className="flex flex-wrap justify-between gap-1">
+      <div className="grid grid-cols-21 gap-1">
         {DAYS.map((d, i) => (
-          <button key={d} onClick={() => setSel(i)}
-            className={`ob-pop size-7 rounded-full text-[11px] tabular-nums transition-colors ${i === sel ? "bg-white font-semibold text-black" : "border border-white/[0.07] text-[var(--ob-faint)] hover:text-white"}`}
+          <button key={d} onClick={() => setSel(i)} aria-label={`October ${d}`}
+            className={`ob-pop mx-auto flex aspect-square w-full max-w-7 items-center justify-center rounded-full text-[10px] tabular-nums transition-colors ${i === sel ? "bg-white font-semibold text-black" : "border border-white/[0.07] text-[var(--ob-faint)] hover:text-white"}`}
             style={style({ "--d": `${900 + i * 25}ms` })}>{d}</button>
         ))}
       </div>
@@ -286,7 +295,7 @@ function Capsules() {
   const [hover, setHover] = useState<number | null>(null);
   const shown = hover ?? worst;
   return (
-    <div className="ob-card ob-rise grid gap-4 p-5" style={style({ "--d": "500ms" })}>
+    <div className="ob-card ob-rise grid h-full content-start gap-4 p-5" style={style({ "--d": "500ms" })}>
       <CardHead title="Negative by weekday" icon={Bug} value={<><Count to={WEEK[shown]!.neg * 100} delay={500} />%</>} />
       <p className="-mt-2 text-[12px] text-[var(--ob-faint)]">{WEEK[shown]!.d}{shown === worst && hover === null ? " · worst day this month" : ""}</p>
       <div className="flex h-[218px] items-end justify-between gap-2">
@@ -313,7 +322,7 @@ function IssueDonut() {
   const starts = ISSUES.map((_, i) => ISSUES.slice(0, i).reduce((t, x) => t + (x.v / 100) * c, 0));
   const colors = ["var(--ob-red)", "rgba(255,255,255,0.85)", "rgba(255,255,255,0.5)", "rgba(255,255,255,0.22)"];
   return (
-    <div className="ob-card ob-rise grid gap-4 p-5" style={style({ "--d": "580ms" })}>
+    <div className="ob-card ob-rise grid h-full content-start gap-4 p-5" style={style({ "--d": "580ms" })}>
       <CardHead title="Open issues by kind" icon={Inbox} />
       <div className="relative mx-auto size-[170px]">
         <svg viewBox="0 0 160 160" className="size-full -rotate-90" aria-label="Open issues by kind">
@@ -353,10 +362,10 @@ function Flow() {
   const outL = { ...yL }, inR = { ...yR };
   const [hover, setHover] = useState<string | null>(null);
   return (
-    <div className="ob-card ob-rise grid gap-4 p-5" style={style({ "--d": "660ms" })}>
+    <div className="ob-card ob-rise grid h-full content-start gap-4 p-5" style={style({ "--d": "660ms" })}>
       <CardHead title="From platforms to topics" icon={Sparkles} value={<Count to={10436} delay={660} />} />
       <div className="relative">
-        <svg viewBox={`-70 0 ${W + 150} ${H}`} className="h-[230px] w-full" aria-label="Mentions flowing from platforms to topics">
+        <svg viewBox={`-90 0 ${W + 210} ${H}`} className="h-[230px] w-full" aria-label="Mentions flowing from platforms to topics">
           {FLOW.links.map(([a, b, v], i) => {
             const h1 = v * scaleL, h2 = v * scaleR;
             const y1 = outL[a]!, y2 = inR[b]!;
@@ -374,16 +383,16 @@ function Flow() {
           {FLOW.from.map((n) => (
             <g key={n.id} onMouseEnter={() => setHover(n.id)} onMouseLeave={() => setHover(null)} className="cursor-default">
               <rect x={0} y={yL[n.id]} width={NODE} height={n.v * scaleL} rx={3} fill="rgba(255,255,255,0.85)" />
-              <text x={-8} y={yL[n.id]! + (n.v * scaleL) / 2} textAnchor="end" dominantBaseline="middle" className="fill-white text-[11px]">{n.name}</text>
-              <text x={-8} y={yL[n.id]! + (n.v * scaleL) / 2 + 13} textAnchor="end" dominantBaseline="middle" className="fill-white/40 text-[10px]">{fmt(n.v)}</text>
+              <text x={-8} y={yL[n.id]! + (n.v * scaleL) / 2} textAnchor="end" dominantBaseline="middle" className="fill-white text-[14px]">{n.name}</text>
+              <text x={-8} y={yL[n.id]! + (n.v * scaleL) / 2 + 16} textAnchor="end" dominantBaseline="middle" className="fill-white/40 text-[12px]">{fmt(n.v)}</text>
             </g>
           ))}
           {FLOW.to.map((n) => (
             <g key={n.id} onMouseEnter={() => setHover(n.id)} onMouseLeave={() => setHover(null)} className="cursor-default">
               <rect x={W - NODE} y={yR[n.id]} width={NODE} height={n.v * scaleR} rx={3} fill={n.id === "bug" ? "var(--ob-red)" : "rgba(255,255,255,0.85)"}
                 style={n.id === "bug" ? { filter: "drop-shadow(0 0 6px rgba(255,59,47,0.8))" } : undefined} />
-              <text x={W + 8} y={yR[n.id]! + (n.v * scaleR) / 2} dominantBaseline="middle" className={n.id === "bug" ? "fill-[#ff8a82] text-[11px]" : "fill-white text-[11px]"}>{n.name}</text>
-              <text x={W + 8} y={yR[n.id]! + (n.v * scaleR) / 2 + 13} dominantBaseline="middle" className="fill-white/40 text-[10px]">{fmt(n.v)}</text>
+              <text x={W + 8} y={yR[n.id]! + (n.v * scaleR) / 2} dominantBaseline="middle" className={n.id === "bug" ? "fill-[#ff8a82] text-[14px]" : "fill-white text-[14px]"}>{n.name}</text>
+              <text x={W + 8} y={yR[n.id]! + (n.v * scaleR) / 2 + 16} dominantBaseline="middle" className="fill-white/40 text-[12px]">{fmt(n.v)}</text>
             </g>
           ))}
         </svg>
@@ -399,10 +408,10 @@ function PixelHeat() {
   const shown = cell ?? peak;
   const label = (h: number) => (h === 0 ? "12am" : h < 12 ? `${h}am` : h === 12 ? "12pm" : `${h - 12}pm`);
   return (
-    <div className="ob-card ob-rise grid gap-4 p-5" style={style({ "--d": "740ms" })}>
+    <div className="ob-card ob-rise grid h-full content-start gap-4 p-5" style={style({ "--d": "740ms" })}>
       <CardHead title="When people talk" icon={Zap} value={<span className="text-[22px]">{WEEK[shown[0]]!.d} {label(shown[1])}</span>} />
       <p className="-mt-2 text-[12px] text-[var(--ob-faint)]">{cell ? `${Math.round(HEAT[shown[0]]![shown[1]]! * 100)} mentions` : "busiest hour this month"}</p>
-      <div className="grid gap-[3px]" onMouseLeave={() => setCell(null)}>
+      <div className="grid w-full max-w-[460px] gap-[3px]" onMouseLeave={() => setCell(null)}>
         {HEAT.map((row, d) => (
           <div key={d} className="grid grid-cols-24 gap-[3px]">
             {row.map((v, h) => {
@@ -419,14 +428,14 @@ function PixelHeat() {
           </div>
         ))}
       </div>
-      <div className="flex justify-between text-[11px] text-[var(--ob-faint)]"><span>12am</span><span>6am</span><span>12pm</span><span>6pm</span><span>11pm</span></div>
+      <div className="flex w-full max-w-[460px] justify-between text-[11px] text-[var(--ob-faint)]"><span>12am</span><span>6am</span><span>12pm</span><span>6pm</span><span>11pm</span></div>
     </div>
   );
 }
 
 function Recent() {
   return (
-    <div className="ob-card ob-rise grid content-start gap-3 p-5" style={style({ "--d": "620ms" })}>
+    <div className="ob-card ob-rise grid h-full content-start gap-3 p-5" style={style({ "--d": "620ms" })}>
       <CardHead title="Latest mentions" icon={MessageSquare} action={<button className="ob-pill px-3 py-1 text-[12px] text-[var(--ob-dim)] hover:text-white">See all</button>} />
       <ul className="grid">
         {RECENT.map((m, i) => (
@@ -457,7 +466,7 @@ export function Obsidian() {
       <div className="ob-grain" aria-hidden />
       <div className="relative z-10 flex">
         {/* Sidebar (Vaulto) */}
-        <aside className="sticky top-0 hidden h-dvh w-[232px] shrink-0 flex-col border-r border-white/[0.06] bg-gradient-to-b from-white/[0.03] to-transparent px-3 py-5 lg:flex">
+        <aside className="sticky top-0 hidden h-dvh w-[220px] shrink-0 flex-col border-r border-white/[0.06] bg-gradient-to-b from-white/[0.03] to-transparent px-3 py-5 md:flex">
           <div className="flex items-center gap-2.5 px-2">
             <span className="relative flex size-7 items-center justify-center">
               <span className="ob-breathe absolute inset-0 rounded-full bg-[var(--ob-red)] blur-md" />
@@ -496,7 +505,7 @@ export function Obsidian() {
         <div className="min-w-0 flex-1">
           {/* Top bar */}
           <header className="sticky top-0 z-20 flex h-16 items-center gap-4 border-b border-white/[0.05] bg-[#050506]/70 px-6 backdrop-blur-md">
-            <nav className="text-[13px] text-[var(--ob-faint)]">Gears of War: E-Day <span className="px-1">/</span> <span className="text-white">Overview</span></nav>
+            <nav className="min-w-0 truncate whitespace-nowrap text-[13px] text-[var(--ob-faint)]"><span className="hidden lg:inline">Gears of War: E-Day <span className="px-1">/</span> </span><span className="text-white">Overview</span></nav>
             <button className="ob-pill mx-auto hidden h-10 w-[420px] items-center gap-2.5 px-4 text-[13px] text-[var(--ob-faint)] transition-colors hover:text-white md:flex">
               <Search className="size-4" aria-hidden /><span className="flex-1 text-left">Search mentions or type a command</span>
               <span className="flex items-center gap-1 rounded-full border border-white/10 px-2 py-0.5 text-[11px]"><Command className="size-3" aria-hidden />K</span>
@@ -542,24 +551,24 @@ export function Obsidian() {
             </section>
 
             {/* Source cards (Vaulto currency cards) */}
-            <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5" aria-label="Top platforms">
+            <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5" aria-label="Top platforms">
               {SOURCES.map((s, i) => <SourceCard key={s.name} s={s} i={i} />)}
-              <button className="ob-rise grid place-content-center gap-2 rounded-[18px] border border-dashed border-white/15 p-4 text-center text-[13px] text-[var(--ob-dim)] transition-colors hover:border-white/30 hover:text-white" style={style({ "--d": "460ms" })}>
+              <button className="ob-rise grid place-content-center gap-2 rounded-[18px] border border-dashed border-white/15 p-4 text-center text-[13px] text-[var(--ob-dim)] transition-colors hover:border-white/30 hover:text-white sm:col-span-2 xl:col-span-1" style={style({ "--d": "460ms" })}>
                 <span className="mx-auto flex size-9 items-center justify-center rounded-full border border-white/15"><Plus className="size-4" aria-hidden /></span>
                 Add another platform<br /><span className="text-[11px] text-[var(--ob-faint)]">or a competitor to compare</span>
               </button>
             </section>
 
             {/* Charts */}
-            <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-12">
-              <div className="lg:col-span-2 xl:col-span-6"><MainChart /></div>
+            <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-12">
+              <div className="sm:col-span-2 xl:col-span-6"><MainChart /></div>
               <div className="xl:col-span-3"><Capsules /></div>
               <div className="xl:col-span-3"><IssueDonut /></div>
             </section>
-            <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-12">
-              <div className="xl:col-span-4"><Recent /></div>
+            <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-12">
+              <div className="sm:col-span-2 xl:col-span-4"><Recent /></div>
               <div className="xl:col-span-5"><Flow /></div>
-              <div className="lg:col-span-2 xl:col-span-3"><PixelHeat /></div>
+              <div className="xl:col-span-3"><PixelHeat /></div>
             </section>
           </main>
         </div>
