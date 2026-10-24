@@ -172,7 +172,8 @@ test("spike explanations: product and keyword spikes cite posts and show measure
   await expect(quiet.getByTestId("investigation-insufficient")).toContainText("Fewer than 3 collected posts");
   await page.keyboard.press("Escape");
 
-  await page.getByLabel("Show", { exact: true }).selectOption("keyword:FixtureFlow");
+  await page.getByRole("button", { name: /^Show:/ }).click();
+  await page.getByRole("menuitemradio", { name: "FixtureFlow", exact: true }).click();
   await expect(page).toHaveURL(/keyword=FixtureFlow/);
   const keyword = await explain("confirmed", "investigation-result");
   await expect(keyword.getByTestId("spike-facts")).toContainText("Keyword: “FixtureFlow”");

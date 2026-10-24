@@ -34,7 +34,7 @@ const kpi = (page: import("@playwright/test").Page, label: string) =>
   page.locator("div", { has: page.getByText(label, { exact: true }) }).last();
 
 test("buzz analytics shows counts derived from stored mentions, excluding reposts", async ({ page }) => {
-  await expect(page.getByRole("heading", { name: "Buzz Analytics" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Trends", exact: true })).toBeVisible();
   // 6 HN + 4 Bluesky + 1 HN original = 11 relevant; the repost and the irrelevant post are excluded.
   await expect(kpi(page, "Mentions · last 30 days")).toContainText("11");
   await expect(kpi(page, "Mentions · last 30 days")).toContainText("1 duplicate/repost not counted");
@@ -108,7 +108,8 @@ test("one graph: spike markers, hover details, a details panel, and filters that
   await page.keyboard.press("Escape");
 
   // Platform filter: same graph, that platform's counts and spikes (the KPIs follow too).
-  await page.getByLabel("Show", { exact: true }).selectOption("platform:bluesky");
+  await page.getByRole("button", { name: /^Show:/ }).click();
+  await page.getByRole("menuitemradio", { name: "Bluesky", exact: true }).click();
   await expect(page).toHaveURL(/source=bluesky/);
   await expect(kpi(page, "Mentions · last 30 days")).toContainText("4");
   await expect(page.getByTestId("spike-graph")).toHaveCount(1);
@@ -116,7 +117,8 @@ test("one graph: spike markers, hover details, a details panel, and filters that
   await expect(page.getByTestId("spike-marker-possible")).toHaveCount(0);
 
   // Keyword filter replaces the platform filter.
-  await page.getByLabel("Show", { exact: true }).selectOption("keyword:FixtureFlow");
+  await page.getByRole("button", { name: /^Show:/ }).click();
+  await page.getByRole("menuitemradio", { name: "FixtureFlow", exact: true }).click();
   await expect(page).toHaveURL(/keyword=FixtureFlow/);
   await expect(page).not.toHaveURL(/source=/);
   await expect(page.getByText("this graph shows only this keyword")).toBeVisible();

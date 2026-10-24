@@ -194,12 +194,14 @@ test("smart monitoring shows product-relative share and overflow risk; buzz show
   await page.getByTestId("spike-marker-confirmed").click();
   await expect(page.getByRole("dialog", { name: "Confirmed spike" })).toContainText("Major");
   await page.keyboard.press("Escape");
-  await page.getByLabel("Show", { exact: true }).selectOption("platform:hackernews");
+  await page.getByRole("button", { name: /^Show:/ }).click();
+  await page.getByRole("menuitemradio", { name: "Hacker News", exact: true }).click();
   await expect(page.getByTestId("spike-marker-possible")).toHaveCount(1);
   await page.getByTestId("spike-marker-possible").click();
   await expect(page.getByRole("dialog", { name: "Possible spike" })).toContainText("only partly monitored");
   await page.keyboard.press("Escape");
-  await page.getByLabel("Show", { exact: true }).selectOption("keyword:FixtureFlow");
+  await page.getByRole("button", { name: /^Show:/ }).click();
+  await page.getByRole("menuitemradio", { name: "FixtureFlow", exact: true }).click();
   await expect(page.getByTestId("spike-marker-confirmed")).toHaveCount(1);
   await page.getByTestId("spike-marker-confirmed").click();
   await expect(page.getByRole("dialog", { name: "Confirmed spike" })).toContainText("Keyword “fixtureflow”");

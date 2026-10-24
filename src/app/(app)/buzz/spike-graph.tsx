@@ -7,6 +7,7 @@ import {
 } from "recharts";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { FilterSelect } from "@/components/ui/filter-select";
 import { Badge, Input } from "@/components/ui/primitives";
 import { Dialog, SidePanelContent } from "@/components/ui/overlays";
 import { ActionForm } from "@/components/ai/action-form";
@@ -53,10 +54,9 @@ interface Props {
   productId: string;
 }
 
-const LINE = "var(--entity-1)";
-const CONFIRMED = "var(--negative)";
+const LINE = "var(--foreground)";
+const CONFIRMED = "var(--signal)";
 const POSSIBLE = "var(--warning)";
-const selectCls = "h-8 rounded-md border bg-background px-2 text-[13px] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring";
 
 type Row = { t: number; start: string; label: string; value: number | null; coverage: GraphPoint["coverage"]; confirmed: number | null; possible: number | null; spike: GraphSpike | null };
 
@@ -135,41 +135,35 @@ export function SpikeGraph(p: Props) {
   return (
     <div className="grid gap-3" aria-busy={pending}>
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Graph filters">
-        <label htmlFor="spike-scope" className="text-[13px] text-muted-foreground">Show</label>
-        <select
-          id="spike-scope" className={selectCls} value={scopeValue}
-          onChange={(e) => {
-            const [kind, ...rest] = e.target.value.split(":");
+        <FilterSelect label="Show" value={scopeValue}
+          onChange={(value) => {
+            const [kind, ...rest] = value.split(":");
             const v = rest.join(":");
             go(kind === "platform" ? { source: v, keyword: null } : kind === "keyword" ? { keyword: v, source: null } : { source: null, keyword: null });
           }}
-        >
-          <option value="">All activity ({p.platforms.length ? "every platform" : "product"})</option>
-          {p.platforms.length > 0 && (
-            <optgroup label="Platform">
-              {p.platforms.map((x) => <option key={x.id} value={`platform:${x.id}`}>{x.name}</option>)}
-            </optgroup>
-          )}
-          {p.keywords.length > 0 && (
-            <optgroup label="Keyword">
-              {p.keywords.map((k) => <option key={k} value={`keyword:${k}`}>{k}</option>)}
-            </optgroup>
-          )}
-        </select>
-        <div role="radiogroup" aria-label="Time range" className="flex flex-wrap gap-1">
-          {RANGE_PRESETS.map((r) => (
-            <Button key={r.key} size="sm" role="radio" aria-checked={p.range.key === r.key && !custom} variant={p.range.key === r.key && !custom ? "default" : "secondary"}
-              onClick={() => { setCustom(false); go({ range: r.key, from: null, to: null }); }}>
-              {r.short}
-            </Button>
-          ))}
-          <Button size="sm" role="radio" aria-checked={custom} variant={custom ? "default" : "secondary"} onClick={() => setCustom(true)}>Custom</Button>
+          options={[
+            { value: "", label: `All activity (${p.platforms.length ? "every platform" : "product"})` },
+            ...p.platforms.map((x) => ({ value: `platform:${x.id}`, label: x.name, group: "Platform" })),
+            ...p.keywords.map((k) => ({ value: `keyword:${k}`, label: k, group: "Keyword" })),
+          ]} />
+        <div role="radiogroup" aria-label="Time range" className="panel flex rounded-full p-1 text-[13px]">
+          {[...RANGE_PRESETS.map((r) => ({ key: r.key, label: r.short })), { key: "custom", label: "Custom" }].map((r) => {
+            const on = r.key === "custom" ? custom : p.range.key === r.key && !custom;
+            return (
+              <button key={r.key} type="button" role="radio" aria-checked={on}
+                onClick={() => { if (r.key === "custom") setCustom(true); else { setCustom(false); go({ range: r.key, from: null, to: null }); } }}
+                className={cn("press h-8 rounded-full px-3.5 transition-colors duration-200",
+                  on ? "bg-foreground/[0.09] text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]" : "text-muted-foreground hover:text-foreground")}>
+                {r.label}
+              </button>
+            );
+          })}
         </div>
         {custom && (
           <form className="flex flex-wrap items-center gap-1.5" onSubmit={(e) => { e.preventDefault(); if (from && to) go({ range: "custom", from, to }); }}>
-            <Input type="date" aria-label="From" className="h-8 w-36" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+            <Input type="date" aria-label="From" className="h-9 w-36 rounded-full" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
             <span className="text-xs text-muted-foreground">to</span>
-            <Input type="date" aria-label="To" className="h-8 w-36" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+            <Input type="date" aria-label="To" className="h-9 w-36 rounded-full" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
             <Button size="sm" type="submit" disabled={!from || !to}>Apply</Button>
           </form>
         )}
@@ -177,21 +171,27 @@ export function SpikeGraph(p: Props) {
       </div>
 
       {!hasData ? (
-        <p className="rounded-md border p-6 text-center text-[13px] text-muted-foreground" data-testid="spike-graph-empty">
+        <p className="grid min-h-48 place-content-center rounded-2xl border border-dashed p-6 text-center text-[13px] text-muted-foreground" data-testid="spike-graph-empty">
           Nothing was monitored for {p.scope.label} in this period, so there is nothing to draw. Unmonitored periods are gaps, never zeros.
         </p>
       ) : (
-        <div className="h-72 w-full min-w-0" data-testid="spike-graph" role="img"
+        <div className="dots w-full min-w-0 rounded-xl" style={{ height: 320 }} data-testid="spike-graph" role="img"
           aria-label={`Mentions per ${p.bucket} for ${p.scope.label}, ${marked.length} spike${marked.length === 1 ? "" : "s"} marked. A data table follows.`}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={rows} margin={{ top: 12, right: 12, bottom: 0, left: -16 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+              <defs>
+                <linearGradient id="trend-area" x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stopColor="var(--foreground)" stopOpacity={0.16} />
+                  <stop offset="100%" stopColor="var(--foreground)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="2 6" stroke="color-mix(in oklab, var(--foreground) 10%, transparent)" vertical={false} />
               <XAxis dataKey="t" type="number" scale="time" domain={domain} ticks={ticks} tickFormatter={(v: number) => fmt.format(new Date(v - bucketMs / 2))}
-                tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={{ stroke: "var(--border)" }} />
+                tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false} />
               <YAxis allowDecimals={false} domain={[0, (max: number) => Math.max(3, Math.ceil(max * 1.15))]} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false} />
               {rows.filter((r) => r.coverage !== "full").map((r) => (
                 <ReferenceArea key={r.start} x1={r.t - bucketMs / 2} x2={r.t + bucketMs / 2} ifOverflow="hidden"
-                  fill="var(--muted-foreground)" fillOpacity={r.coverage === "none" ? 0.16 : 0.07} strokeOpacity={0} />
+                  fill="var(--foreground)" fillOpacity={r.coverage === "none" ? 0.07 : 0.035} strokeOpacity={0} />
               ))}
               {p.events.map((e) => {
                 const at = new Date(e.occurred_at).getTime();
@@ -204,7 +204,7 @@ export function SpikeGraph(p: Props) {
                   const r = payload[0]!.payload as Row;
                   const s = r.spike;
                   return (
-                    <div className="grid max-w-64 gap-1 rounded-md border bg-surface px-2.5 py-2 text-xs shadow-sm" data-testid="spike-tooltip">
+                    <div className="grid max-w-64 gap-1 rounded-xl border bg-surface/95 px-3 py-2 text-xs shadow-xl backdrop-blur" data-testid="spike-tooltip">
                       <p className="font-medium">{full.format(new Date(r.start))}</p>
                       {r.coverage === "none" ? <p className="text-muted-foreground">Not monitored — no data, not zero.</p> : (
                         <p className="flex justify-between gap-4"><span>Mentions</span><span className="tabular">{r.value ?? "—"}</span></p>
@@ -223,8 +223,8 @@ export function SpikeGraph(p: Props) {
                   );
                 }}
               />
-              <Area type="linear" dataKey="value" name="Mentions" stroke={LINE} strokeWidth={2} fill={LINE} fillOpacity={0.1}
-                connectNulls={false} isAnimationActive={false} dot={false} activeDot={{ r: 4 }} />
+              <Area type="monotone" dataKey="value" name="Mentions" stroke={LINE} strokeWidth={2} fill="url(#trend-area)"
+                connectNulls={false} isAnimationActive={false} dot={false} activeDot={{ r: 5, fill: "var(--foreground)", stroke: "var(--surface)", strokeWidth: 2 }} />
               <Scatter dataKey="confirmed" name="Confirmed spike" fill={CONFIRMED} isAnimationActive={false}
                 shape={(props: unknown) => <Marker {...(props as MarkerProps)} kind="confirmed" onSelect={setSelectedId} />} />
               <Scatter dataKey="possible" name="Possible spike" fill={POSSIBLE} isAnimationActive={false}
@@ -234,15 +234,15 @@ export function SpikeGraph(p: Props) {
         </div>
       )}
 
-      <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground" aria-label="Legend">
+      <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-muted-foreground" aria-label="Legend">
         <li className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded" style={{ background: LINE }} aria-hidden />Mentions ({p.scope.label})</li>
         <li className="flex items-center gap-1.5"><svg width="12" height="12" aria-hidden><path d="M6 1 L11 11 L1 11 Z" fill={CONFIRMED} /></svg>Confirmed spike</li>
         <li className="flex items-center gap-1.5"><svg width="12" height="12" aria-hidden><circle cx="6" cy="6" r="4.5" fill="var(--surface)" stroke={POSSIBLE} strokeWidth="2" /></svg>Possible spike</li>
-        <li className="flex items-center gap-1.5"><span className="size-3 rounded-sm bg-muted-foreground/15" aria-hidden />Not monitored</li>
+        <li className="flex items-center gap-1.5"><span className="size-3 rounded-sm bg-foreground/[0.08]" aria-hidden />Not monitored</li>
         {startedLate && (
           <li className="text-muted-foreground" data-testid="graph-starts">Monitoring started {full.format(new Date(startedLate))}; the graph starts there.</li>
         )}
-        <li className="flex items-center gap-1.5"><span className="size-3 rounded-sm bg-muted-foreground/[0.07] ring-1 ring-border" aria-hidden />Partly monitored</li>
+        <li className="flex items-center gap-1.5"><span className="size-3 rounded-sm bg-foreground/[0.04] ring-1 ring-border" aria-hidden />Partly monitored</li>
         {p.events.length > 0 && <li className="flex items-center gap-1.5"><span className="h-3 w-0 border-l-2 border-dashed border-info" aria-hidden />Your events</li>}
       </ul>
 
@@ -257,7 +257,8 @@ export function SpikeGraph(p: Props) {
           <span className="text-muted-foreground">Spikes:</span>
           {marked.map((r) => (
             <button key={r.spike!.id} type="button" role="listitem" onClick={() => setSelectedId(r.spike!.id)}
-              className="rounded-full border px-2 py-0.5 hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring">
+              className={cn("press panel flex items-center gap-1.5 rounded-full px-2.5 py-1 hover:bg-foreground/[0.06] focus-visible:outline-2 focus-visible:outline-ring")}>
+              <span className={cn("size-1.5 rounded-full", r.spike!.confidence === "confirmed" ? "bg-signal shadow-[var(--signal-glow)]" : "bg-warning")} aria-hidden />
               {r.label} · {r.spike!.confidence === "confirmed" ? "confirmed" : "possible"}
             </button>
           ))}
@@ -309,8 +310,9 @@ function Marker({ cx, cy, payload, kind, onSelect }: MarkerProps & { kind: "conf
       data-testid={`spike-marker-${kind}`} style={{ cursor: "pointer" }} onClick={open}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } }}>
       <circle cx={cx} cy={cy} r={12} fill="transparent" />
+      {kind === "confirmed" && <circle cx={cx} cy={cy} r={11} fill={CONFIRMED} opacity={0.22} className="pulse-ring" style={{ transformOrigin: `${cx}px ${cy}px`, transformBox: "view-box" }} />}
       {kind === "confirmed"
-        ? <path d={`M${cx} ${cy - 7} L${cx + 7} ${cy + 5} L${cx - 7} ${cy + 5} Z`} fill={CONFIRMED} stroke="var(--surface)" strokeWidth={2} />
+        ? <path d={`M${cx} ${cy - 8} L${cx + 8} ${cy + 6} L${cx - 8} ${cy + 6} Z`} fill={CONFIRMED} stroke="var(--surface)" strokeWidth={2} style={{ filter: "drop-shadow(0 0 6px color-mix(in oklab, var(--signal) 80%, transparent))" }} />
         : <circle cx={cx} cy={cy} r={5.5} fill="var(--surface)" stroke={POSSIBLE} strokeWidth={2.5} />}
     </g>
   );
@@ -370,7 +372,7 @@ function SpikePanel({ spike, platforms, canExplain, workspaceId, productId }: {
               {details.mentions.length === 0 ? <p className="text-xs text-muted-foreground">None stored.</p> : (
                 <ul className="grid gap-1.5 text-xs" aria-label="Relevant mentions">
                   {details.mentions.map((m) => (
-                    <li key={m.id} className="grid gap-0.5 rounded border p-2">
+                    <li key={m.id} className="grid gap-0.5 rounded-xl border border-foreground/[0.08] bg-foreground/[0.025] p-2.5">
                       <a href={m.url} target="_blank" rel="noreferrer noopener" className="line-clamp-2 underline-offset-2 hover:underline">{m.title} <ExternalLink className="inline size-3" aria-hidden /></a>
                       <span className="text-muted-foreground">{name(m.source)} · {formatTime(m.publishedAt, tz)}</span>
                     </li>

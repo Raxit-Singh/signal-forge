@@ -67,8 +67,13 @@ export function CountUp({ value, format, suffix, className }: { value: number; f
     }
     return () => { cancelAnimationFrame(a); cancelAnimationFrame(b); };
   }, [value]);
+  // The rolling digits are decorative; the real value is text (for screen readers, find-in-page and tests).
+  const text = `${new Intl.NumberFormat("en-US", format).format(value)}${suffix ?? ""}`;
   return (
+    <span className="contents">
+    <span className="sr-only">{text}</span>
     <NumberFlow
+      aria-hidden
       value={shown}
       animated={animated}
       format={format}
@@ -79,5 +84,6 @@ export function CountUp({ value, format, suffix, className }: { value: number; f
       spinTiming={{ duration: 900, easing: "cubic-bezier(0.23, 1, 0.32, 1)" }}
       opacityTiming={{ duration: 350, easing: "ease-out" }}
     />
+    </span>
   );
 }
