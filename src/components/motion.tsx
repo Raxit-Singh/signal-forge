@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { MotionConfig } from "motion/react";
 import NumberFlow, { type Format } from "@number-flow/react";
 
@@ -41,19 +42,41 @@ export function GrowBar({ value, color, delay = 0, className = "h-1.5" }: { valu
 }
 
 /**
- * A number shown at its real value from the first paint, which rolls digit by digit whenever
- * it changes (live updates). Tabular, so neighbours don't shift.
+ * A number that's correct from the first paint (server-rendered value), counts up from zero once
+ * the page is interactive, and rolls digit by digit whenever it changes later (live updates).
+ * Reduced motion: no count, values just change.
  */
 export function CountUp({ value, format, suffix, className }: { value: number; format?: Format; suffix?: string; className?: string }) {
+  const [shown, setShown] = useState(value);
+  const [animated, setAnimated] = useState(true);
+  const counted = useRef(false);
+  useEffect(() => {
+    let a = 0, b = 0;
+    if (!counted.current && value !== 0 && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      // Marked as counted only when the count actually starts, so React's double effect run in
+      // development (or an interrupted first frame) can't skip it.
+      a = requestAnimationFrame(() => {
+        counted.current = true;
+        setAnimated(false);
+        setShown(0);
+        b = requestAnimationFrame(() => { setAnimated(true); setShown(value); });
+      });
+    } else {
+      counted.current = true;
+      a = requestAnimationFrame(() => { setAnimated(true); setShown(value); });
+    }
+    return () => { cancelAnimationFrame(a); cancelAnimationFrame(b); };
+  }, [value]);
   return (
     <NumberFlow
-      value={value}
+      value={shown}
+      animated={animated}
       format={format}
       suffix={suffix}
       className={className}
       style={{ fontVariantNumeric: "tabular-nums" }}
-      transformTiming={{ duration: 700, easing: "cubic-bezier(0.23, 1, 0.32, 1)" }}
-      spinTiming={{ duration: 700, easing: "cubic-bezier(0.23, 1, 0.32, 1)" }}
+      transformTiming={{ duration: 900, easing: "cubic-bezier(0.23, 1, 0.32, 1)" }}
+      spinTiming={{ duration: 900, easing: "cubic-bezier(0.23, 1, 0.32, 1)" }}
       opacityTiming={{ duration: 350, easing: "ease-out" }}
     />
   );

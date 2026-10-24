@@ -8,22 +8,22 @@
  * for meaning (sentiment, health), never decoration.
  */
 :root {
-  /* Command-center palette: cool slate ink, layered surfaces, orange reserved for actions. */
-  --background: oklch(0.982 0.003 262);
-  --foreground: oklch(0.19 0.018 262);
+  /* Indigo-night palette: cool blue-violet neutrals, violet reserved for actions and focus. */
+  --background: oklch(0.982 0.004 275);
+  --foreground: oklch(0.2 0.03 275);
   --surface: oklch(1 0 0);
-  --surface-2: oklch(0.97 0.004 262);
-  --muted: oklch(0.953 0.006 262);
-  --muted-foreground: oklch(0.49 0.016 262);
-  --border: oklch(0.912 0.007 262);
-  --input: oklch(0.875 0.009 262);
-  --ring: oklch(0.66 0.17 47);
+  --surface-2: oklch(0.968 0.007 275);
+  --muted: oklch(0.95 0.009 275);
+  --muted-foreground: oklch(0.5 0.025 275);
+  --border: oklch(0.91 0.01 275);
+  --input: oklch(0.87 0.014 275);
+  --ring: oklch(0.56 0.2 285);
 
-  --primary: oklch(0.64 0.18 45);
-  --primary-foreground: oklch(0.99 0.01 60);
-  --accent: oklch(0.955 0.03 55);
-  --accent-foreground: oklch(0.42 0.12 40);
-  --panel-shadow: 0 1px 2px oklch(0.2 0.02 262 / 0.05), 0 0 0 1px oklch(0.2 0.02 262 / 0.02);
+  --primary: oklch(0.55 0.21 285);
+  --primary-foreground: oklch(0.99 0.005 285);
+  --accent: oklch(0.95 0.035 285);
+  --accent-foreground: oklch(0.42 0.17 285);
+  --panel-shadow: 0 1px 2px oklch(0.25 0.04 275 / 0.06), 0 0 0 1px oklch(0.25 0.04 275 / 0.02);
 
   --positive: oklch(0.6 0.14 155);
   --negative: oklch(0.58 0.2 25);
@@ -50,36 +50,37 @@
   --feedback-bug: #e34948;
   --feedback-feature: #2a78d6;
   --feedback-complaint: #eda100;
-  /* Product vs competitors (identity, fixed order). Reference categorical slots 1–6,
-     validated for adjacent-pair CVD separation in both modes; light slots 3–5 sit below
-     3:1 on white, so charts using them ship labels and a table view. */
-  --entity-1: #2a78d6;
-  --entity-2: #eb6834;
-  --entity-3: #1baf7a;
-  --entity-4: #eda100;
-  --entity-5: #e87ba4;
-  --entity-6: #008300;
+  /* Identity palette (platforms, competitors), fixed order: violet, aqua, orange, blue, amber,
+     magenta. Validated with the dataviz checker (2026-10-24): adjacent CVD ΔE ≥ 9.2 light / 9.4
+     dark, normal-vision ≥ 19; light aqua/amber/magenta sit below 3:1 on white, so charts using
+     them carry legends or labels. */
+  --entity-1: #6250d6;
+  --entity-2: #1baf7a;
+  --entity-3: #eb6834;
+  --entity-4: #2a78d6;
+  --entity-5: #eda100;
+  --entity-6: #e87ba4;
 
   --radius: 0.4rem;
 }
 
 .dark {
-  --background: oklch(0.145 0.013 262);
-  --foreground: oklch(0.95 0.006 262);
-  --surface: oklch(0.18 0.014 262);
-  --surface-2: oklch(0.205 0.015 262);
-  --muted: oklch(0.235 0.016 262);
-  --muted-foreground: oklch(0.71 0.016 262);
-  --border: oklch(0.265 0.015 262);
-  --input: oklch(0.31 0.016 262);
-  --ring: oklch(0.75 0.15 52);
+  --background: oklch(0.135 0.022 272);
+  --foreground: oklch(0.96 0.01 275);
+  --surface: oklch(0.17 0.024 272);
+  --surface-2: oklch(0.2 0.027 272);
+  --muted: oklch(0.23 0.03 272);
+  --muted-foreground: oklch(0.72 0.03 275);
+  --border: oklch(0.27 0.03 272);
+  --input: oklch(0.32 0.032 272);
+  --ring: oklch(0.7 0.16 285);
 
-  --primary: oklch(0.75 0.155 52);
-  --primary-foreground: oklch(0.2 0.03 45);
-  --accent: oklch(0.27 0.05 50);
-  --accent-foreground: oklch(0.87 0.09 58);
-  /* A fine top highlight gives panels depth on dark surfaces. */
-  --panel-shadow: inset 0 1px 0 oklch(1 0 0 / 0.04), 0 1px 2px oklch(0 0 0 / 0.35);
+  --primary: oklch(0.69 0.165 285);
+  --primary-foreground: oklch(0.99 0.005 285);
+  --accent: oklch(0.29 0.075 285);
+  --accent-foreground: oklch(0.88 0.08 285);
+  /* A fine violet-tinted top highlight gives panels depth on the dark base. */
+  --panel-shadow: inset 0 1px 0 oklch(1 0 0 / 0.05), 0 1px 3px oklch(0 0 0 / 0.4), 0 0 0 1px oklch(0.69 0.165 285 / 0.03);
 
   --positive: oklch(0.72 0.14 155);
   --negative: oklch(0.7 0.17 25);
@@ -101,12 +102,12 @@
   --feedback-bug: #cf4047;
   --feedback-feature: #3987e5;
   --feedback-complaint: #b98a00;
-  --entity-1: #3987e5;
-  --entity-2: #d95926;
-  --entity-3: #199e70;
-  --entity-4: #c98500;
-  --entity-5: #d55181;
-  --entity-6: #008300;
+  --entity-1: #9085e9;
+  --entity-2: #199e70;
+  --entity-3: #d95926;
+  --entity-4: #3987e5;
+  --entity-5: #c98500;
+  --entity-6: #d55181;
 }
 
 :root {
@@ -217,6 +218,15 @@
 .fade-in { animation: fade-in 300ms var(--ease-out) var(--d, 0ms) both; }
 @media (prefers-reduced-motion: reduce) {
   .rise, .grow-x { animation-name: fade-in; }
+}
+
+/* Progress rings draw their arc in (SVG stroke offset; --len is the circumference). */
+@keyframes ring-fill {
+  from { stroke-dashoffset: var(--len); }
+}
+.ring-fill { animation: ring-fill 900ms var(--ease-out) var(--d, 0ms) both; }
+@media (prefers-reduced-motion: reduce) {
+  .ring-fill { animation: none; }
 }
 
 /* A soft, slow ring on high-priority markers: state, not decoration (off with reduced motion). */
