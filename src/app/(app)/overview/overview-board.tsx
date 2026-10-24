@@ -36,8 +36,10 @@ const PRIORITY_COLOR: Record<string, string> = { critical: "var(--negative)", hi
 const SENTIMENT_COLOR: Record<string, string> = { positive: "var(--sentiment-positive)", negative: "var(--sentiment-negative)" };
 const pctChange = (a: number, b: number) => (b > 0 ? (a - b) / b : null);
 
-function Delta({ value, invert = false, className }: { value: number | null; invert?: boolean; className?: string }) {
-  if (value === null || !Number.isFinite(value)) return <span className={cn("text-xs text-muted-foreground", className)}>—</span>;
+function Delta({ value, invert = false, className, base }: { value: number | null; invert?: boolean; className?: string; base?: number }) {
+  // A change against almost nothing (e.g. 4 → 179) is "new", not "+4375%".
+  if (base !== undefined && base < 10) return base === 0 && value === null ? null : <span className={cn("text-xs text-muted-foreground", className)}>{base === 0 ? "new" : `was ${base}`}</span>;
+  if (value === null || !Number.isFinite(value)) return null;
   const pct = Math.round(value * 100);
   const good = invert ? pct < 0 : pct > 0;
   const Icon = pct > 0 ? ArrowUpRight : pct < 0 ? ArrowDownRight : null;
@@ -121,10 +123,10 @@ export function OverviewBoard({ d }: { d: OverviewData }) {
   return (
     <div className="grid gap-3 lg:grid-cols-12">
       <section aria-label="Key numbers" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:col-span-12 lg:grid-cols-5">
-        <Kpi index={0} label={`Mentions · ${d.period}`} foot={<Delta value={k.mentionsChange} />}>
+        <Kpi index={0} label={`Mentions · ${d.period}`} foot={k.mentionsChange === null ? "No earlier period to compare" : <span className="inline-flex items-center gap-1.5"><Delta value={k.mentionsChange} /><span>vs previous {d.period}</span></span>}>
           <CountUp value={k.mentions} />
         </Kpi>
-        <Kpi index={1} label="Today" foot={<span className="inline-flex items-center gap-1.5"><Delta value={pctChange(k.today, k.yesterday)} /><span>vs yesterday</span></span>}>
+        <Kpi index={1} label="So far today" foot={`Yesterday: ${k.yesterday.toLocaleString("en-US")}`}>
           <CountUp value={k.today} />
         </Kpi>
         <Kpi index={2} label="Negative share" foot={k.classified ? `of ${k.classified.toLocaleString("en-US")} classified` : "Nothing classified yet"}>
@@ -144,13 +146,15 @@ export function OverviewBoard({ d }: { d: OverviewData }) {
 
       <Panel index={6} title={`By platform · ${d.period}`} href="/integrations" action="Sources" className="lg:col-span-4">
         {d.platforms.length === 0 ? <p className="py-10 text-center text-[13px] text-muted-foreground">No mentions yet.</p> : (
-          <ul className="grid gap-3" aria-label="Mentions by platform">
+          <ul className="grid gap-3.5" aria-label="Mentions by platform">
             {d.platforms.map((p, i) => (
-              <li key={p.id} className="grid grid-cols-[minmax(0,92px)_1fr_auto_auto] items-center gap-2.5 text-[13px]">
-                <span className="truncate">{p.name}</span>
+              <li key={p.id} className="grid gap-1.5 text-[13px]">
+                <div className="flex items-baseline gap-2">
+                  <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                  <Delta value={pctChange(p.value, p.prev)} base={p.prev} className="text-[11px]" />
+                  <span className="w-12 text-right font-medium tabular">{p.value.toLocaleString("en-US")}</span>
+                </div>
                 <GrowBar value={p.value / max} color={p.color} delay={0.25 + i * 0.05} />
-                <span className="w-10 text-right font-medium tabular">{p.value.toLocaleString("en-US")}</span>
-                <Delta value={pctChange(p.value, p.prev)} className="w-14 justify-end text-[11px]" />
               </li>
             ))}
             {d.otherPlatforms.count > 0 && <li className="text-xs text-muted-foreground">+{d.otherPlatforms.count} quieter platform{d.otherPlatforms.count === 1 ? "" : "s"} · {d.otherPlatforms.value} mentions</li>}
