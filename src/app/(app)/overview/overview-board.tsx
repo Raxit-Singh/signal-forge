@@ -441,7 +441,7 @@ function Flow({ d }: { d: OverviewData }) {
     return () => ro.disconnect();
   }, []);
   const LEFT = 92, RIGHT = 118;
-  const W = CW - LEFT - RIGHT, H = 230, NODE = 10, GAP = 10;
+  const W = CW - LEFT - RIGHT, H = 300, NODE = 12, GAP = 12;
   const total = from.reduce((t, n) => t + n.v, 0);
   const [hover, setHover] = useState<string | null>(null);
   if (total === 0) {
@@ -503,8 +503,7 @@ const hourLabel = (h: number) => (h === 0 ? "12am" : h < 12 ? `${h}am` : h === 1
 
 function PixelHeat({ d }: { d: OverviewData }) {
   let peak: [number, number] = [0, 0];
-  let total = 0;
-  d.heat.forEach((row, a) => row.forEach((v, h) => { total += v; if (v > d.heat[peak[0]]![peak[1]]!) peak = [a, h]; }));
+  d.heat.forEach((row, a) => row.forEach((v, h) => { if (v > d.heat[peak[0]]![peak[1]]!) peak = [a, h]; }));
   const max = d.heat[peak[0]]![peak[1]]!;
   const [cell, setCell] = useState<[number, number] | null>(null);
   const shown = cell ?? peak;
@@ -518,19 +517,16 @@ function PixelHeat({ d }: { d: OverviewData }) {
         sub={max > 0 ? (cell ? `${fmt(count)} ${count === 1 ? "mention" : "mentions"} in this hour, ${d.period}` : `busiest hour · ${fmt(count)} ${count === 1 ? "mention" : "mentions"}`) : undefined} />
       {max === 0 ? <Empty>Not enough dated mentions in this period.</Empty> : (
         <>
-          <p className="-mt-1 text-[12px] leading-relaxed text-muted-foreground">
-            Each square is one hour of the week, in your time zone, adding up {fmt(total)} mentions from {d.from} to {d.to}. Brighter means more people posted then.
-          </p>
-          <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-[3px]" onMouseLeave={() => setCell(null)}
-            role="img" aria-label={`Mentions by weekday and hour; busiest ${DAYS[peak[0]]} ${hourLabel(peak[1])}`}>
+          <div className="grid gap-[3px]" onMouseLeave={() => setCell(null)}
+            role="img" aria-label={`Mentions by weekday and hour, ${d.from} to ${d.to}; busiest ${DAYS[peak[0]]} ${hourLabel(peak[1])}`}>
             {d.heat.map((row, a) => (
-              <div key={a} className="contents">
-                <span className={cn("text-[11px]", a === shown[0] ? "text-foreground" : "text-muted-foreground/80")}>{DAYS[a]}</span>
-                <div className="grid grid-cols-24 gap-[3px]">
+              <div key={a} className="flex items-center gap-2">
+                <span className={cn("w-8 shrink-0 text-[11px]", a === shown[0] ? "text-foreground" : "text-muted-foreground/80")}>{DAYS[a]}</span>
+                <div className="grid min-w-0 flex-1 grid-cols-24 gap-[3px]">
                   {row.map((v, h) => {
                     const hot = a === peak[0] && h === peak[1];
                     return (
-                      <span key={h} onMouseEnter={() => setCell([a, h])} className="pop aspect-square rounded-[3px]"
+                      <span key={h} onMouseEnter={() => setCell([a, h])} className="pop aspect-square w-full rounded-[3px]"
                         style={vars({
                           "--d": `${850 + (a * 24 + h) * 3}ms`,
                           background: hot ? "var(--signal)" : shade(v),
@@ -541,9 +537,9 @@ function PixelHeat({ d }: { d: OverviewData }) {
                 </div>
               </div>
             ))}
-            <span />
-            <div className="grid grid-cols-4 pt-1 text-[11px] text-muted-foreground/80" aria-hidden>
-              <span>12am</span><span>6am</span><span>12pm</span><span>6pm</span>
+            <div className="flex gap-2 pt-1 text-[11px] text-muted-foreground/80" aria-hidden>
+              <span className="w-8 shrink-0" />
+              <div className="grid flex-1 grid-cols-4"><span>12am</span><span>6am</span><span>12pm</span><span>6pm</span></div>
             </div>
           </div>
           <div className="mt-auto flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-foreground/[0.06] pt-3 text-[11px] text-muted-foreground">
@@ -581,13 +577,13 @@ function Recent({ d }: { d: OverviewData }) {
         <ul className="grid">
           {d.feed.map((m, i) => (
             <li key={m.id} className="rise border-b border-foreground/[0.06] last:border-b-0" style={vars({ "--d": `${760 + i * 70}ms` })}>
-              <a href={m.url} target="_blank" rel="noopener noreferrer nofollow ugc" className="group flex items-center gap-3 py-3">
+              <a href={m.url} target="_blank" rel="noopener noreferrer nofollow ugc" className="group flex items-center gap-3 py-2.5">
                 <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold",
                   m.sentiment === "negative" ? "border-signal/40 bg-signal-soft text-signal" : "bg-foreground/[0.04]")}>
                   {m.platform.slice(0, 1)}
                 </span>
                 <span className="grid min-w-0 flex-1 gap-0.5">
-                  <span className="truncate text-[13px] group-hover:underline group-hover:underline-offset-2">{m.text}</span>
+                  <span className="line-clamp-2 text-[13px] leading-snug group-hover:underline group-hover:underline-offset-2">{m.text}</span>
                   <span className="truncate text-[11px] text-muted-foreground/80">{m.author ? `${m.author} · ` : ""}{m.platform}</span>
                 </span>
                 <time dateTime={m.at} className="shrink-0 text-[11px] tabular-nums text-muted-foreground/80">{now === null ? "" : ago(m.at, now)}</time>
@@ -613,9 +609,9 @@ export function OverviewBoard({ d }: { d: OverviewData }) {
         <div className="xl:col-span-3"><IssueDonut d={d} /></div>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-12">
-        <div className="sm:col-span-2 xl:col-span-4"><Recent d={d} /></div>
-        <div className="xl:col-span-4"><Flow d={d} /></div>
-        <div className="xl:col-span-4"><PixelHeat d={d} /></div>
+        <div className="sm:col-span-2 xl:order-2 xl:col-span-5"><Flow d={d} /></div>
+        <div className="xl:order-1 xl:col-span-3"><Recent d={d} /></div>
+        <div className="xl:order-3 xl:col-span-4"><PixelHeat d={d} /></div>
       </div>
     </div>
   );
