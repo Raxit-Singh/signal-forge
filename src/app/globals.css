@@ -37,14 +37,17 @@
   --chart-6: oklch(0.55 0.1 200);
   --chart-7: oklch(0.6 0.17 15);
   --chart-8: oklch(0.5 0.03 260);
-  /* Feedback charts (validated for colour-vision deficiency, light surface):
-     sentiment is diverging (orange ↔ blue, gray midpoint); feedback lines are categorical. */
-  --sentiment-negative: oklch(0.62 0.17 42);
+  /* Feedback charts, validated with the dataviz palette checker (2026-10-24; light surface):
+     sentiment is diverging red ↔ blue with a gray midpoint, kept off the brand orange so
+     orange only means "action"; bug / feature / complaint are categorical (red, blue,
+     amber — all-pairs CVD ΔE ≥ 15; amber is below 3:1 on white, so the charts keep their
+     legend and table view). */
+  --sentiment-negative: #e34948;
   --sentiment-neutral: oklch(0.65 0.01 260);
-  --sentiment-positive: oklch(0.56 0.13 250);
-  --feedback-bug: oklch(0.62 0.18 42);
-  --feedback-feature: oklch(0.56 0.12 245);
-  --feedback-complaint: oklch(0.6 0.13 165);
+  --sentiment-positive: #2a78d6;
+  --feedback-bug: #e34948;
+  --feedback-feature: #2a78d6;
+  --feedback-complaint: #eda100;
   /* Product vs competitors (identity, fixed order). Reference categorical slots 1–6,
      validated for adjacent-pair CVD separation in both modes; light slots 3–5 sit below
      3:1 on white, so charts using them ship labels and a table view. */
@@ -87,12 +90,13 @@
   --chart-6: oklch(0.7 0.09 200);
   --chart-7: oklch(0.72 0.15 15);
   --chart-8: oklch(0.65 0.02 260);
-  --sentiment-negative: oklch(0.66 0.16 45);
+  /* Dark steps of the same hues, validated on the dark surface (all-pairs CVD ΔE ≥ 9.4). */
+  --sentiment-negative: #cf4047;
   --sentiment-neutral: oklch(0.55 0.01 260);
-  --sentiment-positive: oklch(0.64 0.12 250);
-  --feedback-bug: oklch(0.64 0.16 45);
-  --feedback-feature: oklch(0.58 0.12 255);
-  --feedback-complaint: oklch(0.66 0.12 165);
+  --sentiment-positive: #3987e5;
+  --feedback-bug: #cf4047;
+  --feedback-feature: #3987e5;
+  --feedback-complaint: #b98a00;
   --entity-1: #3987e5;
   --entity-2: #d95926;
   --entity-3: #199e70;

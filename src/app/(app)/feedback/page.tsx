@@ -1,8 +1,9 @@
-import { feedbackMentionsHref } from "@/lib/domain/feedback-filter";
+import { feedbackMentionsHref, type RangeParams } from "@/lib/domain/feedback-filter";
+import { parseRange } from "@/lib/domain/date-range";
 import { getTimeZone } from "@/lib/server/timezone";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BarChart3, PackagePlus } from "lucide-react";
+import { ArrowDown, BarChart3, PackagePlus } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getActiveProduct, hasRole, requireWorkspace } from "@/lib/server/session";
@@ -12,21 +13,24 @@ import { formatCount } from "@/lib/format";
 import { EmptyState, PageHeader } from "@/components/page";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { ActionForm } from "@/components/ai/action-form";
+import { StatusMenu } from "@/components/feedback/status-menu";
 import { InvestigationResult, type InvestigationView } from "@/components/ai/investigation-result";
 import { classifyNowAction, summarizeClusterAction } from "@/app/actions/ai";
-import { setClusterStatusAction } from "@/app/actions/feedback";
 import { AgentIssueControls } from "@/components/agent/issue-controls";
 import { FeedbackTrendChart, SentimentChart, type FeedbackDay } from "./feedback-charts";
 import {
-  AGENT_CATEGORIES, CLUSTER_COLS, Evidence, PRIORITIES, PRIORITY_TONE, PriorityEvidence, STATUS_LABEL, TREND_LABEL, nameOf, type Cluster, type Member,
+  AGENT_CATEGORIES, CLUSTER_COLS, Evidence, IssueKind, PRIORITIES, PRIORITY_TONE, PriorityEvidence, STATUS_LABEL, TREND_LABEL, day, nameOf, type Cluster, type Member,
 } from "@/components/feedback/issue-parts";
 
 export const metadata: Metadata = { title: "Feedback Intelligence" };
 
 
-function Bars({ items, label }: { items: Array<{ label: string; value: number; href?: string }>; label: string }) {
+function Bars({ items, label, hideZero = false, empty = "Nothing classified in this period." }: {
+  items: Array<{ label: string; value: number; href?: string }>; label: string; hideZero?: boolean; empty?: string;
+}) {
   const max = Math.max(1, ...items.map((i) => i.value));
-  if (items.every((i) => i.value === 0)) return <p className="text-[13px] text-muted-foreground">Nothing classified in this period.</p>;
+  if (items.every((i) => i.value === 0)) return <p className="text-[13px] text-muted-foreground">{empty}</p>;
+  if (hideZero) items = items.filter((i) => i.value > 0);
   return (
     <ul className="grid gap-2" aria-label={label}>
       {items.map((i) => (
@@ -44,7 +48,7 @@ function Bars({ items, label }: { items: Array<{ label: string; value: number; h
   );
 }
 
-export default async function FeedbackPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
+export default async function FeedbackPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const tz = await getTimeZone();
   const { workspace } = await requireWorkspace();
   const product = await getActiveProduct(workspace.id);
@@ -58,15 +62,24 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
       </>
     );
   }
-  const showClosed = (await searchParams).status === "all";
+  const sp = await searchParams;
+  const showClosed = sp.status === "all";
   const supabase = await createClient();
   const now = new Date();
-  const since = new Date(now.getTime() - 30 * 86_400_000).toISOString();
+  // The top bar's date range: counts and charts cover it; issues are listed while open, whenever they started.
+  const range = parseRange(sp, now);
+  const since = range.from.toISOString();
+  const until = range.to.toISOString();
+  const rangeParams: RangeParams = { range: sp.range, from: sp.from, to: sp.to };
+  const mentionsHref = (k: Parameters<typeof feedbackMentionsHref>[0]) => feedbackMentionsHref(k, rangeParams);
+  const keep = new URLSearchParams(Object.entries(rangeParams).filter((e): e is [string, string] => !!e[1]));
+  const issuesHref = (all: boolean) => { const q = new URLSearchParams(keep); if (all) q.set("status", "all"); const t = q.toString(); return `/feedback${t ? `?${t}` : ""}#issues`; };
+  const period = range.label.toLowerCase();
   const head = () => supabase.from("mentions").select("id", { count: "exact", head: true }).eq("product_id", product.id).eq("dedup_kind", "original");
 
   const [ai, daysRes, waitingRes, testRes, clustersRes, invRes, sourcesRes, compRes, generalRes] = await Promise.all([
     workspaceAvailability(createAdminClient(), workspace.id),
-    supabase.rpc("feedback_daily", { p_product_id: product.id, p_from: since, p_to: now.toISOString(), p_tz: tz }),
+    supabase.rpc("feedback_daily", { p_product_id: product.id, p_from: since, p_to: until, p_tz: tz }),
     head().eq("processing_status", "filtered").in("relevance_status", ["relevant", "pending", "user_relevant"]),
     head().eq("processing_status", "classified").like("ai_model", "test:%"),
     supabase.from("feedback_clusters")
@@ -76,9 +89,9 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
     supabase.from("ai_investigations").select("subject_key, status, report, error, model, completed_at").eq("product_id", product.id).eq("kind", "cluster_summary"),
     supabase.from("mentions").select("source").eq("product_id", product.id).eq("dedup_kind", "original").eq("processing_status", "classified")
       .neq("ai_about_product", "no").in("feedback_category", AGENT_CATEGORIES.concat(["pricing_complaint"]))
-      .gte("published_at", since).limit(5000),
-    head().eq("processing_status", "classified").eq("feedback_category", "competitor_comparison").gte("published_at", since),
-    head().eq("processing_status", "classified").in("feedback_category", ["general_discussion", "other"]).gte("published_at", since),
+      .gte("published_at", since).lt("published_at", until).limit(5000),
+    head().eq("processing_status", "classified").eq("feedback_category", "competitor_comparison").gte("published_at", since).lt("published_at", until),
+    head().eq("processing_status", "classified").in("feedback_category", ["general_discussion", "other"]).gte("published_at", since).lt("published_at", until),
   ]);
   const days = ((daysRes.data ?? []) as Array<Record<string, number | string>>).map((d) => ({
     day: String(d.day), classified: Number(d.classified), unclassified: Number(d.unclassified), positive: Number(d.positive),
@@ -113,11 +126,20 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
   const classifiedTotal = sum("classified");
   const unclassifiedTotal = sum("unclassified");
 
+  const top = open.slice(0, 3);
+  const kpis = [
+    { label: "Open issues", value: open.length, unit: open.length === 1 ? "issue" : "issues", href: "#issues", cta: "See them ↓" },
+    { label: "Bug reports", value: sum("bugs"), unit: "posts", href: mentionsHref("bugs"), cta: "Show them →" },
+    { label: "Feature requests", value: sum("features"), unit: "posts", href: mentionsHref("features"), cta: "Show them →" },
+    { label: "Complaints", value: sum("complaints"), unit: "posts", href: mentionsHref("complaints"), cta: "Show them →" },
+    { label: "Praise", value: sum("praise"), unit: "posts", href: mentionsHref("praise"), cta: "Show them →" },
+  ];
+
   return (
     <>
       <PageHeader
         title="Feedback Intelligence"
-        description={<>Bug reports, feature requests and complaints about {product.name}, grouped into prioritised issues with the posts behind them · last 30 days · days in {tz}</>}
+        description={<>Bug reports, feature requests and complaints about {product.name}, grouped into prioritised issues with the posts behind them · {period} · times in your time zone</>}
       />
       <div className="grid gap-6">
         <Card>
@@ -125,7 +147,7 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
             {ai.ok
               ? <Badge tone={ai.kind === "test" ? "warning" : "positive"}>{ai.kind === "test" ? "Test classifier (not AI)" : "SignalForge Intelligence on"}</Badge>
               : <Badge tone="neutral">SignalForge Intelligence off</Badge>}
-            <span><span className="font-medium tabular">{formatCount(classifiedTotal)}</span> mentions classified (last 30 days)</span>
+            <span><span className="font-medium tabular">{formatCount(classifiedTotal)}</span> mentions classified ({period})</span>
             <span><span className="font-medium tabular">{formatCount(waitingRes.count ?? 0)}</span> waiting</span>
             {!ai.ok && <span className="text-muted-foreground">{ai.message} <Link href="/settings/ai" className="underline underline-offset-2">Details</Link></span>}
             {ai.ok && hasRole(workspace.role, "admin") && (waitingRes.count ?? 0) > 0 && (
@@ -134,31 +156,52 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
           </CardContent>
         </Card>
 
-        <section aria-labelledby="fb-kpis" className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        {top.length > 0 && (
+          <nav aria-labelledby="top-issues" className="grid gap-2 rounded-xl border bg-surface px-4 py-3 text-[13px]" data-testid="top-issues">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 id="top-issues" className="font-semibold">Top issues to look at</h2>
+              <a href="#issues" className="inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+                All {open.length} open issue{open.length === 1 ? "" : "s"}<ArrowDown className="size-3" aria-hidden />
+              </a>
+            </div>
+            <ol className="grid gap-1">
+              {top.map((c) => (
+                <li key={c.id}>
+                  <a href={`#issue-${c.id}`} className="group flex min-h-11 flex-wrap items-center gap-x-2 gap-y-1 rounded-md px-1 py-1.5 hover:bg-muted/50 sm:min-h-0">
+                    <IssueKind category={c.category} fallback={categoryLabel(c.category)} />
+                    <span className="min-w-0 flex-1 font-medium group-hover:underline group-hover:underline-offset-2 max-sm:order-last max-sm:basis-full">{c.title}</span>
+                    <span className="text-xs text-muted-foreground tabular">{c.report_count} report{c.report_count === 1 ? "" : "s"}</span>
+                    {c.suggested_priority && <Badge tone={PRIORITY_TONE[c.suggested_priority]}>{c.suggested_priority[0]!.toUpperCase() + c.suggested_priority.slice(1)}</Badge>}
+                    <ArrowDown className="size-3.5 text-muted-foreground" aria-hidden />
+                  </a>
+                </li>
+              ))}
+            </ol>
+          </nav>
+        )}
+
+        <section aria-labelledby="fb-kpis" className="grid gap-2">
           <h2 id="fb-kpis" className="sr-only">Feedback in numbers</h2>
-          {([
-            ["Actionable issues", open.length, "#issues"],
-            ["Bug reports", sum("bugs"), feedbackMentionsHref("bugs")],
-            ["Feature requests", sum("features"), feedbackMentionsHref("features")],
-            ["Complaints", sum("complaints"), feedbackMentionsHref("complaints")],
-            ["Positive feedback", sum("praise"), feedbackMentionsHref("praise")],
-          ] as const).map(([l, v, href]) => (
-            <Link key={l} href={href} className="group rounded-xl focus-visible:outline-2 focus-visible:outline-ring" aria-label={`${l}: ${v}. Show them`}>
-              <Card className="grid h-full min-w-0 gap-0.5 p-3 transition-colors group-hover:bg-muted/40" data-testid="feedback-kpi">
-                <span className="text-xs text-muted-foreground">{l}</span>
-                <span className="text-xl font-semibold tabular">{formatCount(v)}</span>
-                <span className="text-xs text-muted-foreground group-hover:text-foreground">{v > 0 ? "Show them →" : "None yet"}</span>
-              </Card>
-            </Link>
-          ))}
-        </section>
-        {(classifiedTotal > 0 || unclassifiedTotal > 0) && (
-          <p className="-mt-3 text-xs text-muted-foreground">
-            Counts are classified mentions only (issues: currently open or acknowledged). {formatCount(unclassifiedTotal)} mention{unclassifiedTotal === 1 ? "" : "s"} in this
-            period {unclassifiedTotal === 1 ? "isn't" : "aren't"} classified yet; the charts show {unclassifiedTotal === 1 ? "it" : "them"} separately.
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+            {kpis.map((k) => (
+              <Link key={k.label} href={k.href} className="group rounded-xl focus-visible:outline-2 focus-visible:outline-ring" aria-label={`${k.label}: ${k.value} ${k.unit}. ${k.cta.replace(/ [↓→]$/, "")}`}>
+                <Card className="grid h-full min-w-0 gap-0.5 p-3 transition-colors group-hover:bg-muted/40" data-testid="feedback-kpi">
+                  <span className="text-xs text-muted-foreground">{k.label}</span>
+                  <span className="flex items-baseline gap-1">
+                    <span className="text-xl font-semibold tabular">{formatCount(k.value)}</span>
+                    <span className="text-xs text-muted-foreground">{k.unit}</span>
+                  </span>
+                  <span className="text-xs text-muted-foreground group-hover:text-foreground">{k.value > 0 ? k.cta : "None yet"}</span>
+                </Card>
+              </Link>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Issues group several posts about the same problem; post counts are classified posts {period}.
+            {unclassifiedTotal > 0 && <> {formatCount(unclassifiedTotal)} post{unclassifiedTotal === 1 ? "" : "s"} {unclassifiedTotal === 1 ? "isn't" : "aren't"} classified yet; the charts show {unclassifiedTotal === 1 ? "it" : "them"} separately.</>}
             {testLabels && " Includes test-classifier labels (keyword heuristic, not AI)."}
           </p>
-        )}
+        </section>
 
         {days.length > 0 && (
           <div className="grid gap-4 lg:grid-cols-2">
@@ -172,7 +215,7 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
             <Card>
               <CardHeader>
                 <CardTitle>Bugs, feature requests and complaints</CardTitle>
-                <CardDescription>Classified mentions per day.</CardDescription>
+                <CardDescription>Classified posts per day.</CardDescription>
               </CardHeader>
               <CardContent><FeedbackTrendChart days={days as FeedbackDay[]} /></CardContent>
             </Card>
@@ -181,21 +224,21 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
 
         <div className="grid gap-4 md:grid-cols-3">
           <Card>
-            <CardHeader><CardTitle>Feedback categories</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Feedback categories</CardTitle><CardDescription>Classified posts {period}.</CardDescription></CardHeader>
             <CardContent>
               <Bars label="Feedback categories" items={[
-                { label: "Bug reports", value: sum("bugs"), href: feedbackMentionsHref("bugs") },
-                { label: "Feature requests", value: sum("features"), href: feedbackMentionsHref("features") },
-                { label: "Complaints", value: sum("complaints"), href: feedbackMentionsHref("complaints") },
-                { label: "Praise", value: sum("praise"), href: feedbackMentionsHref("praise") },
-                { label: "Questions", value: sum("questions"), href: feedbackMentionsHref("questions") },
-                { label: "Competitor comparisons", value: compRes.count ?? 0, href: feedbackMentionsHref("comparisons") },
-                { label: "General discussion / other", value: generalRes.count ?? 0, href: feedbackMentionsHref("general") },
+                { label: "Bug reports", value: sum("bugs"), href: mentionsHref("bugs") },
+                { label: "Feature requests", value: sum("features"), href: mentionsHref("features") },
+                { label: "Complaints", value: sum("complaints"), href: mentionsHref("complaints") },
+                { label: "Praise", value: sum("praise"), href: mentionsHref("praise") },
+                { label: "Questions", value: sum("questions"), href: mentionsHref("questions") },
+                { label: "Competitor comparisons", value: compRes.count ?? 0, href: mentionsHref("comparisons") },
+                { label: "General discussion / other", value: generalRes.count ?? 0, href: mentionsHref("general") },
               ]} />
             </CardContent>
           </Card>
           <Card>
-            <CardHeader><CardTitle>Where feedback comes from</CardTitle><CardDescription>Bugs, requests and complaints by platform.</CardDescription></CardHeader>
+            <CardHeader><CardTitle>Where feedback comes from</CardTitle><CardDescription>Bug, request and complaint posts by platform.</CardDescription></CardHeader>
             <CardContent>
               <Bars label="Platform distribution" items={[...platformCounts.entries()].sort((a, b) => b[1] - a[1]).map(([p, n]) => ({ label: nameOf(p), value: n }))} />
             </CardContent>
@@ -203,7 +246,8 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
           <Card>
             <CardHeader><CardTitle>Issue priority</CardTitle><CardDescription>Open and acknowledged issues.</CardDescription></CardHeader>
             <CardContent>
-              <Bars label="Priority distribution" items={PRIORITIES.map((p) => ({ label: p[0]!.toUpperCase() + p.slice(1), value: open.filter((c) => c.suggested_priority === p).length }))} />
+              <Bars label="Priority distribution" hideZero empty="No open issues."
+                items={PRIORITIES.map((p) => ({ label: p[0]!.toUpperCase() + p.slice(1), value: open.filter((c) => c.suggested_priority === p).length }))} />
             </CardContent>
           </Card>
         </div>
@@ -217,8 +261,10 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
                   {list.length === 0 ? <p className="text-[13px] text-muted-foreground">None right now.</p> : (
                     <ul className="grid gap-1.5 text-[13px]" data-testid={`issues-${id}`}>
                       {list.map((c) => (
-                        <li key={c.id} className="flex flex-wrap items-center gap-2">
-                          <a href={`#issue-${c.id}`} className="underline-offset-2 hover:underline">{c.title}</a>
+                        <li key={c.id} className="grid gap-0.5">
+                          <a href={`#issue-${c.id}`} className="inline-flex min-h-11 items-center gap-1 underline-offset-2 hover:underline sm:min-h-0">
+                            {c.title}<ArrowDown className="size-3 shrink-0 text-muted-foreground" aria-label="(jump to issue)" />
+                          </a>
                           <span className="text-xs text-muted-foreground">
                             {c.priority_evidence?.observed.last_7_days ?? 0} posts this week vs {c.priority_evidence?.observed.previous_7_days ?? 0} the week before
                           </span>
@@ -232,19 +278,22 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
           </div>
         )}
 
-        <section aria-labelledby="issues" className="grid gap-3">
+        <section aria-labelledby="issues" className="grid scroll-mt-20 gap-3" id="issues-section">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 id="issues" className="text-[15px] font-semibold">Issues</h2>
-            <Link href={showClosed ? "/feedback" : "/feedback?status=all"} className="text-xs underline underline-offset-2">
+            <h2 id="issues" className="scroll-mt-20 text-[15px] font-semibold">Issues</h2>
+            <Link href={issuesHref(!showClosed)} className="text-xs underline underline-offset-2">
               {showClosed ? "Hide resolved and dismissed" : "Show resolved and dismissed"}
             </Link>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Posts describing the same problem or request are grouped, even when worded differently. An issue needs at least two
-            independent reports: reposts, duplicates and repeat posts by the same author count once. Priority weighs severity,
-            independent reporters (not raw mention count), trend, recurrence and confidence; each issue shows what was measured
-            and what the AI inferred.
-          </p>
+          <details className="text-xs text-muted-foreground">
+            <summary className="cursor-pointer">{showClosed ? "All issues" : "Open and acknowledged issues"}, highest priority first · How issues are built and ranked</summary>
+            <p className="mt-1 max-w-[75ch]">
+              Posts describing the same problem or request are grouped, even when worded differently. An issue needs at least two
+              independent reports: reposts, duplicates and repeat posts by the same author count once. Priority weighs severity,
+              independent reporters (not raw post count), trend, recurrence and confidence; each issue shows what was measured
+              and what the AI inferred. Issues are listed while they&apos;re open, whatever date range is selected.
+            </p>
+          </details>
           {clusters.length === 0 ? (
             <EmptyState icon={BarChart3} title="No grouped issues yet">
               {ai.ok
@@ -257,52 +306,49 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
                 const members = membersOf(c.id);
                 const summary = summaries.get(c.id);
                 const ev = c.priority_evidence;
+                const investigable = canAct && AGENT_CATEGORIES.includes(c.category);
                 return (
-                  <li key={c.id} id={`issue-${c.id}`}>
+                  <li key={c.id} id={`issue-${c.id}`} className="scroll-mt-20">
                     <Card className="grid gap-2 p-4 text-[13px]" data-testid="feedback-issue">
                       <div className="flex flex-wrap items-center gap-2">
-                        <Badge tone="info">{categoryLabel(c.category)}</Badge>
+                        <IssueKind category={c.category} fallback={categoryLabel(c.category)} />
                         {c.suggested_priority && <Badge tone={PRIORITY_TONE[c.suggested_priority]}>Priority: {c.suggested_priority}</Badge>}
                         {ev && <Badge tone="neutral">{TREND_LABEL[ev.observed.trend]}</Badge>}
                         {c.status !== "open" && <Badge tone="neutral">{STATUS_LABEL[c.status]}</Badge>}
-                        <span className="ml-auto text-xs text-muted-foreground">
-                          {c.algorithm === "semantic_v1" ? "Grouped by meaning" : "Grouped by wording"}
-                          {c.confidence !== null && ` · confidence ${Math.round(c.confidence * 100)}%`}
-                        </span>
                       </div>
-                      <h3 className="font-medium">{c.title}</h3>
+                      <h3 className="text-[15px] font-medium leading-snug">{c.title}</h3>
                       <p className="text-xs text-muted-foreground">
                         <span className="font-medium text-foreground tabular">{c.report_count}</span> independent report{c.report_count === 1 ? "" : "s"}
-                        {c.unique_reporters !== null && ` · ${c.unique_reporters} reporter${c.unique_reporters === 1 ? "" : "s"}`}
-                        {` · ${c.platforms.map(nameOf).join(", ")}`}
-                        {c.first_detected_at && ` · first ${c.first_detected_at.slice(0, 10)}`}
-                        {c.last_detected_at && `, latest ${c.last_detected_at.slice(0, 10)}`}
+                        {c.unique_reporters !== null && ` from ${c.unique_reporters} ${c.unique_reporters === 1 ? "person" : "people"}`}
+                        {c.platforms.length > 0 && ` on ${c.platforms.map(nameOf).join(", ")}`}
+                        {c.first_detected_at && ` · since ${day(c.first_detected_at, tz)}`}
+                        {c.last_detected_at && `, latest ${day(c.last_detected_at, tz)}`}
                         {c.sentiment && ` · mostly ${c.sentiment}`}
+                        {c.confidence !== null && ` · ${c.algorithm === "semantic_v1" ? "grouped by AI" : "grouped by matching words"}, ${Math.round(c.confidence * 100)}% sure`}
                       </p>
                       {ev && <PriorityEvidence ev={ev} testLabels={testLabels} />}
-                      <ul className="grid gap-1 border-l-2 pl-3" aria-label="Supporting posts">
-                        {members.slice(0, 3).map((m) => <Evidence key={m.id} m={m} />)}
+                      <ul className="grid gap-1 border-l pl-3" aria-label="Supporting posts">
+                        {members.slice(0, 3).map((m) => <Evidence key={m.id} m={m} tz={tz} />)}
                       </ul>
                       {members.length > 3 && (
                         <details className="text-xs">
                           <summary className="cursor-pointer text-muted-foreground">All {members.length} posts</summary>
-                          <ul className="mt-1 grid gap-1 border-l-2 pl-3">{members.slice(3).map((m) => <Evidence key={m.id} m={m} />)}</ul>
+                          <ul className="mt-1 grid gap-1 border-l pl-3">{members.slice(3).map((m) => <Evidence key={m.id} m={m} tz={tz} />)}</ul>
                         </details>
                       )}
                       {summary && <InvestigationResult inv={summary} />}
                       {canAct && (
-                        <div className="flex flex-wrap items-center gap-1">
-                          {(!summary || summary.status === "failed") && (
-                            <ActionForm action={summarizeClusterAction} fields={{ workspaceId: workspace.id, clusterId: c.id, force: summary ? "true" : "false" }}
-                              label={summary ? "Try summary again" : "Summarize"} pendingLabel="Requesting…" variant="ghost" />
-                          )}
-                          {(["acknowledged", "resolved", "dismissed", "open"] as const).filter((s) => s !== c.status).map((s) => (
-                            <ActionForm key={s} action={setClusterStatusAction} fields={{ workspaceId: workspace.id, clusterId: c.id, status: s }}
-                              label={s === "open" ? "Reopen" : s === "acknowledged" ? "Acknowledge" : s === "resolved" ? "Mark resolved" : "Dismiss"} variant="ghost" />
-                          ))}
+                        <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+                          {investigable && <AgentIssueControls workspaceId={workspace.id} clusterId={c.id} primary />}
+                          <div className="flex flex-wrap items-center gap-1 sm:ml-auto">
+                            {(!summary || summary.status === "failed") && (
+                              <ActionForm action={summarizeClusterAction} fields={{ workspaceId: workspace.id, clusterId: c.id, force: summary ? "true" : "false" }}
+                                label={summary ? "Try summary again" : "Summarize"} pendingLabel="Requesting…" variant="ghost" className="[&_button]:max-sm:min-h-11" />
+                            )}
+                            <StatusMenu workspaceId={workspace.id} clusterId={c.id} status={c.status} />
+                          </div>
                         </div>
                       )}
-                      {canAct && AGENT_CATEGORIES.includes(c.category) && <AgentIssueControls workspaceId={workspace.id} clusterId={c.id} />}
                     </Card>
                   </li>
                 );

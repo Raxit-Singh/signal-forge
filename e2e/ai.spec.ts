@@ -58,7 +58,7 @@ test("classification → semantic issue with priority evidence → analytics →
   // Differently worded reports grouped by meaning; the repeat author counts once.
   const issue = page.getByTestId("feedback-issue").first();
   await expect(issue).toContainText("Bug reports: login");
-  await expect(issue).toContainText("Grouped by meaning");
+  await expect(issue).toContainText("grouped by AI");
   await expect(issue).toContainText("3 independent reports");
   await expect(issue).toContainText(/Priority: (critical|high|medium|low)/);
   await issue.getByText("Why this priority").click();
@@ -69,7 +69,7 @@ test("classification → semantic issue with priority evidence → analytics →
 
   // Analytics from stored labels; unclassified is its own series.
   await expect(page.getByTestId("feedback-kpi").filter({ hasText: "Bug reports" })).toContainText("4");
-  await expect(page.getByTestId("feedback-kpi").filter({ hasText: "Actionable issues" })).toContainText("1");
+  await expect(page.getByTestId("feedback-kpi").filter({ hasText: "Open issues" })).toContainText("1");
   await expect(page.getByRole("img", { name: /Sentiment toward the product per day/ })).toBeVisible();
   await expect(page.getByRole("img", { name: /Bug reports, feature requests and complaints per day/ })).toBeVisible();
   await expect(page.getByRole("list", { name: "Priority distribution" })).toBeVisible();
@@ -112,7 +112,8 @@ test("classification → semantic issue with priority evidence → analytics →
   }).toPass({ timeout: 45_000 });
   await expect(page.getByTestId("investigation-result")).toContainText("Test classifier — not AI analysis");
   await expect(page.getByTestId("investigation-result").getByRole("link", { name: /^\[\d+\]$/ }).first()).toHaveAttribute("href", /https:\/\/example\.com\/e2e\//);
-  await page.getByRole("button", { name: "Acknowledge" }).first().click();
+  await page.getByTestId("feedback-issue").first().getByTestId("issue-status-menu").click();
+  await page.getByRole("menuitem", { name: "Acknowledge" }).click();
   await expect(page.getByTestId("feedback-issue").first()).toContainText("Acknowledged");
 });
 

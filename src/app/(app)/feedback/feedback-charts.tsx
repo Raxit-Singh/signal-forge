@@ -65,7 +65,7 @@ function TooltipBox({ title, lines }: { title: string; lines: Array<[string, num
 }
 
 /**
- * Sentiment toward the product per day. Diverging encoding (negative ↔ positive,
+ * Sentiment toward the product per day. Diverging encoding (negative red ↔ positive blue,
  * gray midpoint for neutral, mixed or unclear). Mentions not yet classified are an
  * outlined segment, never folded into a sentiment.
  */
@@ -126,8 +126,11 @@ export function FeedbackTrendChart({ days }: { days: FeedbackDay[] }) {
               return <TooltipBox title={r.day} lines={[...SERIES.map((s) => [s.name, r[s.key]] as [string, number]), ["Not yet classified", r.unclassified]]} />;
             }} />
             {SERIES.map((s) => (
-              <Line key={s.key} type="monotone" dataKey={s.key} name={s.name} stroke={s.color} strokeWidth={2} dot={false}
-                activeDot={{ r: 4, stroke: "var(--surface)", strokeWidth: 2 }} isAnimationActive={false} />
+              // Straight segments with a marker per day: daily counts have no values between days, and a
+              // smoothed curve would draw some (dipping below zero or overshooting).
+              <Line key={s.key} type="linear" dataKey={s.key} name={s.name} stroke={s.color} strokeWidth={2}
+                dot={{ r: 3, fill: s.color, stroke: "var(--surface)", strokeWidth: 2 }}
+                activeDot={{ r: 5, stroke: "var(--surface)", strokeWidth: 2 }} isAnimationActive={false} />
             ))}
           </LineChart>
         </ResponsiveContainer>

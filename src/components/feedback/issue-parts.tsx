@@ -2,6 +2,7 @@ import { ExternalLink } from "lucide-react";
 import type { PriorityResult } from "@/lib/ai/priority";
 import type { FeedbackCategory } from "@/lib/ai/types";
 import { integrationInfo } from "@/lib/domain/integrations";
+import { formatTime } from "@/lib/format";
 
 // Shared by Feedback Intelligence and Product Insights.
 
@@ -10,6 +11,31 @@ export const PRIORITY_TONE = { critical: "negative", high: "negative", medium: "
 export const PRIORITIES = ["critical", "high", "medium", "low"] as const;
 export const STATUS_LABEL: Record<string, string> = { open: "Open", acknowledged: "Acknowledged", resolved: "Resolved", dismissed: "Dismissed" };
 export const TREND_LABEL: Record<string, string> = { new: "New this week", worsening: "Worsening", growing: "Growing", steady: "Steady", declining: "Declining" };
+/** One issue's kind, in the singular, with the chart colour of its feedback group (bug, feature request, complaint). */
+const ISSUE_KIND: Partial<Record<FeedbackCategory, { label: string; color: string }>> = {
+  bug_report: { label: "Bug", color: "var(--feedback-bug)" },
+  security_concern: { label: "Security concern", color: "var(--feedback-bug)" },
+  feature_request: { label: "Feature request", color: "var(--feedback-feature)" },
+  complaint: { label: "Complaint", color: "var(--feedback-complaint)" },
+  usability_complaint: { label: "Usability complaint", color: "var(--feedback-complaint)" },
+  pricing_complaint: { label: "Pricing complaint", color: "var(--feedback-complaint)" },
+  performance_issue: { label: "Performance problem", color: "var(--feedback-complaint)" },
+};
+
+/** The issue's kind as a neutral chip with a colour dot (the label carries the meaning; the dot links it to the charts). */
+export function IssueKind({ category, fallback }: { category: FeedbackCategory; fallback: string }) {
+  const k = ISSUE_KIND[category];
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-xs font-medium" data-testid="issue-kind">
+      {k && <span className="size-2 rounded-full" style={{ background: k.color }} aria-hidden />}
+      {k?.label ?? fallback}
+    </span>
+  );
+}
+
+/** A short, readable day in the viewer's time zone ("Oct 21, 2026"). */
+export const day = (iso: string, tz: string) => formatTime(iso, tz, { dateOnly: true });
+
 /** Categories the developer agent and issue drafts work on. */
 export const AGENT_CATEGORIES = ["bug_report", "feature_request", "complaint", "usability_complaint", "performance_issue", "security_concern"];
 
@@ -23,14 +49,14 @@ export type Cluster = {
 };
 export type Member = { id: string; title: string | null; content: string | null; source: string; source_url: string; published_at: string; author_display: string | null };
 
-export function Evidence({ m }: { m: Member }) {
+export function Evidence({ m, tz = "UTC" }: { m: Member; tz?: string }) {
   const text = (m.title || m.content || "").replace(/\s+/g, " ").slice(0, 180);
   return (
     <li className="grid gap-0.5 text-xs">
       <a href={m.source_url} target="_blank" rel="noreferrer noopener nofollow" className="inline-flex min-w-0 items-start gap-1 underline-offset-2 hover:underline">
         <span className="line-clamp-2">{text || "Untitled post"}</span><ExternalLink className="mt-0.5 size-3 shrink-0" aria-hidden />
       </a>
-      <span className="text-muted-foreground">{nameOf(m.source)}{m.author_display ? ` · ${m.author_display}` : ""} · {m.published_at.slice(0, 10)}</span>
+      <span className="text-muted-foreground">{nameOf(m.source)}{m.author_display ? ` · ${m.author_display}` : ""} · {day(m.published_at, tz)}</span>
     </li>
   );
 }

@@ -7,7 +7,7 @@ import { InvestigateWithClaude } from "./investigate-with-claude";
  * "Investigate with Claude" on a feedback issue: a new Claude chat asking Claude to read
  * this issue through the SignalForge connector. Read-only on our side.
  */
-export async function AgentIssueControls({ workspaceId, clusterId }: { workspaceId: string; clusterId: string }) {
+export async function AgentIssueControls({ workspaceId, clusterId, primary = false }: { workspaceId: string; clusterId: string; primary?: boolean }) {
   const admin = createAdminClient();
   const [{ data: c }, connected] = await Promise.all([
     admin.from("feedback_clusters").select("id, title, product_id").eq("id", clusterId).eq("workspace_id", workspaceId).maybeSingle(),
@@ -18,8 +18,8 @@ export async function AgentIssueControls({ workspaceId, clusterId }: { workspace
   const product = (p?.name as string | undefined) ?? "";
   const message = connectorRequest({ id: c.id as string, title: c.title as string, product });
   return (
-    <div className="border-t pt-2" data-testid="agent-controls">
-      <InvestigateWithClaude connected={connected} message={message} chatUrl={claudeChatUrl(message)} />
+    <div data-testid="agent-controls">
+      <InvestigateWithClaude connected={connected} message={message} chatUrl={claudeChatUrl(message)} primary={primary} />
     </div>
   );
 }

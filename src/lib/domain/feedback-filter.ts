@@ -6,7 +6,7 @@ export const FEEDBACK_FILTERS = {
   bugs: { label: "Bug reports", categories: ["bug_report"] },
   features: { label: "Feature requests", categories: ["feature_request"] },
   complaints: { label: "Complaints", categories: ["complaint", "usability_complaint", "pricing_complaint", "performance_issue"] },
-  praise: { label: "Positive feedback", categories: ["positive_review"] },
+  praise: { label: "Praise", categories: ["positive_review"] },
   questions: { label: "Questions", categories: ["support_question"] },
   comparisons: { label: "Competitor comparisons", categories: ["competitor_comparison"] },
   general: { label: "General discussion / other", categories: ["general_discussion", "other"] },
@@ -18,7 +18,12 @@ export function isFeedbackFilter(v: unknown): v is FeedbackFilterKey {
   return typeof v === "string" && Object.hasOwn(FEEDBACK_FILTERS, v);
 }
 
-/** Mentions page link listing the posts behind a Feedback Intelligence count. */
-export function feedbackMentionsHref(key: FeedbackFilterKey): string {
-  return `/mentions?${new URLSearchParams({ feedback: key })}`;
+/** Date range parameters a link carries over (the top bar's `range`, and `from`/`to` for a custom range). */
+export type RangeParams = Partial<Record<"range" | "from" | "to", string>>;
+
+/** Mentions page link listing the posts behind a Feedback Intelligence count, over the same date range. */
+export function feedbackMentionsHref(key: FeedbackFilterKey, range: RangeParams = {}): string {
+  const p = new URLSearchParams({ feedback: key });
+  for (const k of ["range", "from", "to"] as const) if (range[k]) p.set(k, range[k]!);
+  return `/mentions?${p}`;
 }
