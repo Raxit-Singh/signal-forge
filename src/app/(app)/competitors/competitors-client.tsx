@@ -7,20 +7,20 @@ import { addCompetitorAction, removeCompetitorAction, updateCompetitorAction } f
 
 const AXIS = { fontSize: 11, fill: "var(--muted-foreground)" };
 
-export function VolumeChart({ rows, entities }: { rows: Array<Record<string, number | string>>; entities: Array<{ id: string; name: string; color: string }> }) {
+export function VolumeChart({ rows, entities }: { rows: Array<Record<string, number | string>>; entities: Array<{ id: string; name: string; color: string; you?: boolean }> }) {
   return (
     <div className="grid gap-3">
-      <div className="h-64 w-full min-w-0" role="img" aria-label="Relevant mentions per day for the product and each competitor, on sources monitored for all of them. A data table follows.">
+      <div className="dots w-full min-w-0 rounded-xl" style={{ height: 280 }} role="img" aria-label="Relevant mentions per day for the product and each competitor, on sources monitored for all of them. A data table follows.">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: -16 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-            <XAxis dataKey="day" tickFormatter={(d: string) => d.slice(5)} tick={AXIS} tickLine={false} axisLine={{ stroke: "var(--border)" }} minTickGap={16} />
+            <CartesianGrid strokeDasharray="2 6" stroke="color-mix(in oklab, var(--foreground) 10%, transparent)" vertical={false} />
+            <XAxis dataKey="day" tickFormatter={(d: string) => d.slice(5)} tick={AXIS} tickLine={false} axisLine={false} minTickGap={16} />
             <YAxis allowDecimals={false} tick={AXIS} tickLine={false} axisLine={false} />
             <Tooltip cursor={{ stroke: "var(--border)" }} content={({ active, payload }) => {
               if (!active || !payload?.length) return null;
               const r = payload[0]!.payload as Record<string, number | string>;
               return (
-                <div className="grid gap-1 rounded-md border bg-surface px-2.5 py-2 text-xs shadow-sm">
+                <div className="grid gap-1 rounded-xl border bg-surface/95 px-3 py-2 text-xs shadow-xl backdrop-blur">
                   <p className="font-medium">{r.day}</p>
                   {entities.map((e) => (
                     <p key={e.id} className="flex items-center justify-between gap-4">
@@ -32,19 +32,20 @@ export function VolumeChart({ rows, entities }: { rows: Array<Record<string, num
               );
             }} />
             {entities.map((e) => (
-              <Line key={e.id} type="monotone" dataKey={e.id} name={e.name} stroke={e.color} strokeWidth={2} dot={false}
+              <Line key={e.id} type="monotone" dataKey={e.id} name={e.name} stroke={e.color} strokeWidth={e.you ? 2.5 : 1.75} dot={false}
+                style={e.you ? { filter: "drop-shadow(0 0 6px color-mix(in oklab, var(--signal) 60%, transparent))" } : undefined}
                 activeDot={{ r: 4, stroke: "var(--surface)", strokeWidth: 2 }} isAnimationActive={false} />
             ))}
           </LineChart>
         </ResponsiveContainer>
       </div>
-      <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground" aria-label="Legend">
+      <ul className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-muted-foreground" aria-label="Legend">
         {entities.map((e) => (
-          <li key={e.id} className="flex items-center gap-1"><span className="size-2.5 rounded-sm" style={{ background: e.color }} aria-hidden />{e.name}</li>
+          <li key={e.id} className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded-full" style={{ background: e.color }} aria-hidden />{e.name}{e.you && " (you)"}</li>
         ))}
       </ul>
-      <details className="text-xs">
-        <summary className="cursor-pointer text-muted-foreground">Show as table</summary>
+      <details className="text-[12px]">
+        <summary className="cursor-pointer text-muted-foreground/80 hover:text-foreground">Show as table</summary>
         <div className="mt-2 max-h-72 overflow-auto">
           <table className="w-full text-left">
             <caption className="sr-only">Relevant mentions per day</caption>
@@ -66,7 +67,11 @@ export function VolumeChart({ rows, entities }: { rows: Array<Record<string, num
 export function AddCompetitorForm({ productId, disabledReason }: { productId: string; disabledReason: string | null }) {
   const [state, action] = useFormAction(addCompetitorAction, idle);
   return (
-    <form action={action} className="grid gap-3" data-testid="add-competitor">
+    <form action={action} className="grid gap-4" data-testid="add-competitor">
+      <div className="grid gap-1">
+        <h3 className="text-[15px] font-medium">Add a competitor</h3>
+        <p className="text-[12px] text-muted-foreground">Searched on the same sources as your product, from today.</p>
+      </div>
       <input type="hidden" name="productId" value={productId} />
       <div className="grid gap-3 sm:grid-cols-3">
         <Field name="name" label="Competitor name" state={state} required maxLength={80} placeholder="e.g. Acme Analytics" />
@@ -104,8 +109,8 @@ export function CompetitorControls({ c }: { c: { id: string; name: string; websi
           <SubmitButton size="sm" variant="secondary" pendingLabel="Saving…">{c.enabled ? "Pause" : "Resume"}</SubmitButton>
         </form>
         <details className="group">
-          <summary className="cursor-pointer list-none rounded-md px-2 py-1 text-[13px] text-muted-foreground hover:bg-muted">Edit</summary>
-          <form action={save} className="mt-2 grid gap-2 rounded-md border p-3">
+          <summary className="press flex h-8 cursor-pointer list-none items-center rounded-full px-3 text-[12px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground">Edit</summary>
+          <form action={save} className="mt-2 grid gap-2 rounded-2xl border border-foreground/[0.08] bg-foreground/[0.02] p-4">
             <input type="hidden" name="competitorId" value={c.id} />
             <input type="hidden" name="enabled" value={String(c.enabled)} />
             <Field name="name" label="Name" state={saveState} defaultValue={c.name} required maxLength={80} />
