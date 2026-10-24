@@ -16,6 +16,15 @@ Legend: ✅ verified by an automated check that ran · 🟡 written, not yet exe
 
 Test users created for the walk-through were removed afterwards via the app's own deletion path.
 
+## Page speed: server moved next to the database (2026-10-24)
+
+- **Cause:** the database (Supabase) is in Mumbai (`ap-south-1`), but Vercel ran the app in Washington (`iad1`).
+  - Each page click makes about 5–7 database or auth round trips one after another: the proxy's login check, then login, workspaces and products, then the page's own data.
+  - Each trip crossed the ocean (~200 ms), so a click took about 1–1.5 s before any work.
+- **Not the cause:** the queries themselves. On the toing data (933 mentions), Buzz's heaviest functions take ~0.17 s from India once warm, the same as a plain round trip.
+- **Fix:** `vercel.json` sets `regions: ["bom1"]` (Mumbai). Measured before: `/login` time-to-first-byte from India was ~0.39 s, served from `bom1::iad1`.
+- **Considered, not done:** verifying login tokens locally with `getClaims` (the project uses ES256 keys) would save one more trip. Left for later because it's security-sensitive and each trip is now ~5 ms.
+
 ## SignalForge for Claude: connector required, short request (2026-10-24)
 
 - **"Investigate with Claude" needs the SignalForge connector.**
