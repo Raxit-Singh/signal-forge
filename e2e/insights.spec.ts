@@ -118,7 +118,7 @@ test("issues → summary, GitHub draft (filed by the user on GitHub), existing i
 
   await page.goto("/insights");
   await expect(main.getByRole("list", { name: "Recent analyses" })).toContainText("Feature evaluation");
-  await expect(list).toContainText("✓ GitHub draft");
+  await expect(list).toContainText("GitHub draft"); // the analyses done for an issue show as check pills
 
   const usage = await adminSelect<Array<{ purpose: string; billed_to: string }>>(`ai_usage_records?workspace_id=eq.${ids.workspaceId}&select=purpose,billed_to`);
   expect(new Set(usage.map((x) => x.purpose))).toEqual(new Set(["classify", "embed", "cluster_summary", "issue_draft", "feature_evaluation"]));

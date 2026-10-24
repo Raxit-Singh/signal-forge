@@ -67,31 +67,37 @@ export default async function IssueInsightPage({ params }: { params: Promise<{ c
   const testLabels = (testRes.count ?? 0) > 0;
 
   return (
-    <div className="grid gap-4">
-      <Link href="/insights" className="inline-flex w-fit items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground"><ArrowLeft className="size-3.5" aria-hidden />Product Insights</Link>
-      <header className="grid gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge tone="info">{categoryLabel(c.category)}</Badge>
-          {c.suggested_priority && <Badge tone={PRIORITY_TONE[c.suggested_priority]}>Priority: {c.suggested_priority}</Badge>}
-          {ev && <Badge tone="neutral">{TREND_LABEL[ev.observed.trend]}</Badge>}
-          <Badge tone="neutral">{STATUS_LABEL[c.status]}</Badge>
-        </div>
-        <h1 className="text-xl font-semibold tracking-tight">{c.title}</h1>
-        <p className="text-[13px] text-muted-foreground">
-          {product?.name as string} · <span className="font-medium text-foreground tabular">{c.report_count}</span> independent report{c.report_count === 1 ? "" : "s"}
-          {` · ${c.platforms.map(nameOf).join(", ")}`}
-          {c.first_detected_at && ` · first ${c.first_detected_at.slice(0, 10)}`}{c.last_detected_at && `, latest ${c.last_detected_at.slice(0, 10)}`}
-        </p>
-        {ev && <PriorityEvidence ev={ev} testLabels={testLabels} open />}
-        {canAct && (
-          <div className="flex flex-wrap gap-1">
-            {(["acknowledged", "resolved", "dismissed", "open"] as const).filter((s) => s !== c.status).map((s) => (
-              <ActionForm key={s} action={setClusterStatusAction} fields={{ workspaceId: workspace.id, clusterId: c.id, status: s }}
-                label={s === "open" ? "Reopen" : s === "acknowledged" ? "Acknowledge" : s === "resolved" ? "Mark resolved" : "Dismiss"} variant="ghost" />
-            ))}
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-5 pb-10">
+      <Link href="/insights" className="press inline-flex w-fit items-center gap-1.5 rounded-full px-1 text-[13px] text-muted-foreground hover:text-foreground"><ArrowLeft className="size-3.5" aria-hidden />Insights</Link>
+      <header className="rise grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+        <div className="grid gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone="info">{categoryLabel(c.category)}</Badge>
+            {c.suggested_priority && <Badge tone={PRIORITY_TONE[c.suggested_priority]}>Priority: {c.suggested_priority}</Badge>}
+            {ev && <Badge tone="neutral">{TREND_LABEL[ev.observed.trend]}</Badge>}
+            <Badge tone="neutral">{STATUS_LABEL[c.status]}</Badge>
           </div>
-        )}
+          <h1 className="max-w-[30ch] text-[30px] font-medium leading-[1.1] tracking-[-0.03em] sm:text-[38px]">{c.title}</h1>
+          <p className="text-[13px] text-muted-foreground">
+            {product?.name as string} · <span className="font-medium text-foreground tabular">{c.report_count}</span> independent report{c.report_count === 1 ? "" : "s"}
+            {` · ${c.platforms.map(nameOf).join(", ")}`}
+            {c.first_detected_at && ` · first ${c.first_detected_at.slice(0, 10)}`}{c.last_detected_at && `, latest ${c.last_detected_at.slice(0, 10)}`}
+          </p>
+          {canAct && (
+            <div className="flex flex-wrap gap-1">
+              {(["acknowledged", "resolved", "dismissed", "open"] as const).filter((s) => s !== c.status).map((s) => (
+                <ActionForm key={s} action={setClusterStatusAction} fields={{ workspaceId: workspace.id, clusterId: c.id, status: s }}
+                  label={s === "open" ? "Reopen" : s === "acknowledged" ? "Acknowledge" : s === "resolved" ? "Mark resolved" : "Dismiss"} variant="secondary" />
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="grid justify-items-start gap-0.5 lg:justify-items-end">
+          <span className={`text-[64px] font-semibold leading-none tracking-[-0.045em] tabular ${c.suggested_priority === "critical" || c.suggested_priority === "high" ? "text-signal" : ""}`}>{c.unique_reporters ?? c.report_count}</span>
+          <span className="text-[13px] text-muted-foreground">{(c.unique_reporters ?? c.report_count) === 1 ? "person" : "people"} reported this</span>
+        </div>
       </header>
+      {ev && <div className="panel rounded-[18px] px-5 py-4"><PriorityEvidence ev={ev} testLabels={testLabels} open /></div>}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
         <Card className="h-fit">
