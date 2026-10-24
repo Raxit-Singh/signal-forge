@@ -143,7 +143,7 @@ export default async function MentionsPage({ searchParams }: { searchParams: Pro
     if (statuses) query = query.in("relevance_status", statuses);
     if (!showDupes) query = query.eq("dedup_kind", "original");
     if (sentiment) query = query.eq("processing_status", "classified").in("sentiment", SENTIMENTS[sentiment]!.values);
-    // From Feedback Intelligence: the classified posts behind one of its counts.
+    // From Issues: the classified posts behind one of its counts.
     if (feedback) {
       query = query.eq("processing_status", "classified")
         .in("feedback_category", [...FEEDBACK_FILTERS[feedback].categories])

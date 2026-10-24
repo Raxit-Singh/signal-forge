@@ -90,7 +90,7 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
       {nothingMonitored ? (
         <>
           <PageHeader title="Trends" description={<>How much attention {product.name} gets and whether it&apos;s rising</>} />
-          <EmptyState icon={Waves} title="No monitoring data in this period" action={{ href: "/monitoring", label: "Open Smart Monitoring" }}>
+          <EmptyState icon={Waves} title="No monitoring data in this period" action={{ href: "/monitoring", label: "Open Monitoring" }}>
             Nothing was monitored for {product.name} in this date range{source ? ` on ${nameOf(source)}` : ""}, so there is nothing to count yet.
             Periods without monitoring are shown as gaps, never as zero mentions.
           </EmptyState>
@@ -239,7 +239,7 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
           <p className="px-1 text-[12px] text-muted-foreground/80">
             Counts come only from mentions SignalForge stored: duplicates and reposts are excluded, publication time is used (not discovery time),
             and late-arriving mentions update past periods. Monitoring freshness per platform is on{" "}
-            <Link href="/monitoring" className="underline underline-offset-2">Smart Monitoring</Link>.
+            <Link href="/monitoring" className="underline underline-offset-2">Monitoring</Link>.
             {d.daily.reliable && d.weekly.reliable ? null : (
               <span className="mt-1 flex items-start gap-1 text-warning">
                 <AlertTriangle className="mt-px size-3.5 shrink-0" aria-hidden />

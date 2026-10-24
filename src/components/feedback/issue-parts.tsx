@@ -4,7 +4,7 @@ import type { FeedbackCategory } from "@/lib/ai/types";
 import { integrationInfo } from "@/lib/domain/integrations";
 import { formatTime } from "@/lib/format";
 
-// Shared by Feedback Intelligence and Product Insights.
+// Shared by Issues and Insights.
 
 export const nameOf = (id: string) => integrationInfo(id as never)?.name.replace(/ \/ Stack Exchange$/, "") ?? id;
 export const PRIORITY_TONE = { critical: "negative", high: "negative", medium: "warning", low: "neutral" } as const;
