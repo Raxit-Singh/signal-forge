@@ -26,7 +26,7 @@ const ISSUE_KIND: Partial<Record<FeedbackCategory, { label: string; color: strin
 export function IssueKind({ category, fallback }: { category: FeedbackCategory; fallback: string }) {
   const k = ISSUE_KIND[category];
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-xs font-medium" data-testid="issue-kind">
+    <span className="panel inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium" data-testid="issue-kind">
       {k && <span className="size-2 rounded-full" style={{ background: k.color }} aria-hidden />}
       {k?.label ?? fallback}
     </span>
@@ -52,11 +52,11 @@ export type Member = { id: string; title: string | null; content: string | null;
 export function Evidence({ m, tz = "UTC" }: { m: Member; tz?: string }) {
   const text = (m.title || m.content || "").replace(/\s+/g, " ").slice(0, 180);
   return (
-    <li className="grid gap-0.5 text-xs">
-      <a href={m.source_url} target="_blank" rel="noreferrer noopener nofollow" className="inline-flex min-w-0 items-start gap-1 underline-offset-2 hover:underline">
-        <span className="line-clamp-2">{text || "Untitled post"}</span><ExternalLink className="mt-0.5 size-3 shrink-0" aria-hidden />
+    <li className="grid content-between gap-2 rounded-xl border border-foreground/[0.06] bg-foreground/[0.025] p-3 text-xs transition-colors hover:border-foreground/15">
+      <a href={m.source_url} target="_blank" rel="noreferrer noopener nofollow" className="inline-flex min-w-0 items-start gap-1.5 leading-relaxed text-foreground/90 underline-offset-2 hover:underline">
+        <span className="line-clamp-3">{text || "Untitled post"}</span><ExternalLink className="mt-0.5 size-3 shrink-0 text-muted-foreground" aria-hidden />
       </a>
-      <span className="text-muted-foreground">{nameOf(m.source)}{m.author_display ? ` · ${m.author_display}` : ""} · {day(m.published_at, tz)}</span>
+      <span className="truncate text-[11px] text-muted-foreground">{nameOf(m.source)}{m.author_display ? ` · ${m.author_display}` : ""} · {day(m.published_at, tz)}</span>
     </li>
   );
 }

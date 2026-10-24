@@ -100,7 +100,7 @@ export default async function IssueInsightPage({ params }: { params: Promise<{ c
             <CardDescription>Everything below is built from these posts.</CardDescription>
           </CardHeader>
           <CardContent>
-            <ul className="grid gap-2 border-l pl-3" aria-label="Supporting posts">{posts.map((m) => <Evidence key={m.id} m={m} tz={tz} />)}</ul>
+            <ul className="grid gap-2 sm:grid-cols-2" aria-label="Supporting posts">{posts.map((m) => <Evidence key={m.id} m={m} tz={tz} />)}</ul>
           </CardContent>
         </Card>
 
