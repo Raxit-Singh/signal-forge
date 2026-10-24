@@ -81,6 +81,5 @@ test("registration → verification → workspace → product → keywords → s
   await page.getByRole("button", { name: "Skip for now" }).click();
   await expect(page).toHaveURL(/\/overview$/);
   await expect(page.getByRole("heading", { name: "FixtureFlow" })).toBeVisible();
-  await expect(page.getByText("No mention data yet")).toBeVisible();
-  await expect(page.locator("p", { hasText: "Sources included:" })).toContainText("none yet");
+  await expect(page.getByText("No data yet")).toBeVisible();
 });

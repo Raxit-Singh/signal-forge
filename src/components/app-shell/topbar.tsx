@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -18,6 +18,9 @@ import { switchProductAction } from "@/app/actions/workspace";
 import { signOutAction } from "@/app/(auth)/actions";
 import { markNotificationsReadAction } from "@/app/actions/notifications";
 import { SidebarNav, WorkspaceSwitcher, type ShellWorkspace } from "./sidebar";
+import { NAV } from "./nav";
+import { CommandMenu, useCommandMenuShortcut } from "./command-menu";
+import { LiveIndicator } from "@/components/realtime/realtime-provider";
 import { RANGE_PRESETS, parseRange } from "@/lib/domain/date-range";
 import { cn } from "@/lib/utils";
 
@@ -50,7 +53,7 @@ function ProductSwitcher({ products, activeId }: { products: ShellProduct[]; act
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="secondary" className="min-w-0 max-w-52 shrink" disabled={pending} aria-label="Select product">
+        <Button variant="ghost" className="min-w-0 max-w-52 shrink gap-1 px-1.5 font-medium" disabled={pending} aria-label="Select product">
           <Box className="text-muted-foreground" aria-hidden />
           <span className="truncate">{active?.name ?? "No product"}</span>
           <ChevronDown className="text-muted-foreground" aria-hidden />
@@ -143,35 +146,18 @@ function DateRangePicker() {
 }
 
 // ---------------------------------------------------------------------------
-function GlobalSearch() {
-  const router = useRouter();
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      const typing = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
-      if (e.key === "/" && !typing) {
-        e.preventDefault();
-        ref.current?.focus();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+/** Opens the ⌘K command menu (search mentions, jump to a page, switch product). */
+function SearchTrigger({ onOpen }: { onOpen: () => void }) {
   return (
-    <form
-      role="search"
-      className="relative hidden max-w-xs flex-1 md:block"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const q = ref.current?.value.trim() ?? "";
-        router.push(q ? `/mentions?q=${encodeURIComponent(q)}` : "/mentions");
-      }}
-    >
-      <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
-      <Input ref={ref} name="q" type="search" placeholder="Search mentions" aria-label="Search mentions" maxLength={200} className="pl-8 pr-8" />
-      <Kbd className="absolute right-2 top-1/2 -translate-y-1/2">/</Kbd>
-    </form>
+    <>
+      <button type="button" onClick={onOpen}
+        className="press hidden h-8 w-60 items-center gap-2 rounded-md border bg-surface px-2.5 text-[13px] text-muted-foreground shadow-panel hover:text-foreground lg:flex">
+        <Search className="size-3.5" aria-hidden />
+        <span className="flex-1 text-left">Search or jump to…</span>
+        <Kbd>⌘K</Kbd>
+      </button>
+      <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Search or jump to (⌘K)" onClick={onOpen}><Search /></Button>
+    </>
   );
 }
 
@@ -272,16 +258,27 @@ export function Topbar(props: {
   notifications: ShellNotification[];
   unread: number;
 }) {
+  const pathname = usePathname();
+  const [open, setOpen] = useState(false);
+  useCommandMenuShortcut(setOpen);
+  const page = NAV.find((n) => pathname === n.href || pathname.startsWith(`${n.href}/`));
   return (
-    <header className="sticky top-0 z-30 flex min-h-12 items-center gap-2 border-b bg-background/90 px-3 pt-[env(safe-area-inset-top)] backdrop-blur sm:px-4 print:hidden">
+    <header className="sticky top-0 z-30 flex min-h-12 items-center gap-2 border-b bg-background/85 px-3 pt-[env(safe-area-inset-top)] backdrop-blur-md sm:px-4 print:hidden">
       <MobileNav current={props.current} workspaces={props.workspaces} />
-      <ProductSwitcher products={props.products} activeId={props.activeProductId} />
-      <GlobalSearch />
-      <div className="ml-auto flex items-center gap-1">
+      <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1 text-[13px]">
+        <span className="hidden max-w-40 truncate text-muted-foreground md:inline">{props.current.name}</span>
+        <span className="hidden text-muted-foreground/60 md:inline" aria-hidden>/</span>
+        <ProductSwitcher products={props.products} activeId={props.activeProductId} />
+        {page && <><span className="hidden text-muted-foreground/60 sm:inline" aria-hidden>/</span><span className="hidden truncate text-muted-foreground sm:inline" aria-current="page">{page.label}</span></>}
+      </nav>
+      <div className="ml-auto flex items-center gap-1.5">
+        <span className="mr-1 hidden sm:inline-flex"><LiveIndicator /></span>
+        <SearchTrigger onOpen={() => setOpen(true)} />
         <DateRangePicker />
         <NotificationCenter workspaceId={props.current.id} items={props.notifications} unread={props.unread} />
         <AccountMenu email={props.email} />
       </div>
+      <CommandMenu open={open} onOpenChange={setOpen} products={props.products} activeProductId={props.activeProductId} />
     </header>
   );
 }

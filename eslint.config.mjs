@@ -15,7 +15,8 @@ const config = [
       ],
     },
   },
-  { ignores: [".next/**", "node_modules/**", "next-env.d.ts"] },
+  // .claude/ holds installed agent skills (third-party bundled scripts), not app code.
+  { ignores: [".next/**", "node_modules/**", "next-env.d.ts", ".claude/**"] },
 ];
 
 export default config;

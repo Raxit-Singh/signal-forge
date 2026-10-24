@@ -1,36 +1,45 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CheckCircle2, Circle, PackagePlus } from "lucide-react";
+import { PackagePlus, Radar } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { getActiveProduct, getWorkspacePlan, requireWorkspace } from "@/lib/server/session";
+import { getActiveProduct, requireWorkspace } from "@/lib/server/session";
 import { CoverageNotice, EmptyState, PageHeader } from "@/components/page";
-import { Badge, Card, CardContent, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { getCoverageSummary } from "@/lib/server/collection/status";
+import { getBuzzDashboard } from "@/lib/server/analytics/buzz";
+import { getCompetitorComparison } from "@/lib/server/analytics/competitors";
 import { integrationInfo } from "@/lib/domain/integrations";
-import { formatCount, formatRelative, formatTime } from "@/lib/format";
+import { parseRange } from "@/lib/domain/date-range";
 import { categoryLabel } from "@/lib/ai/cluster";
-import { claudeConnected } from "@/lib/server/agent/tasks";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { IssueKind, PRIORITY_TONE, type Cluster } from "@/components/feedback/issue-parts";
+import type { FeedbackCategory } from "@/lib/ai/types";
 import { getTimeZone } from "@/lib/server/timezone";
+import { OverviewBoard, type OverviewData } from "./overview-board";
 
 export const metadata: Metadata = { title: "Overview" };
 
-/** Server components render once per request; reading the clock here is intentional. */
-function isoDaysAgo(days: number) {
-  return new Date(Date.now() - days * 86_400_000).toISOString();
-}
-
 const NOTICES: Record<string, string> = { password_updated: "Your password was updated." };
 
-export default async function OverviewPage({ searchParams }: { searchParams: Promise<{ notice?: string }> }) {
+/** Each platform keeps one colour wherever it appears (colour follows the platform, never its rank). */
+const PLATFORM_COLOR: Record<string, string> = {
+  x: "var(--entity-1)", youtube: "var(--entity-2)", app_store: "var(--entity-3)", linkedin: "var(--entity-4)",
+  instagram: "var(--entity-5)", facebook: "var(--entity-6)", reddit: "var(--chart-6)", tiktok: "var(--chart-4)",
+  web: "var(--chart-2)", news: "var(--chart-5)",
+};
+const KIND: Partial<Record<FeedbackCategory, { label: string; color: string }>> = {
+  bug_report: { label: "Bug", color: "var(--feedback-bug)" }, security_concern: { label: "Security", color: "var(--feedback-bug)" },
+  feature_request: { label: "Feature request", color: "var(--feedback-feature)" },
+  complaint: { label: "Complaint", color: "var(--feedback-complaint)" }, usability_complaint: { label: "Usability", color: "var(--feedback-complaint)" },
+  pricing_complaint: { label: "Pricing", color: "var(--feedback-complaint)" }, performance_issue: { label: "Performance", color: "var(--feedback-complaint)" },
+};
+const TREND: Record<string, string> = { new: "New this week", worsening: "Worsening", growing: "Growing", steady: "Steady", declining: "Declining" };
+const nameOf = (id: string) => integrationInfo(id as never)?.name.replace(/ \/ Stack Exchange$/, "").replace(/ \((Twitter|Google Search|Google News)\)$/, "") ?? id;
+
+export default async function OverviewPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const tz = await getTimeZone();
-  const at = (d: string | Date) => formatTime(d, tz);
   const { workspace } = await requireWorkspace();
   const product = await getActiveProduct(workspace.id);
-  const notice = NOTICES[(await searchParams).notice ?? ""];
+  const sp = await searchParams;
+  const notice = NOTICES[sp.notice ?? ""];
 
   if (!product) {
     return (
@@ -44,149 +53,87 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
   }
 
   const supabase = await createClient();
-  const weekAgo = isoDaysAgo(7);
-  const twoWeeksAgo = isoDaysAgo(14);
-  const active = ["relevant", "pending", "user_relevant"];
-  const [{ count: keywordCount }, claude, { plan }, coverage, { count: weekCount }, { count: lastWeekCount }, { data: issueRows }, { data: recent }] = await Promise.all([
-    supabase.from("product_aliases").select("id", { count: "exact", head: true }).eq("product_id", product.id).eq("enabled", true),
-    claudeConnected(createAdminClient(), workspace.id),
-    getWorkspacePlan(workspace.id),
-    getCoverageSummary(product.id),
-    supabase.from("mentions").select("id", { count: "exact", head: true })
-      .eq("product_id", product.id).eq("dedup_kind", "original").in("relevance_status", active).gte("published_at", weekAgo),
-    supabase.from("mentions").select("id", { count: "exact", head: true })
-      .eq("product_id", product.id).eq("dedup_kind", "original").in("relevance_status", active).gte("published_at", twoWeeksAgo).lt("published_at", weekAgo),
-    supabase.from("feedback_clusters").select("id, category, title, report_count, suggested_priority")
-      .eq("product_id", product.id).in("status", ["open", "acknowledged"])
-      .order("priority_score", { ascending: false, nullsFirst: false }).order("report_count", { ascending: false }).limit(3),
-    supabase.from("mentions").select("id, source, source_url, title, content, published_at")
-      .eq("product_id", product.id).eq("dedup_kind", "original").in("relevance_status", active)
-      .order("published_at", { ascending: false }).limit(5),
-  ]);
-  const collecting = coverage.included.length > 0;
-  const issues = (issueRows ?? []) as Array<Pick<Cluster, "id" | "category" | "title" | "report_count" | "suggested_priority">>;
-  const week = weekCount ?? 0;
-  const lastWeek = lastWeekCount ?? 0;
-  const change = lastWeek > 0 ? Math.round(((week - lastWeek) / lastWeek) * 100) : null;
-  const sources = coverage.included.length;
+  const now = new Date();
+  const range = parseRange(sp, now);
+  const coverage = await getCoverageSummary(product.id);
+  if (coverage.included.length === 0) {
+    return (
+      <>
+        <PageHeader title={product.name} description="Overview" />
+        <EmptyState icon={Radar} title="No data yet" action={{ href: `/onboarding/${product.id}/scan`, label: "Run first scan" }}>
+          Nothing is shown until a source has been searched: no data isn&apos;t the same as no mentions.
+        </EmptyState>
+      </>
+    );
+  }
 
-  const steps = [
-    { done: true, label: "Product added", href: "/settings/products" },
-    { done: (keywordCount ?? 0) > 0, label: `${keywordCount ?? 0} active keyword${keywordCount === 1 ? "" : "s"}`, href: `/settings/products/${product.id}/keywords` },
-    {
-      done: collecting,
-      label: collecting ? `Collecting from ${sources} source${sources === 1 ? "" : "s"}` : "Run the first scan",
-      href: collecting ? "/integrations" : `/onboarding/${product.id}/scan`,
+  const [{ data: p }, dash, feedback, { data: issueRows }, { count: openCount }, { count: highCount }, { data: feedRows }] = await Promise.all([
+    supabase.from("products").select("created_at").eq("id", product.id).single(),
+    getBuzzDashboard(supabase, product.id, range, tz, null, now),
+    supabase.rpc("feedback_daily", { p_product_id: product.id, p_from: range.from.toISOString(), p_to: range.to.toISOString(), p_tz: tz }),
+    supabase.from("feedback_clusters").select("id, category, title, report_count, unique_reporters, suggested_priority, priority_evidence")
+      .eq("product_id", product.id).in("status", ["open", "acknowledged"])
+      .order("priority_score", { ascending: false, nullsFirst: false }).order("report_count", { ascending: false }).limit(6),
+    supabase.from("feedback_clusters").select("id", { count: "exact", head: true }).eq("product_id", product.id).in("status", ["open", "acknowledged"]),
+    supabase.from("feedback_clusters").select("id", { count: "exact", head: true }).eq("product_id", product.id).in("status", ["open", "acknowledged"]).in("suggested_priority", ["high", "critical"]),
+    supabase.from("mentions").select("id, source, source_url, title, content, author_display, published_at, sentiment")
+      .eq("product_id", product.id).eq("dedup_kind", "original").in("relevance_status", ["relevant", "user_relevant"])
+      .order("published_at", { ascending: false }).limit(8),
+  ]);
+  // Competitors are a bonus panel: if they can't load, the rest of the page still renders.
+  const comparison = await getCompetitorComparison(supabase, { id: product.id, name: product.name, createdAt: p?.created_at as string }, range, tz).catch(() => null);
+
+  type Sent = { positive: number; negative: number; neutral: number; classified: number };
+  const sent = ((feedback.data ?? []) as Array<Record<string, number>>).reduce<Sent>(
+    (a, d) => ({ positive: a.positive + Number(d.positive ?? 0), negative: a.negative + Number(d.negative ?? 0), neutral: a.neutral + Number(d.neutral ?? 0) + Number(d.mixed ?? 0) + Number(d.uncertain ?? 0), classified: a.classified + Number(d.classified ?? 0) }),
+    { positive: 0, negative: 0, neutral: 0, classified: 0 },
+  );
+  const fmt = new Intl.DateTimeFormat("en-US", dash.bucket === "hour" ? { hour: "numeric", timeZone: tz } : { month: "short", day: "numeric", timeZone: tz });
+  const full = new Intl.DateTimeFormat("en-US", dash.bucket === "hour" ? { weekday: "short", hour: "numeric", minute: "2-digit", timeZone: tz } : { weekday: "short", month: "short", day: "numeric", timeZone: tz });
+  const prev = new Map(dash.previousTotals.bySource.map((r) => [r.source, Number(r.relevant)]));
+  const sources = dash.totals.bySource.map((r) => ({ id: r.source, value: Number(r.relevant) })).filter((r) => r.value > 0).sort((a, b) => b.value - a.value);
+  const top = sources.slice(0, 7);
+  const rest = sources.slice(7);
+  const voiceColors = ["var(--entity-1)", "var(--entity-2)", "var(--entity-3)", "var(--entity-4)", "var(--entity-5)", "var(--entity-6)"];
+  const voice = (comparison?.voice ?? []).map((v, i) => ({ name: v.name, share: v.share, isProduct: v.isProduct, color: voiceColors[i % voiceColors.length]! }));
+
+  const data: OverviewData = {
+    product: product.name,
+    period: range.label.toLowerCase().replace(/^last /, ""),
+    kpis: {
+      mentions: dash.totals.relevant, mentionsChange: dash.rangeGrowth.change,
+      today: dash.today, yesterday: dash.yesterday,
+      negativeShare: sent.classified > 0 ? sent.negative / sent.classified : null, classified: sent.classified,
+      openIssues: openCount ?? 0, highIssues: highCount ?? 0,
+      sov: voice.find((v) => v.isProduct)?.share ?? null, competitors: Math.max(0, voice.length - 1),
     },
-    { done: claude, label: claude ? "Claude connected" : "Connect Claude (optional)", href: "/settings/agent" },
-  ];
+    series: dash.series.map((s) => ({ label: fmt.format(new Date(s.start)), full: full.format(new Date(s.start)), value: s.relevant })),
+    platforms: top.map((s) => ({ id: s.id, name: nameOf(s.id), value: s.value, prev: prev.get(s.id) ?? 0, color: PLATFORM_COLOR[s.id] ?? "var(--chart-8)" })),
+    otherPlatforms: { count: rest.length, value: rest.reduce((t, r) => t + r.value, 0) },
+    issues: ((issueRows ?? []) as Array<{ id: string; category: FeedbackCategory; title: string; report_count: number; unique_reporters: number | null; suggested_priority: string | null; priority_evidence: { observed?: { trend?: string } } | null }>).map((c) => ({
+      id: c.id, title: c.title, kind: KIND[c.category]?.label ?? categoryLabel(c.category), kindColor: KIND[c.category]?.color ?? "var(--muted-foreground)",
+      people: c.unique_reporters ?? c.report_count, trend: TREND[c.priority_evidence?.observed?.trend ?? ""] ?? null, priority: c.suggested_priority,
+    })),
+    voice,
+    sentiment: sent.classified > 0 ? sent : null,
+    feed: ((feedRows ?? []) as Array<{ id: string; source: string; source_url: string; title: string | null; content: string | null; author_display: string | null; published_at: string; sentiment: string | null }>).map((m) => ({
+      id: m.id, platform: nameOf(m.source), author: m.author_display, text: (m.title || m.content || m.source_url).replace(/\s+/g, " ").slice(0, 220),
+      url: m.source_url, at: m.published_at, sentiment: m.sentiment,
+    })),
+  };
 
   return (
     <>
-      <PageHeader
-        title={product.name}
-        description={<>Overview · {plan.name} plan</>}
-        actions={product.onboardingStep < 6 ? (
-          <Button asChild size="sm"><Link href="/onboarding">Finish setup</Link></Button>
-        ) : undefined}
-      />
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div className="grid gap-0.5">
+          <h1 className="text-xl font-semibold tracking-[-0.02em]">{product.name}</h1>
+          <p className="text-[13px] text-muted-foreground">Overview · {range.label}</p>
+        </div>
+        {product.onboardingStep < 6 && <Button asChild size="sm"><Link href="/onboarding">Finish setup</Link></Button>}
+      </div>
       {notice && <p role="status" className="mb-4 rounded-md border bg-muted px-3 py-2 text-[13px]">{notice}</p>}
       <CoverageNotice />
-
-      {issues.length > 0 && (
-        <Card className="mb-4" data-testid="overview-issues">
-          <CardHeader className="flex-row items-center justify-between">
-            <CardTitle>Top issues</CardTitle>
-            <Link href="/feedback" className="text-xs text-muted-foreground hover:underline">All issues</Link>
-          </CardHeader>
-          <CardContent>
-            <ol className="grid gap-1">
-              {issues.map((c) => (
-                <li key={c.id}>
-                  <Link href={`/feedback#issue-${c.id}`} className="group flex min-h-11 flex-wrap items-center gap-x-2 gap-y-1 rounded-md px-1 py-1.5 text-[13px] hover:bg-muted/50 sm:min-h-0">
-                    <IssueKind category={c.category} fallback={categoryLabel(c.category)} />
-                    <span className="min-w-0 flex-1 font-medium group-hover:underline group-hover:underline-offset-2 max-sm:order-last max-sm:basis-full">{c.title}</span>
-                    <span className="text-xs text-muted-foreground tabular">{c.report_count} report{c.report_count === 1 ? "" : "s"}</span>
-                    {c.suggested_priority && <Badge tone={PRIORITY_TONE[c.suggested_priority]}>{c.suggested_priority[0]!.toUpperCase() + c.suggested_priority.slice(1)}</Badge>}
-                  </Link>
-                </li>
-              ))}
-            </ol>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="min-w-0 lg:col-span-2">
-          <CardHeader className="flex-row items-center justify-between">
-            <CardTitle>Recent mentions</CardTitle>
-            {collecting && <Link href="/mentions" className="text-xs text-muted-foreground hover:underline">View all</Link>}
-          </CardHeader>
-          <CardContent>
-            {!collecting ? (
-              <div className="grid gap-2 py-8 text-center">
-                <p className="font-medium">No mention data yet</p>
-                <p className="mx-auto max-w-md text-[13px] text-muted-foreground">
-                  Nothing is shown until a source has actually been searched, because no data is not the same as no mentions.
-                </p>
-                <div className="mt-2 flex justify-center">
-                  <Button asChild size="sm"><Link href={`/onboarding/${product.id}/scan`}>Run first scan</Link></Button>
-                </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-3">
-                <p className="text-[13px]">
-                  <span className="text-lg font-semibold tabular">{formatCount(week)}</span>{" "}
-                  <span className="text-muted-foreground">
-                    mention{week === 1 ? "" : "s"} in the last 7 days
-                    {change !== null && <>, <span className={cn("tabular", change > 0 ? "text-foreground" : undefined)}>{change > 0 ? "+" : ""}{change}%</span> vs the week before</>}
-                    {change === null && lastWeek === 0 && week > 0 && ", none the week before"}
-                    {" "}(duplicates and posts marked not relevant excluded). <Link href="/buzz" className="underline underline-offset-2 hover:text-foreground">See trends in Buzz Analytics →</Link>
-                  </span>
-                </p>
-                {(recent ?? []).length === 0 ? (
-                  <p className="text-[13px] text-muted-foreground">No matching mentions collected yet.</p>
-                ) : (
-                  <ul className="divide-y rounded-md border">
-                    {(recent ?? []).map((m) => (
-                      // Phones: platform and time on one line, the title below at full width (a long
-                      // platform badge left the title a few pixels wide). Wider screens: one line.
-                      <li key={m.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 px-3 py-2 text-[13px] sm:flex-nowrap">
-                        <Badge className="shrink-0 whitespace-nowrap">{integrationInfo(m.source)?.name.replace(/ \/ Stack Exchange$/, "") ?? m.source}</Badge>
-                        <a href={m.source_url} target="_blank" rel="noopener noreferrer nofollow ugc" dir="auto" title={m.title || m.content?.slice(0, 300) || m.source_url}
-                          className="min-w-0 truncate text-start hover:underline max-sm:order-last max-sm:basis-full sm:flex-1">
-                          {m.title || m.content?.slice(0, 120) || m.source_url}
-                        </a>
-                        <time dateTime={m.published_at} title={at(m.published_at)} className="ml-auto shrink-0 text-xs text-muted-foreground">
-                          {formatRelative(m.published_at)}
-                        </time>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader><CardTitle>Setup</CardTitle></CardHeader>
-          <CardContent>
-            <ul className="grid gap-2.5">
-              {steps.map((s) => (
-                <li key={s.label} className="flex items-start gap-2 text-[13px]">
-                  {s.done ? (
-                    <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-positive" aria-label="Done" />
-                  ) : (
-                    <Circle className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-label="Not done" />
-                  )}
-                  <Link href={s.href} className={cn("hover:underline", s.done && "text-muted-foreground")}>{s.label}</Link>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      </div>
+      <OverviewBoard d={data} />
     </>
   );
 }

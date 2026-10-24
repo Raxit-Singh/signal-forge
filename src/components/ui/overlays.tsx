@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Dialog as D, DropdownMenu as DM, Popover as P } from "radix-ui";
+import { Dialog as D, DropdownMenu as DM, Popover as P, Tooltip as T } from "radix-ui";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -136,5 +136,25 @@ export function SidePanelContent({
         </D.Close>
       </D.Content>
     </D.Portal>
+  );
+}
+
+// ---- Tooltip ---------------------------------------------------------------
+/** Shared provider: after the first tooltip opens, neighbours open instantly (no delay, no animation). */
+export function TooltipProvider({ children }: { children: React.ReactNode }) {
+  return <T.Provider delayDuration={350} skipDelayDuration={400}>{children}</T.Provider>;
+}
+export const Tooltip = T.Root;
+export const TooltipTrigger = T.Trigger;
+
+export function TooltipContent({ className, sideOffset = 8, ...props }: React.ComponentProps<typeof T.Content>) {
+  return (
+    <T.Portal>
+      <T.Content
+        sideOffset={sideOffset}
+        className={cn("z-50 rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background shadow-md", className)}
+        {...props}
+      />
+    </T.Portal>
   );
 }

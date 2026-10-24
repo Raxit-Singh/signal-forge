@@ -8,20 +8,22 @@
  * for meaning (sentiment, health), never decoration.
  */
 :root {
-  --background: oklch(0.99 0.002 260);
-  --foreground: oklch(0.2 0.01 260);
+  /* Command-center palette: cool slate ink, layered surfaces, orange reserved for actions. */
+  --background: oklch(0.982 0.003 262);
+  --foreground: oklch(0.19 0.018 262);
   --surface: oklch(1 0 0);
-  --surface-2: oklch(0.975 0.003 260);
-  --muted: oklch(0.96 0.004 260);
-  --muted-foreground: oklch(0.5 0.012 260);
-  --border: oklch(0.91 0.005 260);
-  --input: oklch(0.88 0.006 260);
-  --ring: oklch(0.66 0.17 45);
+  --surface-2: oklch(0.97 0.004 262);
+  --muted: oklch(0.953 0.006 262);
+  --muted-foreground: oklch(0.49 0.016 262);
+  --border: oklch(0.912 0.007 262);
+  --input: oklch(0.875 0.009 262);
+  --ring: oklch(0.66 0.17 47);
 
-  --primary: oklch(0.62 0.18 42);
+  --primary: oklch(0.64 0.18 45);
   --primary-foreground: oklch(0.99 0.01 60);
-  --accent: oklch(0.95 0.03 55);
+  --accent: oklch(0.955 0.03 55);
   --accent-foreground: oklch(0.42 0.12 40);
+  --panel-shadow: 0 1px 2px oklch(0.2 0.02 262 / 0.05), 0 0 0 1px oklch(0.2 0.02 262 / 0.02);
 
   --positive: oklch(0.6 0.14 155);
   --negative: oklch(0.58 0.2 25);
@@ -62,20 +64,22 @@
 }
 
 .dark {
-  --background: oklch(0.16 0.008 260);
-  --foreground: oklch(0.94 0.005 260);
-  --surface: oklch(0.19 0.009 260);
-  --surface-2: oklch(0.215 0.01 260);
-  --muted: oklch(0.24 0.01 260);
-  --muted-foreground: oklch(0.68 0.012 260);
-  --border: oklch(0.28 0.01 260);
-  --input: oklch(0.32 0.012 260);
-  --ring: oklch(0.72 0.16 48);
+  --background: oklch(0.145 0.013 262);
+  --foreground: oklch(0.95 0.006 262);
+  --surface: oklch(0.18 0.014 262);
+  --surface-2: oklch(0.205 0.015 262);
+  --muted: oklch(0.235 0.016 262);
+  --muted-foreground: oklch(0.71 0.016 262);
+  --border: oklch(0.265 0.015 262);
+  --input: oklch(0.31 0.016 262);
+  --ring: oklch(0.75 0.15 52);
 
-  --primary: oklch(0.72 0.16 48);
-  --primary-foreground: oklch(0.18 0.02 40);
-  --accent: oklch(0.27 0.04 45);
-  --accent-foreground: oklch(0.86 0.09 55);
+  --primary: oklch(0.75 0.155 52);
+  --primary-foreground: oklch(0.2 0.03 45);
+  --accent: oklch(0.27 0.05 50);
+  --accent-foreground: oklch(0.87 0.09 58);
+  /* A fine top highlight gives panels depth on dark surfaces. */
+  --panel-shadow: inset 0 1px 0 oklch(1 0 0 / 0.04), 0 1px 2px oklch(0 0 0 / 0.35);
 
   --positive: oklch(0.72 0.14 155);
   --negative: oklch(0.7 0.17 25);
@@ -115,6 +119,7 @@
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
+  --shadow-panel: var(--panel-shadow);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-border: var(--border);
@@ -194,6 +199,36 @@
   .press:active {
     transform: scale(0.97);
   }
+}
+
+/* Entrances run in CSS, from first paint: content never waits for JavaScript to become visible.
+   --d staggers siblings. They don't replay on live refreshes (the elements stay mounted). */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+}
+@keyframes grow-x {
+  from { transform: scaleX(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+}
+.rise { animation: rise 340ms var(--ease-out) var(--d, 0ms) both; }
+.grow-x { transform-origin: left center; animation: grow-x 560ms var(--ease-out) var(--d, 0ms) both; }
+.fade-in { animation: fade-in 300ms var(--ease-out) var(--d, 0ms) both; }
+@media (prefers-reduced-motion: reduce) {
+  .rise, .grow-x { animation-name: fade-in; }
+}
+
+/* A soft, slow ring on high-priority markers: state, not decoration (off with reduced motion). */
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.45; }
+  70%, 100% { transform: scale(2.6); opacity: 0; }
+}
+.pulse-ring {
+  animation: pulse-ring 2.4s cubic-bezier(0.23, 1, 0.32, 1) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pulse-ring { animation: none; opacity: 0; }
 }
 
 /* Menus and popovers grow from their trigger (entry only; closing snaps). */
