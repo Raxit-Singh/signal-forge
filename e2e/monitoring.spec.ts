@@ -35,7 +35,7 @@ async function openAdvanced(page: import("@playwright/test").Page) {
 }
 
 test("simple view: summary, keywords and platforms ranked by mention count, no technical settings up front", async ({ page }) => {
-  await expect(page.getByRole("heading", { name: "Smart Monitoring", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Monitoring", level: 1, exact: true })).toBeVisible();
   for (const mode of ["Eco", "Balanced", "Priority"]) await expect(page.getByRole("radio", { name: new RegExp(mode) })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Save mode" })).toHaveCount(0);
   // Formula-level detail is hidden until "Advanced details" is opened.

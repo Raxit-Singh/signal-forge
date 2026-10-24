@@ -15,12 +15,13 @@ import { AutoRefresh, RelativeTime } from "@/components/time";
 import { getTimeZone } from "@/lib/server/timezone";
 import { EmptyState, PageHeader } from "@/components/page";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
+import { CountUp } from "@/components/motion";
 import { getKeywordRankings, type KeywordRankings } from "@/lib/server/collection/keyword-rankings";
 import { parseRange } from "@/lib/domain/date-range";
 import { COVERAGE_LABEL, type CoverageStatus, type KeywordPerformance } from "@/lib/analytics/keyword-ranking";
 import { BoostForm, CancelBoost, RankingTable, SourceToggle, type RankingRow } from "./monitoring-client";
 
-export const metadata: Metadata = { title: "Smart Monitoring" };
+export const metadata: Metadata = { title: "Monitoring" };
 
 /** Request time (kept outside render bodies for the purity lint rule). */
 function requestTime() {
@@ -88,7 +89,7 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
   if (!product) {
     return (
       <>
-        <PageHeader title="Smart Monitoring" />
+        <PageHeader title="Monitoring" />
         <EmptyState icon={PackagePlus} title="Add a product first" action={{ href: "/onboarding/product", label: "Add product" }}>
           Monitoring runs per product.
         </EmptyState>
@@ -137,31 +138,49 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
 
   return (
     <>
-      <PageHeader
-        title="Smart Monitoring"
-        description="Every keyword is searched on every platform that supports it. Platforms are ranked by how many mentions they bring in, and busier keyword × platform searches are checked more often."
-        actions={canEdit ? <StopScan productId={product.id} productName={product.name} stopped={Boolean(stoppedAt)} /> : undefined}
-      />
-      <div className="grid gap-6">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 pb-10">
+        {/* Hero: what's being watched, whether scanning runs, and the period's catch. */}
+        <section className="grid grid-cols-[minmax(0,1fr)] gap-8 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+          <div className="rise grid content-start gap-5">
+            <div className="grid gap-1.5">
+              <h1 className="text-[34px] font-medium leading-[1.05] tracking-[-0.035em] sm:text-[44px]">Monitoring</h1>
+              <p className="max-w-[60ch] text-[14px] text-muted-foreground">
+                Every keyword is searched on every platform that supports it. Busier keyword × platform searches are checked more often; quiet ones at least daily.
+              </p>
+            </div>
+            <div className="grid gap-2">
+              <span className="text-[13px] text-muted-foreground">{`Total mentions · ${periodLabel}`}</span>
+              <CountUp value={k.totalMentions} className="text-[56px] font-semibold leading-none tracking-[-0.045em] sm:text-[64px]" />
+              <span className="text-[12px] text-muted-foreground/80">Relevant, duplicates excluded</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`panel flex h-9 items-center gap-2 rounded-full px-4 text-[13px] ${stoppedAt ? "text-warning" : ""}`}>
+                <span className={`size-2 rounded-full ${stoppedAt ? "bg-warning" : "breathe bg-positive"}`} aria-hidden />
+                {stoppedAt ? "Scanning stopped" : "Scanning live"}
+              </span>
+              {canEdit && <StopScan productId={product.id} productName={product.name} stopped={Boolean(stoppedAt)} />}
+            </div>
+          </div>
+          <section aria-labelledby="summary" className="rise grid grid-cols-2 gap-3 self-end sm:grid-cols-3 xl:grid-cols-2" style={{ ["--d" as string]: "120ms" }}>
+            <h2 id="summary" className="sr-only">Monitoring summary</h2>
+            <Stat i={0} label="Active platforms" value={String(active.length)} hint={`${available.length} more available`} />
+            <Stat i={1} label="Keywords monitored" value={String(monitoredKeywords)} hint={pausedKeywords ? `${pausedKeywords} paused` : "All active"} />
+            <Stat i={2} label="Last scan" value={lastScan ? <RelativeTime value={new Date(lastScan).toISOString()} /> : "Not yet"} hint={lastScan ? at(lastScan) : undefined} />
+            <Stat i={3} label="Next scan" value={stoppedAt ? "Stopped" : !nextScan ? "—" : <RelativeTime value={new Date(nextScan).toISOString()} dueLabel="Due now" />} hint={nextScan ? at(nextScan) : undefined} />
+            <Stat i={4} label="Coverage warnings" value={String(warnings.length)} hint={warnings.length ? "See below" : "None"} warn={warnings.length > 0} className="col-span-2 sm:col-span-1 xl:col-span-2" />
+          </section>
+        </section>
+
         {stoppedAt && (
-          <div className="flex flex-wrap items-center gap-2 rounded-md border border-warning/40 bg-warning/5 p-3 text-[13px]" role="status" data-testid="scan-stopped">
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-warning/40 bg-warning/5 p-4 text-[13px]" role="status" data-testid="scan-stopped">
             <Pause className="size-4 text-warning" aria-hidden />
             <span><span className="font-medium">Scanning is stopped</span> since {at(stoppedAt)}. No platform is searched for {product.name} or its competitors; collected data is kept.
               {!canEdit && " A workspace admin can resume it."}</span>
           </div>
         )}
-        <section aria-labelledby="summary" className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-          <h2 id="summary" className="sr-only">Monitoring summary</h2>
-          <Stat label={`Total mentions · ${periodLabel}`} value={k.totalMentions.toLocaleString("en-US")} hint="Relevant, duplicates excluded" />
-          <Stat label="Active platforms" value={String(active.length)} />
-          <Stat label="Keywords monitored" value={String(monitoredKeywords)} hint={pausedKeywords ? `${pausedKeywords} paused` : undefined} />
-          <Stat label="Last scan" value={lastScan ? <RelativeTime value={new Date(lastScan).toISOString()} /> : "Not yet"} hint={lastScan ? at(lastScan) : undefined} />
-          <Stat label="Next scan" value={stoppedAt ? "Stopped" : !nextScan ? "—" : <RelativeTime value={new Date(nextScan).toISOString()} dueLabel="Due now" />} hint={nextScan ? at(nextScan) : undefined} />
-          <Stat label="Coverage warnings" value={String(warnings.length)} hint={warnings.length ? "See below" : "None"} />
-        </section>
 
         {warnings.length > 0 && (
-          <div className="rounded-md border border-warning/40 bg-warning/5 p-3 text-[13px]" role="note" aria-labelledby="warnings-title">
+          <div className="rounded-2xl border border-warning/40 bg-warning/5 p-4 text-[13px]" role="note" aria-labelledby="warnings-title">
             <p id="warnings-title" className="mb-1 flex items-center gap-1.5 font-medium"><AlertTriangle className="size-4 text-warning" aria-hidden />Coverage warnings</p>
             <ul className="grid gap-1 text-xs" aria-label="Coverage warnings">
               {warnings.slice(0, 8).map((w) => <li key={w}>{w}</li>)}
@@ -203,12 +222,12 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
           </CardContent>
         </Card>
 
-        <details className="group rounded-lg border bg-surface" id="advanced">
-          <summary className="flex cursor-pointer items-center justify-between gap-2 p-4 text-[13px] font-medium [&::-webkit-details-marker]:hidden">
+        <details className="panel group rounded-[18px]" id="advanced">
+          <summary className="flex cursor-pointer items-center justify-between gap-2 p-5 text-[14px] font-medium [&::-webkit-details-marker]:hidden">
             Advanced details
             <ChevronDown className="size-4 transition-transform group-open:rotate-180" aria-hidden />
           </summary>
-          <div className="grid gap-6 border-t p-4">
+          <div className="grid gap-6 border-t border-foreground/[0.06] p-5">
             <div className="grid gap-1 text-xs text-muted-foreground">
               <p>
                 How checks are scheduled: SignalForge measures, for this product alone, how fast relevant mentions arrive on each keyword × platform
@@ -301,7 +320,7 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
           <CardContent>
             <ul className="grid gap-2 sm:grid-cols-2" aria-label="Other platforms">
               {available.map((p) => (
-                <li key={p.id} className="flex flex-wrap items-start justify-between gap-2 rounded-md border p-3">
+                <li key={p.id} className="flex flex-wrap items-start justify-between gap-2 rounded-2xl border border-foreground/[0.08] p-3.5">
                   <div className="grid gap-0.5">
                     <span className="flex items-center gap-1.5 text-[13px] font-medium">{p.name}{p.paid && <Badge>Paid</Badge>}</span>
                     <span className="text-xs text-muted-foreground">{p.toggle?.reason ?? p.stateDetail ?? "Not monitored"}</span>
@@ -328,7 +347,7 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
                 {boosts.map((b) => {
                   const live = new Date(b.starts_at).getTime() <= now;
                   return (
-                    <li key={b.id} className="flex flex-wrap items-start justify-between gap-2 rounded-md border p-3">
+                    <li key={b.id} className="flex flex-wrap items-start justify-between gap-2 rounded-2xl border border-foreground/[0.08] p-3.5">
                       <div className="grid gap-0.5 text-[13px]">
                         <span className="flex items-center gap-1.5 font-medium">{b.title}<Badge tone={live ? "positive" : "info"}>{live ? "Active" : "Scheduled"}</Badge></span>
                         <span className="text-xs text-muted-foreground">
@@ -370,7 +389,7 @@ const KIND_LABEL: Record<string, string> = {
 
 function KeywordCoverageList({ rows }: { rows: KeywordCoverageRow[] }) {
   return (
-    <ul className="divide-y rounded-md border" aria-label="Keyword coverage">
+    <ul className="divide-y divide-foreground/[0.06] overflow-hidden rounded-2xl border border-foreground/[0.08]" aria-label="Keyword coverage">
       {rows.map((k) => {
         const searched = k.platforms.filter((p) => p.intervalMinutes !== null);
         const missing = k.platforms.filter((p) => p.intervalMinutes === null);
@@ -427,13 +446,13 @@ function KeywordCoverageList({ rows }: { rows: KeywordCoverageRow[] }) {
   );
 }
 
-function Stat({ label, value, hint }: { label: string; value: React.ReactNode; hint?: string }) {
+function Stat({ label, value, hint, i = 0, warn = false, className = "" }: { label: string; value: React.ReactNode; hint?: string; i?: number; warn?: boolean; className?: string }) {
   return (
-    <Card className="grid content-start gap-0.5 p-3">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="text-xl font-semibold tabular">{value}</span>
-      {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
-    </Card>
+    <div className={`panel rise grid min-w-0 content-start gap-1.5 rounded-[18px] p-4 ${className}`} style={{ ["--d" as string]: `${160 + i * 50}ms` }}>
+      <span className="text-[12px] text-muted-foreground">{label}</span>
+      <span className={`text-[24px] font-semibold leading-none tracking-[-0.03em] tabular ${warn ? "text-warning" : ""}`}>{value}</span>
+      {hint && <span className="truncate text-[12px] text-muted-foreground/80">{hint}</span>}
+    </div>
   );
 }
 
@@ -458,22 +477,22 @@ function Growth({ pct }: { pct: number | null }) {
 /** One single-hue magnitude bar: length = this platform's share of the keyword's mentions. */
 function ShareBar({ pct }: { pct: number | null }) {
   return (
-    <span className="block h-1.5 w-full rounded-full bg-muted" aria-hidden>
-      <span className="block h-1.5 rounded-full bg-primary" style={{ width: `${pct ?? 0}%` }} />
+    <span className="block h-1.5 w-full overflow-hidden rounded-full bg-foreground/[0.07]" aria-hidden>
+      <span className="grow-x block h-1.5 rounded-full bg-foreground/75" style={{ width: `${pct ?? 0}%` }} />
     </span>
   );
 }
 
 function KeywordList({ rows }: { rows: KeywordPerformance[] }) {
   return (
-    <ul className="divide-y rounded-md border" aria-label="Keyword performance">
+    <ul className="divide-y divide-foreground/[0.06] overflow-hidden rounded-2xl border border-foreground/[0.08]" aria-label="Keyword performance">
       {rows.map((kw) => {
         const scanned = kw.platforms.filter((p) => p.mentions !== null && p.mentions > 0);
         const distribution = scanned.slice(0, 3).map((p) => `${p.name} ${p.sharePct}%`).join(" · ") + (scanned.length > 3 ? ` · +${scanned.length - 3} more` : "");
         return (
           <li key={kw.term}>
             <details className="group">
-              <summary className="grid cursor-pointer grid-cols-[1.5rem_1fr_auto] items-center gap-x-3 gap-y-0.5 px-3 py-2.5 text-[13px] [&::-webkit-details-marker]:hidden sm:grid-cols-[1.5rem_minmax(8rem,1fr)_6rem_minmax(8rem,1fr)_4rem_1rem]">
+              <summary className="grid cursor-pointer grid-cols-[1.5rem_1fr_auto] items-center gap-x-3 gap-y-0.5 px-4 py-3 text-[13px] transition-colors hover:bg-foreground/[0.03] [&::-webkit-details-marker]:hidden sm:grid-cols-[1.5rem_minmax(8rem,1fr)_6rem_minmax(8rem,1fr)_4rem_1rem]">
                 <span className="tabular text-xs text-muted-foreground">{kw.rank ?? "–"}</span>
                 <span className="flex min-w-0 items-center gap-2">
                   <span className="truncate font-medium">{kw.term}</span>
@@ -536,7 +555,7 @@ function PlatformTable({ rows, now, stopped, at }: { rows: KeywordRankings["plat
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.id} className="border-t">
+            <tr key={r.id} className="border-t border-foreground/[0.06] transition-colors hover:bg-foreground/[0.025]">
               <td className="py-2 tabular text-muted-foreground">{r.rank ?? "–"}</td>
               <td className="font-medium">{r.name}</td>
               <td className="text-right tabular">{r.mentions === null ? "—" : r.mentions.toLocaleString("en-US")}</td>
@@ -551,7 +570,7 @@ function PlatformTable({ rows, now, stopped, at }: { rows: KeywordRankings["plat
       </table>
       <ul className="grid gap-2 md:hidden" aria-label="Overall platform performance">
         {rows.map((r) => (
-          <li key={r.id} className="grid gap-1.5 rounded-md border p-3 text-[13px]">
+          <li key={r.id} className="grid gap-1.5 rounded-2xl border border-foreground/[0.08] p-3.5 text-[13px]">
             <div className="flex items-center justify-between gap-2">
               <span className="font-medium"><span className="mr-1.5 tabular text-muted-foreground">{r.rank ?? "–"}</span>{r.name}</span>
               <StatusBadge status={r.status} />
