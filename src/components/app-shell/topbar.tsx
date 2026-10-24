@@ -50,7 +50,7 @@ function ProductSwitcher({ products, activeId }: { products: ShellProduct[]; act
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="secondary" className="max-w-52" disabled={pending} aria-label="Select product">
+        <Button variant="secondary" className="min-w-0 max-w-52 shrink" disabled={pending} aria-label="Select product">
           <Box className="text-muted-foreground" aria-hidden />
           <span className="truncate">{active?.name ?? "No product"}</span>
           <ChevronDown className="text-muted-foreground" aria-hidden />
@@ -273,7 +273,7 @@ export function Topbar(props: {
   unread: number;
 }) {
   return (
-    <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b bg-background/90 px-3 backdrop-blur sm:px-4 print:hidden">
+    <header className="sticky top-0 z-30 flex min-h-12 items-center gap-2 border-b bg-background/90 px-3 pt-[env(safe-area-inset-top)] backdrop-blur sm:px-4 print:hidden">
       <MobileNav current={props.current} workspaces={props.workspaces} />
       <ProductSwitcher products={props.products} activeId={props.activeProductId} />
       <GlobalSearch />

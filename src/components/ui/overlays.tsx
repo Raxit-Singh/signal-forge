@@ -15,7 +15,7 @@ export function DropdownMenuContent({ className, sideOffset = 6, ...props }: Rea
     <DM.Portal>
       <DM.Content
         sideOffset={sideOffset}
-        className={cn("z-50 min-w-48 overflow-hidden rounded-md border bg-surface p-1 shadow-lg", className)}
+        className={cn("menu-surface z-50 min-w-48 overflow-hidden rounded-md border bg-surface p-1 shadow-lg", className)}
         {...props}
       />
     </DM.Portal>
@@ -53,7 +53,7 @@ export function PopoverContent({ className, sideOffset = 6, align = "end", ...pr
       <P.Content
         align={align}
         sideOffset={sideOffset}
-        className={cn("z-50 w-80 rounded-md border bg-surface shadow-lg outline-none", className)}
+        className={cn("menu-surface z-50 w-80 rounded-md border bg-surface shadow-lg outline-none", className)}
         {...props}
       />
     </P.Portal>
