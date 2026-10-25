@@ -30,7 +30,6 @@ async function resync(productId: string) {
     logServerError("monitoring.resync", e);
   }
   revalidatePath("/monitoring");
-  revalidatePath("/integrations");
 }
 
 const sourceSchema = z.object({

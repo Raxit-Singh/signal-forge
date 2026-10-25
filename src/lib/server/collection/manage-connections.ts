@@ -1,10 +1,8 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { serverEnv } from "@/lib/server/env";
 import { storeSecret } from "@/lib/server/ai/secrets";
 import { syncOptimizedQueries } from "./query-sync";
 import { accessToken, parseServiceAccount, playPackage } from "@/lib/sources/google-play";
-import { DISCORD_API, parseDiscordConfig } from "@/lib/sources/discord";
 import { SourceError } from "@/lib/sources/errors";
 
 type Fetch = typeof fetch;
@@ -24,7 +22,7 @@ async function resync(admin: SupabaseClient, workspaceId: string, productId: str
 }
 
 async function upsertIntegration(admin: SupabaseClient, row: {
-  workspace_id: string; product_id: string | null; provider: "google_play" | "discord"; config: Record<string, unknown>;
+  workspace_id: string; product_id: string | null; provider: "google_play"; config: Record<string, unknown>;
   secret_id: string | null; external_account: string | null; connected_by: string; scopes: string[];
 }) {
   let q = admin.from("integrations").select("id, secret_id").eq("workspace_id", row.workspace_id).eq("provider", row.provider);
@@ -68,7 +66,7 @@ export async function connectGooglePlay(admin: SupabaseClient, workspaceId: stri
 }
 
 /** Removes a connection and its stored secret; searches using it stop. */
-export async function disconnect(admin: SupabaseClient, workspaceId: string, provider: "google_play" | "discord", productId: string | null) {
+export async function disconnect(admin: SupabaseClient, workspaceId: string, provider: "google_play", productId: string | null) {
   let q = admin.from("integrations").select("id, secret_id").eq("workspace_id", workspaceId).eq("provider", provider);
   q = productId ? q.eq("product_id", productId) : q.is("product_id", null);
   const { data: row } = await q.maybeSingle();
@@ -76,66 +74,4 @@ export async function disconnect(admin: SupabaseClient, workspaceId: string, pro
   await admin.from("integrations").update({ status: "not_connected", secret_id: null, config: {}, external_account: null }).eq("id", row.id);
   if (row.secret_id) await admin.from("credential_secrets").delete().eq("id", row.secret_id);
   await resync(admin, workspaceId, productId);
-}
-
-// ------------------------------------------------------------------ Discord
-
-export function discordConfig() {
-  const env = serverEnv();
-  return env.DISCORD_CLIENT_ID && env.DISCORD_CLIENT_SECRET && env.DISCORD_BOT_TOKEN
-    ? { clientId: env.DISCORD_CLIENT_ID, clientSecret: env.DISCORD_CLIENT_SECRET, botToken: env.DISCORD_BOT_TOKEN }
-    : null;
-}
-
-/**
- * Completes Discord's bot authorization: the code exchange returns the server the
- * admin actually added the bot to. The guild id in the redirect URL is never
- * trusted (anyone could edit it to point at another customer's server).
- */
-export async function exchangeDiscordCode(code: string, redirectUri: string, fetchImpl: Fetch = fetch): Promise<{ id: string; name: string }> {
-  const cfg = discordConfig();
-  if (!cfg) throw new SourceError("auth", "Discord isn't configured on this server.");
-  const res = await fetchImpl(`${DISCORD_API}/oauth2/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: `Basic ${Buffer.from(`${cfg.clientId}:${cfg.clientSecret}`).toString("base64")}` },
-    body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: redirectUri }),
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!res.ok) throw new SourceError("auth", `Discord didn't confirm the installation (${res.status}). Try adding the bot again.`);
-  const body = (await res.json()) as { guild?: { id?: string; name?: string } };
-  if (!body.guild?.id || !/^\d{15,22}$/.test(body.guild.id)) throw new SourceError("auth", "Discord didn't say which server the bot was added to.");
-  return { id: body.guild.id, name: String(body.guild.name ?? "Discord server").slice(0, 100) };
-}
-
-/** Text and announcement channels the bot can see (type 0 and 5). */
-export async function discordChannels(guildId: string, fetchImpl: Fetch = fetch): Promise<Array<{ id: string; name: string }>> {
-  const cfg = discordConfig();
-  if (!cfg) throw new SourceError("auth", "Discord isn't configured on this server.");
-  const res = await fetchImpl(`${DISCORD_API}/guilds/${guildId}/channels`, { headers: { Authorization: `Bot ${cfg.botToken}` }, signal: AbortSignal.timeout(15_000) });
-  if (res.status === 403 || res.status === 404) throw new SourceError("auth", "SignalForge's bot isn't in that server any more.");
-  if (!res.ok) throw new SourceError("transient", `Discord request failed (${res.status}).`);
-  const list = (await res.json()) as Array<{ id: string; name: string; type: number; position?: number }>;
-  return list.filter((c) => c.type === 0 || c.type === 5).sort((a, b) => (a.position ?? 0) - (b.position ?? 0)).map((c) => ({ id: c.id, name: c.name.slice(0, 100) }));
-}
-
-export async function connectDiscord(admin: SupabaseClient, workspaceId: string, productId: string, userId: string, guild: { id: string; name: string }) {
-  const available = await discordChannels(guild.id);
-  await upsertIntegration(admin, {
-    workspace_id: workspaceId, product_id: productId, provider: "discord",
-    config: { guild_id: guild.id, guild_name: guild.name, channels: [], available_channels: available, mode: "all" },
-    secret_id: null, external_account: guild.name, connected_by: userId, scopes: ["bot: View Channels, Read Message History"],
-  });
-  return available.length;
-}
-
-/** Saves which channels to read; only channels the bot can see in the connected server are accepted. */
-export async function setDiscordChannels(admin: SupabaseClient, workspaceId: string, productId: string, channelIds: string[], mode: "all" | "keywords") {
-  const { data: row } = await admin.from("integrations").select("id, config").eq("workspace_id", workspaceId).eq("product_id", productId).eq("provider", "discord").maybeSingle();
-  const cfg = parseDiscordConfig(row?.config as Record<string, unknown> | null);
-  if (!row || !cfg) throw new SourceError("auth", "Discord isn't connected for this product.");
-  const available = await discordChannels(cfg.guild_id);
-  const chosen = available.filter((c) => channelIds.includes(c.id)).slice(0, 25);
-  await admin.from("integrations").update({ config: { ...(row.config as object), channels: chosen, available_channels: available, mode } }).eq("id", row.id);
-  await resync(admin, workspaceId, productId);
-  return chosen.length;
 }

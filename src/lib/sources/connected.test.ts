@@ -1,4 +1,4 @@
-// Connected sources (Google Play, Discord) against recorded-shape responses: no
+// Connected sources (Google Play) against recorded-shape responses: no
 // network, no real credentials. Not validated against the live APIs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -6,7 +6,6 @@ import { createVerify, generateKeyPairSync } from "node:crypto";
 
 import { SourceError } from "./errors.ts";
 import { createGooglePlayAdapter, parseServiceAccount, playPackage, serviceAccountAssertion, PLAY_SCOPE } from "./google-play.ts";
-import { createDiscordAdapter, DISCORD_BOT_PERMISSIONS, normalizeDiscordMessage, parseDiscordConfig, snowflakeAt } from "./discord.ts";
 import { buildQueryGroups, resolveEnablement } from "./query-groups.ts";
 import { createAdapters } from "./registry.ts";
 import type { SourceContext, SourceRequest } from "./types.ts";
@@ -102,61 +101,15 @@ test("Google Play: missing access and rejected keys are permanent errors with a 
     (e) => e instanceof SourceError && e.kind === "auth");
 });
 
-test("Discord: minimal bot permissions; config validation; snowflakes encode time", () => {
-  assert.equal(DISCORD_BOT_PERMISSIONS, "66560", "View Channels + Read Message History only");
-  assert.equal(parseDiscordConfig({ guild_id: "not-a-snowflake" }), null);
-  assert.deepEqual(parseDiscordConfig({ guild_id: "123456789012345678", channels: [{ id: "223456789012345678", name: "feedback" }, { id: "x" }] })?.channels, [{ id: "223456789012345678", name: "feedback" }]);
-  const s = BigInt(snowflakeAt(new Date("2026-10-10T00:00:00Z")));
-  assert.equal(Number((s >> 22n) + 1420070400000n), Date.parse("2026-10-10T00:00:00Z"));
-});
-
-test("Discord: reads each chosen channel forward from the window start; skips bots and system messages; links to the message", async () => {
-  const cfg = { guild_id: "123456789012345678", channels: [{ id: "223456789012345678", name: "feedback" }] };
-  const msg = (id: string, iso: string, extra: Record<string, unknown> = {}) => ({ id, timestamp: iso, type: 0, content: `message ${id}`, author: { id: "u" + id, username: "user" + id }, ...extra });
-  const { ctx, calls } = ctxWith((u) => {
-    assert.equal(u.pathname, "/api/v10/channels/223456789012345678/messages");
-    return Response.json([
-      msg("1300000000000000003", "2026-10-12T10:00:00Z", { reactions: [{ count: 2 }], message_reference: { message_id: "1300000000000000001" } }),
-      msg("1300000000000000002", "2026-10-11T10:00:00Z", { author: { id: "b", username: "bot", bot: true } }),
-      msg("1300000000000000001", "2026-10-11T09:00:00Z", { type: 7, content: "" }),
-    ]);
-  });
-  const r = await createDiscordAdapter("bot-token").searchMentions({ terms: ["Acme"], window: WINDOW, maxPages: 5, target: { connection: { secret: null, config: cfg } } }, ctx);
-  assert.equal(calls[0]!.headers?.Authorization, "Bot bot-token");
-  assert.equal(new URL(calls[0]!.url).searchParams.get("after"), snowflakeAt(WINDOW.since));
-  assert.equal(calls.length, 1, "a short page means the channel is read to the end");
-  assert.deepEqual(r.items.map((i) => i.externalId), ["msg:1300000000000000003"]);
-  const i = r.items[0]!;
-  assert.equal(i.sourceUrl, "https://discord.com/channels/123456789012345678/223456789012345678/1300000000000000003");
-  assert.equal(i.parentExternalId, "msg:1300000000000000001");
-  assert.equal(i.community, "#feedback");
-  assert.equal(i.engagementScore, 2);
-  assert.ok(i.directlyAbout, "'all messages' mode: messages in the chosen channels are about the product");
-  assert.equal(normalizeDiscordMessage(msg("9", "2026-10-12T00:00:00Z"), cfg.guild_id, cfg.channels[0]!, false, "Acme")?.directlyAbout, undefined,
-    "'keywords' mode leaves matching to the usual keyword rules");
-});
-
-test("Discord: text missing everywhere means the Message Content intent is off — said plainly, nothing stored", async () => {
-  const cfg = { guild_id: "123456789012345678", channels: [{ id: "223456789012345678", name: "general" }] };
-  const { ctx } = ctxWith(() => Response.json([{ id: "1300000000000000005", timestamp: "2026-10-12T10:00:00Z", type: 0, content: "", author: { id: "u", username: "u" } }]));
-  await assert.rejects(createDiscordAdapter("t").searchMentions({ terms: [], window: WINDOW, maxPages: 1, target: { connection: { secret: null, config: cfg } } }, ctx),
-    (e) => e instanceof SourceError && e.kind === "auth" && /Message Content intent/.test(e.message));
-  const forbidden = ctxWith(() => new Response("{}", { status: 403 }));
-  await assert.rejects(createDiscordAdapter("t").searchMentions({ terms: [], window: WINDOW, maxPages: 1, target: { connection: { secret: null, config: cfg } } }, forbidden.ctx),
-    (e) => e instanceof SourceError && e.kind === "auth" && /#general/.test(e.message));
-  assert.equal(createDiscordAdapter(undefined).configured().ok, false);
-});
-
 test("planning: connected sources only run once connected, with one product search each", () => {
-  const adapters = createAdapters({ discordBotToken: "t" });
+  const adapters = createAdapters({});
   const product = { id: "p1", workspace_id: "w", website_url: null, app_store_url: null, play_store_url: "https://play.google.com/store/apps/details?id=com.acme.app", archived_at: null };
   const off = resolveEnablement(adapters, product, new Map(), 0, false);
   assert.match(off.find((e) => e.id === "google_play")!.reason!, /Connect it/);
-  assert.match(off.find((e) => e.id === "discord")!.reason!, /Connect it/);
-  const on = resolveEnablement(adapters, product, new Map(), 0, false, new Set(["google_play", "discord"]));
-  assert.ok(on.find((e) => e.id === "google_play")!.enabled && on.find((e) => e.id === "discord")!.enabled);
+  const on = resolveEnablement(adapters, product, new Map(), 0, false, new Set(["google_play"]));
+  assert.ok(on.find((e) => e.id === "google_play")!.enabled);
   const noUrl = resolveEnablement(adapters, { ...product, play_store_url: null }, new Map(), 0, false, new Set(["google_play"]));
   assert.match(noUrl.find((e) => e.id === "google_play")!.reason!, /Google Play URL/);
   const groups = buildQueryGroups(product, [], on, adapters, { planMaxSearches: 2, stackExchangeKey: false });
-  assert.deepEqual(groups.filter((g) => g.provider === "google_play" || g.provider === "discord").map((g) => g.query).sort(), ["discord:p1", "play:com.acme.app"]);
+  assert.deepEqual(groups.filter((g) => g.provider === "google_play").map((g) => g.query), ["play:com.acme.app"]);
 });

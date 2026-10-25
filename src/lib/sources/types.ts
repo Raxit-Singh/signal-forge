@@ -6,7 +6,7 @@ export type LegacySourceId = "hackernews" | "github" | "stackexchange" | "youtub
 /** Free official sources added in Milestone 2.5. */
 export type OfficialSourceId = LegacySourceId | "bluesky" | "dev" | "app_store" | ConnectedSourceId;
 /** Official sources that read the customer's own account, through a connection they authorize. */
-export type ConnectedSourceId = "google_play" | "discord";
+export type ConnectedSourceId = "google_play";
 /** Platforms collected through API Direct (paid, pay-as-you-go). */
 export type PaidSourceId =
   | "reddit" | "x" | "linkedin" | "tiktok" | "instagram" | "facebook" | "substack" | "web" | "news" | "trustpilot";
@@ -173,7 +173,7 @@ export type Configured = { ok: true } | { ok: false; reason: string };
 /**
  * Public, keyword-searchable sources (no customer authorization needed).
  * Sources that need a customer's account (App Store Connect, Google Play,
- * Discord, GitHub App repositories) implement AuthorizedSourceAdapter later.
+ * GitHub App repositories) implement AuthorizedSourceAdapter later.
  */
 export interface QueryCapabilities {
   /** Boolean OR between terms, and its syntax. */

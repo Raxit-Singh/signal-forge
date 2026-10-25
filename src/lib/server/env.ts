@@ -41,10 +41,6 @@ const serverSchema = z.object({
   // Stripe (subscriptions). Test keys (sk_test_…) until launch. The webhook secret is per endpoint (whsec_…).
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
-  // Discord bot (Discord source): SignalForge's application. Customers install the bot into their server.
-  DISCORD_CLIENT_ID: z.string().optional(),
-  DISCORD_CLIENT_SECRET: z.string().optional(),
-  DISCORD_BOT_TOKEN: z.string().optional(),
   // SignalForge staff (comma-separated verified emails): the internal cost dashboard at /admin/costs.
   SIGNALFORGE_STAFF_EMAILS: z.string().default(""),
 });

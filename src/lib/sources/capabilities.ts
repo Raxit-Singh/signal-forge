@@ -41,8 +41,6 @@ export const CAPS = {
   appStoreReviews: { ...base, dateFilter: "none", sortNewest: true, pagination: "page", maxPagesPerRun: 2 },
   // Play Developer API reviews.list: newest first, ~last 7 days only, page tokens.
   googlePlayReviews: { ...base, dateFilter: "none", sortNewest: true, pagination: "cursor", maxPagesPerRun: 5 },
-  // Discord channel history (bot): newest first per channel, 100 per page.
-  discordMessages: { ...base, dateFilter: "none", sortNewest: true, pagination: "cursor", maxPagesPerRun: 5 },
   // Milestone 2 sources. Each adapter builds its own query from a group's terms.
   // Hacker News (Algolia) and Stack Exchange: one search per keyword, all words required.
   hackernews: { ...base, maxQueryLength: 256, dateFilter: "range", sortNewest: true, pagination: "page", maxPagesPerRun: 5 },

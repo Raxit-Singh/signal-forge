@@ -225,12 +225,12 @@ function Platforms({ d }: { d: OverviewData }) {
           </div>
         </div>
       ))}
-      <Link href="/integrations"
+      <Link href="/competitors"
         className={cn("press rise grid place-content-center gap-1 rounded-[18px] border border-dashed p-4 text-center text-[13px] text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground",
           d.platforms.length % 2 === 0 && "hidden xl:grid")}
         style={vars({ "--d": "460ms" })}>
         <span className="mx-auto mb-1 flex size-9 items-center justify-center rounded-full border"><Plus className="size-4" aria-hidden /></span>
-        Add another platform<span className="text-[11px] text-muted-foreground/80">or a competitor to compare</span>
+        Compare with a competitor<span className="text-[11px] text-muted-foreground/80">See who owns the conversation</span>
       </Link>
     </section>
   );

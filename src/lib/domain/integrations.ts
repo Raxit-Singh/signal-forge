@@ -3,7 +3,7 @@
 
 export type IntegrationProvider =
   | "github" | "youtube" | "hackernews" | "stackexchange"
-  | "app_store_connect" | "google_play" | "discord"
+  | "app_store_connect" | "google_play"
   | "reddit" | "x" | "instagram" | "linkedin" | "facebook" | "slack" | "product_hunt"
   | "bluesky" | "dev" | "app_store" | "threads" | "tiktok" | "substack" | "web" | "news" | "trustpilot";
 
@@ -106,17 +106,6 @@ export const INTEGRATIONS: readonly IntegrationInfo[] = [
     dataAccessed: "Reviews of the Android app on your product (its Google Play URL), from your own Play Console.",
     permissions: "A Google Cloud service account you create and invite in Play Console with permission to view app information; read-only API scope.",
     limits: "Google's Play Developer API only returns reviews with text from about the last week, so history starts when you connect.",
-  },
-  {
-    provider: "discord",
-    name: "Discord",
-    availability: "unverified",
-    publicDiscovery: false,
-    requiresAuthorization: true,
-    readOnly: true,
-    dataAccessed: "Messages in the channels of your server that you choose (all messages, or only those with your keywords).",
-    permissions: "A server admin adds SignalForge's bot with View Channels and Read Message History only — it can't post, react or moderate.",
-    limits: "Discord has no search for bots, so the bot reads the chosen channels' history. Reading message text needs Discord's Message Content intent (Discord approval once the bot is in 100+ servers).",
   },
   {
     provider: "bluesky",

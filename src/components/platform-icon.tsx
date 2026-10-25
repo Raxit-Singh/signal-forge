@@ -1,5 +1,5 @@
 import {
-  AtSign, Cloud, Code, Facebook, Github, Globe, Instagram, Layers, Linkedin, MessageCircle, Music2, Newspaper, Play, Rss,
+  Cloud, Code, Facebook, Github, Globe, Instagram, Layers, Linkedin, MessageCircle, Music2, Newspaper, Play, Rss,
   Smartphone, Star, Twitter, Youtube, type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -25,7 +25,6 @@ const ICONS: Record<string, { icon: LucideIcon; color: string }> = {
   web: { icon: Globe, color: "#4285f4" },
   news: { icon: Newspaper, color: "#5f6368" },
   trustpilot: { icon: Star, color: "#00b67a" },
-  discord: { icon: AtSign, color: "#5865f2" },
 };
 
 export function PlatformIcon({ id, className }: { id: string; className?: string }) {

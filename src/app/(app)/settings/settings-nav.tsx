@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 const ITEMS = [
   { href: "/settings/workspace", label: "Workspace" },
   { href: "/settings/products", label: "Products" },
+  { href: "/settings/connections", label: "Connections" },
   { href: "/settings/ai", label: "SignalForge Intelligence" },
   { href: "/settings/agent", label: "Claude" },
   { href: "/settings/billing", label: "Plan & billing" },

@@ -25,7 +25,7 @@ export { INHERENTLY_PARTIAL };
 /** Never check less often than this, however quiet a platform looks (missed-mention safeguard). */
 export const PLATFORM_MAX_INTERVAL: Record<PublicSourceId, number> = {
   hackernews: 720, github: 720, stackexchange: 720, bluesky: 720,
-  youtube: 1440, dev: 1440, app_store: 1440, google_play: 1440, discord: 720,
+  youtube: 1440, dev: 1440, app_store: 1440, google_play: 1440,
   reddit: 1440, x: 1440, linkedin: 1440, tiktok: 1440, instagram: 1440, facebook: 1440,
   substack: 1440, web: 1440, news: 1440, trustpilot: 1440,
 };

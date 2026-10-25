@@ -13,7 +13,7 @@ const PUBLIC_PREFIXES = ["/login", "/signup", "/forgot-password", "/auth", "/leg
 /**
  * Content Security Policy with a fresh nonce per request: only Next's own scripts
  * (which carry the nonce) run. Inline style attributes are allowed (charts use
- * them); forms may only lead to SignalForge and the sign-in / payment / Discord
+ * them); forms may only lead to SignalForge and the sign-in / payment
  * pages it redirects to.
  */
 function contentSecurityPolicy(nonce: string): string {
@@ -30,7 +30,7 @@ function contentSecurityPolicy(nonce: string): string {
     "frame-src 'none'",
     "object-src 'none'",
     "base-uri 'self'",
-    `form-action 'self' ${supabase} https://accounts.google.com https://github.com https://x.com https://twitter.com https://api.x.com https://api.twitter.com https://checkout.stripe.com https://billing.stripe.com https://discord.com`,
+    `form-action 'self' ${supabase} https://accounts.google.com https://github.com https://x.com https://twitter.com https://api.x.com https://api.twitter.com https://checkout.stripe.com https://billing.stripe.com`,
     "frame-ancestors 'none'",
     ...(dev ? [] : ["upgrade-insecure-requests"]),
   ].join("; ");

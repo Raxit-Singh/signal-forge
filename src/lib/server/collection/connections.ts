@@ -4,18 +4,16 @@ import { openCredential } from "@/lib/server/credentials";
 import type { ConnectedSourceId } from "@/lib/sources/types";
 
 /**
- * Customer connections for connected sources (Google Play: per workspace;
- * Discord: per product). Only "connected" rows count.
+ * Customer connections for connected sources (Google Play: per workspace). Only
+ * "connected" rows count.
  */
-const SCOPE: Record<ConnectedSourceId, "workspace" | "product"> = { google_play: "workspace", discord: "product" };
+const SCOPE: Record<ConnectedSourceId, "workspace" | "product"> = { google_play: "workspace" };
 
 async function rowFor(admin: SupabaseClient, provider: ConnectedSourceId, productId: string, workspaceId: string) {
   let q = admin.from("integrations").select("id, config, secret_id, status").eq("workspace_id", workspaceId).eq("provider", provider).eq("status", "connected");
   q = SCOPE[provider] === "product" ? q.eq("product_id", productId) : q.is("product_id", null);
   const { data } = await q.maybeSingle();
   const row = data as { id: string; config: Record<string, unknown>; secret_id: string | null } | null;
-  // Discord counts as connected once at least one channel is chosen.
-  if (row && provider === "discord" && !(Array.isArray(row.config?.channels) && row.config.channels.length > 0)) return null;
   return row;
 }
 

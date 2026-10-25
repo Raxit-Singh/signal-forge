@@ -99,7 +99,6 @@ export function buildQueryGroups(
         const pkg = playPackage(product.play_store_url);
         const query = e.id === "trustpilot" ? domain
           : e.id === "google_play" ? (pkg ? `play:${pkg}` : null)
-          : e.id === "discord" ? `discord:${product.id}`
           : app ? `app:${app.id}:${app.country}` : null;
         if (!query) continue;
         groups.push({
