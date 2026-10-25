@@ -45,12 +45,21 @@ export async function getCompetitorComparison(
 
   const active = competitors.filter((c) => c.enabled && c.trackingProductId);
   const ids = [product.id, ...active.map((c) => c.trackingProductId!)];
-  const { data: queries } = await sb.from("monitoring_queries").select("product_id, provider").in("product_id", ids).eq("enabled", true);
+  const [{ data: queries }, { data: history }] = await Promise.all([
+    sb.from("monitoring_queries").select("product_id, provider").in("product_id", ids).eq("enabled", true),
+    sb.from("products").select("id, history_start").in("id", ids),
+  ]);
   const sourcesOf = (id: string) => [...new Set((queries ?? []).filter((q) => q.product_id === id).map((q) => q.provider as string))];
+  // Covered since: when tracking began, or earlier when a historical search reached further back.
+  const historyStart = new Map((history ?? []).filter((h) => h.history_start).map((h) => [h.id as string, new Date(h.history_start as string)]));
+  const since = (id: string, tracked: string) => {
+    const t = new Date(tracked), h = historyStart.get(id);
+    return h && h < t ? h : t;
+  };
 
   const entities: Entity[] = [
-    { id: product.id, name: product.name, isProduct: true, trackedSince: new Date(product.createdAt), sources: sourcesOf(product.id) },
-    ...active.map((c) => ({ id: c.trackingProductId!, name: c.name, isProduct: false, trackedSince: new Date(c.trackedSince!), sources: sourcesOf(c.trackingProductId!) })),
+    { id: product.id, name: product.name, isProduct: true, trackedSince: since(product.id, product.createdAt), sources: sourcesOf(product.id) },
+    ...active.map((c) => ({ id: c.trackingProductId!, name: c.name, isProduct: false, trackedSince: since(c.trackingProductId!, c.trackedSince!), sources: sourcesOf(c.trackingProductId!) })),
   ];
   const fromDay = zonedDayStart(range.from, tz);
   const window = comparisonWindow(fromDay, range.to, entities);

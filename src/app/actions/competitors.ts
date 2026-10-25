@@ -7,7 +7,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { uuidSchema } from "@/lib/validation/schemas";
 import { planLimitMessage } from "@/lib/domain/plans";
 import { failure, invalid, logServerError, type ActionState } from "@/lib/server/action-result";
-import { AuthorizationError, requireWorkspaceRole } from "@/lib/server/session";
+import { AuthorizationError, getWorkspacePlan, requireWorkspaceRole } from "@/lib/server/session";
+import { startBackfill } from "@/lib/server/collection/backfill";
 import { COMPETITOR_MAX_KEYWORDS, syncOptimizedQueries } from "@/lib/server/collection/query-sync";
 
 const keywordList = z.string().max(400).optional().transform((v) =>
@@ -50,7 +51,21 @@ async function authorize(productId: string) {
   } catch (e) {
     return { error: failure(e instanceof AuthorizationError ? e.message : "Not allowed.") };
   }
-  return { supabase };
+  return { supabase, workspaceId: product.workspace_id as string };
+}
+
+/**
+ * Optional history for a new competitor: the last 30 days (or the plan's history window
+ * if shorter), searched like a product's historical search. It uses the same monthly
+ * mention allowance, so the form says how much is left before the user opts in.
+ */
+async function fetchCompetitorHistory(trackingProductId: string, workspaceId: string, userId: string | null) {
+  const admin = createAdminClient();
+  const { plan } = await getWorkspacePlan(workspaceId);
+  const days = Math.min(30, plan.historyDays);
+  if (days <= 0) return;
+  const end = new Date();
+  await startBackfill(admin, { productId: trackingProductId, workspaceId, userId, mode: "30d", start: new Date(end.getTime() - days * 86_400_000), end });
 }
 
 export async function addCompetitorAction(_: ActionState, formData: FormData): Promise<ActionState> {
@@ -66,9 +81,26 @@ export async function addCompetitorAction(_: ActionState, formData: FormData): P
   });
   if (error || !id) return writeError(error ?? { message: "no id" }, "addCompetitor");
   const { data: c } = await auth.supabase.from("competitors").select("tracking_product_id").eq("id", id as string).maybeSingle();
-  await resync((c?.tracking_product_id as string | null) ?? null);
+  const trackingId = (c?.tracking_product_id as string | null) ?? null;
+  await resync(trackingId);
+  const withHistory = formData.get("history") === "30d" && trackingId !== null;
+  if (withHistory) {
+    try {
+      const { data: { user } } = await auth.supabase.auth.getUser();
+      await fetchCompetitorHistory(trackingId, auth.workspaceId!, user?.id ?? null);
+    } catch (e) {
+      logServerError("competitorHistory", e);
+      revalidatePath("/competitors");
+      return { status: "success", message: `Tracking ${parsed.data.name}. The last 30 days couldn't be fetched; new mentions still appear as checks finish.` };
+    }
+  }
   revalidatePath("/competitors");
-  return { status: "success", message: `Tracking ${parsed.data.name}. Mentions appear as its first checks finish.` };
+  return {
+    status: "success",
+    message: withHistory
+      ? `Tracking ${parsed.data.name}. Fetching the last 30 days now; mentions appear as the searches finish.`
+      : `Tracking ${parsed.data.name}. Mentions appear as its first checks finish.`,
+  };
 }
 
 export async function updateCompetitorAction(_: ActionState, formData: FormData): Promise<ActionState> {

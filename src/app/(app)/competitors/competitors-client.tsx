@@ -64,13 +64,19 @@ export function VolumeChart({ rows, entities }: { rows: Array<Record<string, num
   );
 }
 
-export function AddCompetitorForm({ productId, disabledReason }: { productId: string; disabledReason: string | null }) {
+export function AddCompetitorForm({ productId, disabledReason, keywordsLeft, mentionsLeft, historyDays }: {
+  productId: string; disabledReason: string | null; keywordsLeft: number | null; mentionsLeft: number | null; historyDays: number;
+}) {
   const [state, action] = useFormAction(addCompetitorAction, idle);
+  const days = Math.min(30, historyDays);
   return (
     <form action={action} className="grid gap-4" data-testid="add-competitor">
       <div className="grid gap-1">
         <h3 className="text-[15px] font-medium">Add a competitor</h3>
-        <p className="text-[12px] text-muted-foreground">Searched on the same sources as your product, from today.</p>
+        <p className="text-[12px] text-muted-foreground">
+          Searched on the same sources as your product. Its name uses one of your plan&apos;s keywords, and each extra keyword one more
+          {keywordsLeft !== null && <> · <span className="text-foreground">{keywordsLeft} keyword{keywordsLeft === 1 ? "" : "s"} left</span></>}.
+        </p>
       </div>
       <input type="hidden" name="productId" value={productId} />
       <div className="grid gap-3 sm:grid-cols-3">
@@ -78,6 +84,18 @@ export function AddCompetitorForm({ productId, disabledReason }: { productId: st
         <Field name="websiteUrl" label="Website" state={state} optional type="url" placeholder="https://" />
         <Field name="keywords" label="Extra keywords" state={state} optional placeholder="acme.io, Acme app" hint="Up to 2, comma-separated. The name is always searched." />
       </div>
+      {days > 0 && (
+        <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-foreground/[0.08] bg-foreground/[0.02] p-3.5 text-[13px]">
+          <input type="checkbox" name="history" value="30d" className="mt-0.5 size-4 accent-[var(--primary)]" />
+          <span className="grid gap-0.5">
+            <span className="font-medium">Also fetch the last {days} days</span>
+            <span className="text-[12px] text-muted-foreground">
+              Without this, the competitor starts from today and comparisons begin today. Fetched history uses your monthly mention allowance
+              {mentionsLeft !== null && <> — <span className="text-foreground">{mentionsLeft.toLocaleString("en-US")} left this period</span></>}; the search pauses, keeping what it found, if it runs out.
+            </span>
+          </span>
+        </label>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <SubmitButton size="sm" pendingLabel="Adding…" disabled={Boolean(disabledReason)}>Add competitor</SubmitButton>
         {disabledReason && <span className="text-xs text-muted-foreground">{disabledReason}</span>}

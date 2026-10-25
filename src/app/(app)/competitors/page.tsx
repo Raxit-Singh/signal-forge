@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { PackagePlus, Plus, Swords } from "lucide-react";
 import { CountUp } from "@/components/motion";
 import { createClient } from "@/lib/supabase/server";
-import { getActiveProduct, getWorkspacePlan, hasRole, requireWorkspace } from "@/lib/server/session";
+import { getActiveProduct, getWorkspacePlan, getWorkspaceUsage, hasRole, requireWorkspace } from "@/lib/server/session";
 import { getCompetitorComparison } from "@/lib/server/analytics/competitors";
 import { MIN_CLASSIFIED_FOR_SENTIMENT } from "@/lib/analytics/competitors";
 import { parseRange } from "@/lib/domain/date-range";
@@ -38,9 +38,13 @@ export default async function CompetitorsPage({ searchParams }: { searchParams: 
   const sp = await searchParams;
   const range = parseRange(sp, new Date());
   const supabase = await createClient();
-  const [{ data: p }, { plan }] = await Promise.all([
+  const [{ data: p }, { plan }, usage, { count: keywordsUsed }] = await Promise.all([
     supabase.from("products").select("created_at").eq("id", product.id).single(),
     getWorkspacePlan(workspace.id),
+    getWorkspaceUsage(workspace.id),
+    // Keywords in use across the workspace's products and competitors (one shared allowance).
+    supabase.from("product_aliases").select("id, products!inner(archived_at)", { count: "exact", head: true })
+      .eq("workspace_id", workspace.id).eq("enabled", true).is("products.archived_at", null),
   ]);
   const d = await getCompetitorComparison(supabase, { id: product.id, name: product.name, createdAt: p?.created_at as string }, range, tz);
   const canManage = hasRole(workspace.role, "admin");
@@ -49,9 +53,11 @@ export default async function CompetitorsPage({ searchParams }: { searchParams: 
   const RIVALS = ["var(--entity-2)", "var(--entity-4)", "var(--entity-1)", "var(--entity-5)", "var(--entity-6)"];
   const colorOf = new Map(d.entities.filter((e) => e.id !== product.id).map((e, i) => [e.id, RIVALS[i % RIVALS.length]!]));
   colorOf.set(product.id, "var(--signal)");
+  const keywordsLeft = Math.max(0, plan.maxKeywords - (keywordsUsed ?? 0));
   const addBlocked = limit === 0
     ? `Your ${plan.name} plan doesn't include competitor tracking.`
-    : d.competitors.length >= limit ? `Your ${plan.name} plan includes ${limit} competitor${limit === 1 ? "" : "s"} per product.` : null;
+    : d.competitors.length >= limit ? `Your ${plan.name} plan includes ${limit} competitor${limit === 1 ? "" : "s"} per product.`
+    : keywordsLeft < 1 ? `All ${plan.maxKeywords} of your ${plan.name} plan's keywords are in use. A competitor's name needs one.` : null;
   const active = d.competitors.filter((c) => c.enabled);
 
   const you = d.voice.find((v) => v.isProduct);
@@ -251,7 +257,8 @@ export default async function CompetitorsPage({ searchParams }: { searchParams: 
           )}
           {canManage ? (
             <div id="add-competitor" className="panel scroll-mt-20 rounded-[18px] p-5">
-              <AddCompetitorForm productId={product.id} disabledReason={addBlocked} />
+              <AddCompetitorForm productId={product.id} disabledReason={addBlocked} keywordsLeft={limit > 0 ? keywordsLeft : null}
+                mentionsLeft={usage?.mentionsRemaining ?? null} historyDays={plan.historyDays} />
             </div>
           ) : d.competitors.length === 0 && <p className="text-[13px] text-muted-foreground">No competitors yet. Ask a workspace admin to add some.</p>}
         </section>

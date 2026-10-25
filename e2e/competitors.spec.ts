@@ -33,7 +33,7 @@ test("add → searches created → share of voice, volume and sentiment on commo
   });
   await page.goto(await signInPath(user!.email, "/competitors"));
   const main = page.locator("#main");
-  await expect(main.getByText("0 of 3 used")).toBeVisible();
+  await expect(main.getByText(/0 of \d+ used/)).toBeVisible();
 
   // Keyword cap: the name plus at most 2.
   const form = main.getByTestId("add-competitor");
@@ -41,14 +41,15 @@ test("add → searches created → share of voice, volume and sentiment on commo
   await form.getByLabel(/Extra keywords/).fill("zorblax.io, Zorblax app, zorblax hq");
   await form.getByRole("button", { name: "Add competitor" }).click();
   await expect(form.getByText("Up to 2 extra keywords")).toBeVisible();
-  await form.getByLabel(/Extra keywords/).fill("zorblax.io, Zorblax app");
+  // Keywords are shared with the product (Pro: 3 in total), so the name plus one extra.
+  await form.getByLabel(/Extra keywords/).fill("zorblax.io");
   await form.getByRole("button", { name: "Add competitor" }).click();
   await expect(form.getByText("Tracking Zorblax Metrics")).toBeVisible();
 
   const comp = main.getByTestId("competitor");
   await expect(comp).toHaveCount(1);
   await expect(comp).toContainText("Tracking");
-  await expect(comp).toContainText("“Zorblax Metrics”, “zorblax.io”, “Zorblax app”");
+  await expect(comp).toContainText("“Zorblax Metrics”, “zorblax.io”");
 
   const [c] = await adminSelect<Array<{ id: string; tracking_product_id: string }>>(`competitors?product_id=eq.${ids.productId}&select=id,tracking_product_id`);
   const trackingId = c!.tracking_product_id;

@@ -27,10 +27,12 @@ export async function keywordAllowanceFor(sb: SupabaseClient, productId: string,
   const own = (products ?? []).filter((p) => !p.competitor_of);
   const counts = new Map<string, number>();
   for (const a of aliases ?? []) counts.set(a.product_id as string, (counts.get(a.product_id as string) ?? 0) + 1);
+  // Competitors' keywords come out of the same plan allowance (enforced in the database too).
+  const competitorKeywords = (products ?? []).filter((p) => p.competitor_of).reduce((t, p) => t + (counts.get(p.id as string) ?? 0), 0);
   return productKeywordAllowance(
     productId,
     own.map((p) => ({ id: p.id as string, createdAt: p.created_at as string, activeKeywords: counts.get(p.id as string) ?? 0 })),
-    maxKeywords,
+    Math.max(own.length > 0 ? 1 : 0, maxKeywords - competitorKeywords),
   );
 }
 
