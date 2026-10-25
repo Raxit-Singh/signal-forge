@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, ChevronDown, Minus, PackagePlus, Pause } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, ChevronDown, Minus, PackagePlus, Pause } from "lucide-react";
 import { StopScan } from "@/components/scan/stop-scan";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveProduct, getWorkspaceUsage, hasRole, requireWorkspace } from "@/lib/server/session";
@@ -18,8 +18,8 @@ import { Badge } from "@/components/ui/primitives";
 import { CountUp } from "@/components/motion";
 import { getKeywordRankings, type KeywordRankings } from "@/lib/server/collection/keyword-rankings";
 import { parseRange } from "@/lib/domain/date-range";
-import { COVERAGE_LABEL, type CoverageStatus, type KeywordPerformance } from "@/lib/analytics/keyword-ranking";
-import { RankingTable, SourceToggle, type RankingRow } from "./monitoring-client";
+import type { KeywordPerformance } from "@/lib/analytics/keyword-ranking";
+import { RankingTable, type RankingRow } from "./monitoring-client";
 
 export const metadata: Metadata = { title: "Monitoring" };
 
@@ -114,28 +114,16 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
   const now = requestTime();
   const runnable = (p: PlatformMonitoring) => p.groups > 0 && p.state !== "not_configured" && p.state !== "not_enabled";
   const active = o.platforms.filter(runnable);
-  const available = o.platforms.filter((p) => !runnable(p));
-  // Platforms the user can switch on (shown compactly in Advanced details).
-  const switchable = available.filter((p) => p.toggle && p.toggle.allowed);
   // One identity colour per platform, in mention order (same palette as Trends).
   const ENTITY = ["var(--entity-1)", "var(--entity-2)", "var(--entity-3)", "var(--entity-4)", "var(--entity-5)", "var(--entity-6)"];
   const colorOf = new Map(platformOrder(k).map((id, i) => [id, ENTITY[i] ?? "color-mix(in oklab, var(--foreground) 25%, transparent)"]));
   const paidNote = o.paid.allowanceUsedPercent !== null ? `Paid-source allowance used this month: ${o.paid.allowanceUsedPercent}%.` : null;
   const rows = active.map((p) => toRow(p, now, o.plan.name, o.plan.minIntervalMinutes, paidNote, at));
   const eff = o.summary.efficiency;
-  const conflicts = active.filter((p) => p.keywordConflict).map((p) => ({ id: p.id, text: p.keywordConflict! }));
   const pausedKeywords = o.keywordCoverage.filter((k) => k.paused).length;
 
   const lastScan = active.map((p) => p.lastScanAt).filter((x): x is string => Boolean(x)).sort().at(-1) ?? null;
   const nextScan = active.map((p) => p.nextScanAt).filter((x): x is string => Boolean(x)).sort()[0] ?? null;
-  const unsearchable = o.keywordCoverage.flatMap((kw) => kw.platforms.filter((p) => p.intervalMinutes === null).map((p) => `“${kw.term}” can't be searched on ${p.name}: ${p.detail}`));
-  const warnings = [
-    ...(o.allowancePausedUntil ? [`This month's mention allowance is used up: paid platforms are paused and free ones are checked at most daily until ${at(o.allowancePausedUntil)}. New mentions are held, not discarded.`] : []),
-    ...active.filter((p) => p.state === "failing" || p.state === "partial").map((p) => `${p.name}: ${p.stateDetail ?? (p.state === "failing" ? "checks are failing" : "not every result could be read")}`),
-    ...conflicts.map((c) => c.text),
-    ...(pausedKeywords > 0 ? [`${pausedKeywords} keyword${pausedKeywords === 1 ? " is" : "s are"} paused: over your ${o.plan.name} plan's keyword allowance (${o.plan.maxKeywords} active per workspace).`] : []),
-    ...unsearchable,
-  ];
   const monitoredKeywords = o.keywordCoverage.filter((kw) => !kw.paused).length;
   const periodLabel = range.label.toLowerCase();
 
@@ -164,13 +152,12 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
               {canEdit && <StopScan productId={product.id} productName={product.name} stopped={Boolean(stoppedAt)} />}
             </div>
           </div>
-          <section aria-labelledby="summary" className="rise grid grid-cols-2 gap-3 self-end sm:grid-cols-3 xl:grid-cols-2" style={{ ["--d" as string]: "120ms" }}>
+          <section aria-labelledby="summary" className="rise grid grid-cols-2 gap-3 self-end sm:grid-cols-4 xl:grid-cols-2" style={{ ["--d" as string]: "120ms" }}>
             <h2 id="summary" className="sr-only">Monitoring summary</h2>
             <Stat i={0} label="Active platforms" value={String(active.length)} hint="Searched for this product" />
             <Stat i={1} label="Keywords monitored" value={String(monitoredKeywords)} hint={pausedKeywords ? `${pausedKeywords} paused` : "All active"} />
             <Stat i={2} label="Last scan" value={lastScan ? <RelativeTime value={new Date(lastScan).toISOString()} /> : "Not yet"} hint={lastScan ? at(lastScan) : undefined} />
             <Stat i={3} label="Next scan" value={stoppedAt ? "Stopped" : !nextScan ? "—" : <RelativeTime value={new Date(nextScan).toISOString()} dueLabel="Due now" />} hint={nextScan ? at(nextScan) : undefined} />
-            <Stat i={4} label="Coverage warnings" value={String(warnings.length)} hint={warnings.length ? "See below" : "None"} warn={warnings.length > 0} className="col-span-2 sm:col-span-1 xl:col-span-2" />
           </section>
         </section>
 
@@ -182,31 +169,19 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
           </div>
         )}
 
-        {warnings.length > 0 && (
-          <div className="rounded-2xl border border-warning/40 bg-warning/5 p-4 text-[13px]" role="note" aria-labelledby="warnings-title">
-            <p id="warnings-title" className="mb-1 flex items-center gap-1.5 font-medium"><AlertTriangle className="size-4 text-warning" aria-hidden />Coverage warnings</p>
-            <ul className="grid gap-1 text-xs" aria-label="Coverage warnings">
-              {warnings.slice(0, 8).map((w) => <li key={w}>{w}</li>)}
-              {warnings.length > 8 && <li className="text-muted-foreground">…and {warnings.length - 8} more in Advanced details.</li>}
-            </ul>
-            {o.allowancePausedUntil && <Link href="/settings/billing" className="mt-1 inline-block text-xs underline">Plan &amp; usage</Link>}
-          </div>
-        )}
-
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-12">
-          <section className="panel rise grid content-start gap-4 rounded-[18px] p-5 xl:col-span-7" style={{ ["--d" as string]: "200ms" }}>
+        <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 xl:grid-cols-12">
+          <section className="panel rise grid min-w-0 content-start gap-4 rounded-[18px] p-5 xl:col-span-7" style={{ ["--d" as string]: "200ms" }}>
             <div className="grid gap-1">
               <h2 className="text-[13px] text-muted-foreground">Keyword performance</h2>
               <p className="text-[12px] text-muted-foreground/80">
                 Relevant mentions per keyword, {periodLabel}, and which platforms they come from. Open a keyword for its platform ranking.
-                {k.observedOnly && " Based on observed mentions: some platforms are still being scanned or weren't fully covered."}
               </p>
             </div>
             {k.keywords.length === 0 ? (
               <p className="text-[13px] text-muted-foreground">No keywords yet. Add them in <Link href="/settings/products" className="underline">product settings</Link>.</p>
             ) : <KeywordList rows={k.keywords} colorOf={colorOf} />}
           </section>
-          <section className="panel rise grid content-start gap-4 rounded-[18px] p-5 xl:col-span-5" style={{ ["--d" as string]: "260ms" }}>
+          <section className="panel rise grid min-w-0 content-start gap-4 rounded-[18px] p-5 xl:col-span-5" style={{ ["--d" as string]: "260ms" }}>
             <div className="grid gap-1">
               <h2 className="text-[13px] text-muted-foreground">Where mentions come from</h2>
               <p className="text-[12px] text-muted-foreground/80">Unique relevant mentions by platform, {periodLabel}.</p>
@@ -257,7 +232,7 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
             <ol className="grid gap-3 md:grid-cols-3">
               {[
                 { n: "1", title: "Measure", text: "How fast relevant mentions arrive on each search, and how fast one check fills up." },
-                { n: "2", title: "Busy → more often", text: "Intervals shorten at once when activity rises; they lengthen only slowly, never while coverage is incomplete." },
+                { n: "2", title: "Busy → more often", text: "Intervals shorten at once when activity rises; they lengthen only slowly, to avoid noise." },
                 { n: "3", title: "Quiet → still daily", text: "Quiet searches are checked at least once a day, so nothing new is missed." },
               ].map((x) => (
                 <li key={x.n} className="grid content-start gap-1.5 rounded-2xl bg-foreground/[0.03] p-4">
@@ -268,9 +243,6 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
                 </li>
               ))}
             </ol>
-            {(o.paid.includedInPlan || paidNote) && (
-              <p className="text-[12px] text-muted-foreground/80">{o.paid.includedInPlan ? "Paid sources are included in your plan." : ""}{paidNote ? ` ${paidNote}` : ""}</p>
-            )}
             {o.plan.devFloorMinutes !== null && (
               <p className="text-[12px] text-warning">
                 Development entitlement active on this server: this workspace may be checked as often as every {formatInterval(o.plan.devFloorMinutes)}.
@@ -300,7 +272,7 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
             <div className="grid gap-2">
               <h3 className="text-[15px] font-medium">Platforms, ranked</h3>
               <p className="text-[12px] text-muted-foreground">Last 4 weeks of relevant mentions. Open a platform to see why it ranks and is checked as it is.</p>
-              {rows.length === 0 ? <p className="text-[13px] text-muted-foreground">Nothing is monitored yet.</p> : <RankingTable rows={rows} productId={product.id} canEdit={canEdit} />}
+              {rows.length === 0 ? <p className="text-[13px] text-muted-foreground">Nothing is monitored yet.</p> : <RankingTable rows={rows} />}
             </div>
 
             <div className="grid gap-2">
@@ -308,28 +280,9 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
               <p className="text-[12px] text-muted-foreground">
                 How often each keyword is searched on each platform. When keywords take turns, each turn catches up from where it left off · {o.plan.name}: {o.plan.maxKeywords} keyword{o.plan.maxKeywords === 1 ? "" : "s"}.
               </p>
-              {conflicts.length > 0 && (
-                <ul className="grid gap-1 rounded-md border border-warning/40 bg-warning/5 p-3 text-xs" aria-label="Keyword schedule conflicts">
-                  {conflicts.map((c) => <li key={c.id}>{c.text}</li>)}
-                </ul>
-              )}
               {o.keywordCoverage.length > 0 && <KeywordCoverageList rows={o.keywordCoverage} />}
             </div>
 
-            {canEdit && switchable.length > 0 && (
-              <div className="grid gap-2">
-                <h3 className="text-[13px] font-medium">Can be turned on</h3>
-                <p className="text-xs text-muted-foreground">Platforms this product isn&apos;t searched on yet{o.paid.serverEnabled ? "; paid ones count toward your plan's paid-source allowance" : ""}.</p>
-                <ul className="flex flex-wrap gap-2" aria-label="Other platforms">
-                  {switchable.map((p) => (
-                    <li key={p.id} className="flex items-center gap-3 rounded-full border border-foreground/[0.08] py-1 pl-3.5 pr-1 text-[13px]">
-                      <span className="flex items-center gap-1.5">{p.name}{p.paid && <Badge>Paid</Badge>}</span>
-                      <SourceToggle productId={product.id} platform={p.id} name={p.name} enabled={false} paid={p.paid} />
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
         </section>
 
         {/* Historical search: offered once (skipped during onboarding); shown while it runs, gone after. */}
@@ -364,7 +317,6 @@ function KeywordCoverageList({ rows }: { rows: KeywordCoverageRow[] }) {
     <ul className="divide-y divide-foreground/[0.06] overflow-hidden rounded-2xl border border-foreground/[0.08]" aria-label="Keyword coverage">
       {rows.map((k) => {
         const searched = k.platforms.filter((p) => p.intervalMinutes !== null);
-        const missing = k.platforms.filter((p) => p.intervalMinutes === null);
         const intervals = searched.map((p) => p.intervalMinutes!);
         const fastest = intervals.length ? Math.min(...intervals) : null;
         const slowest = intervals.length ? Math.max(...intervals) : null;
@@ -393,7 +345,6 @@ function KeywordCoverageList({ rows }: { rows: KeywordCoverageRow[] }) {
                   </span>
                 )}
                 {rotating && <Badge tone="info">Takes turns on some platforms</Badge>}
-                {missing.length > 0 && <Badge tone="warning">Not searchable on {missing.length}</Badge>}
               </summary>
               <ul className="grid gap-1 px-3 pb-3 text-xs sm:grid-cols-2" aria-label={`${k.term} by platform`}>
                 {k.platforms.map((p) => (
@@ -434,8 +385,8 @@ function PlatformDonut({ rows, total, colorOf }: { rows: KeywordRankings["platfo
   const lens = items.map((it) => ((it.mentions ?? 0) / sum) * c);
   const starts = lens.map((_, i) => lens.slice(0, i).reduce((t, x) => t + x, 0));
   return (
-    <div className="grid items-center gap-5 sm:grid-cols-[180px_minmax(0,1fr)]">
-      <div className="relative mx-auto size-[180px]">
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] items-center gap-5 sm:grid-cols-[160px_minmax(0,1fr)]">
+      <div className="relative mx-auto size-[160px]">
         <svg viewBox="0 0 160 160" className="size-full -rotate-90" aria-hidden>
           {items.map((it, i) => (
             <circle key={it.id} cx="80" cy="80" r={r} fill="none" stroke={colorOf.get(it.id) ?? GREY} strokeWidth="18"
@@ -447,12 +398,12 @@ function PlatformDonut({ rows, total, colorOf }: { rows: KeywordRankings["platfo
           <span className="mt-1 text-[12px] text-muted-foreground/80">mentions</span>
         </div>
       </div>
-      <ul className="grid gap-1.5 text-[13px]">
+      <ul className="grid min-w-0 gap-1.5 text-[13px]">
         {items.slice(0, 7).map((it) => (
           <li key={it.id} className="flex items-center gap-2.5">
             <span className="size-2.5 shrink-0 rounded-full" style={{ background: colorOf.get(it.id) ?? GREY }} aria-hidden />
             <span className="min-w-0 flex-1 truncate">{it.name}</span>
-            <span className="shrink-0 tabular-nums text-[12px] text-muted-foreground">{(it.mentions ?? 0).toLocaleString("en-US")} · {it.sharePct ?? 0}%</span>
+            <span className="shrink-0 whitespace-nowrap tabular-nums text-[12px] text-muted-foreground">{(it.mentions ?? 0).toLocaleString("en-US")} · {it.sharePct ?? 0}%</span>
           </li>
         ))}
       </ul>
@@ -518,14 +469,6 @@ function Stat({ label, value, hint, i = 0, warn = false, className = "" }: { lab
   );
 }
 
-const STATUS_TONE: Record<CoverageStatus, "positive" | "info" | "warning" | "neutral"> = {
-  monitored: "positive", learning: "info", partial: "warning", not_scanned: "neutral",
-};
-
-function StatusBadge({ status }: { status: CoverageStatus }) {
-  return <Badge tone={STATUS_TONE[status]}>{COVERAGE_LABEL[status]}</Badge>;
-}
-
 function Growth({ pct }: { pct: number | null }) {
   if (pct === null) return <span className="text-xs text-muted-foreground" title="No comparable earlier period (not monitored then, or nothing found)">—</span>;
   const Icon = pct > 0 ? ArrowUpRight : pct < 0 ? ArrowDownRight : Minus;
@@ -587,7 +530,7 @@ function KeywordList({ rows, colorOf }: { rows: KeywordPerformance[]; colorOf: M
                       <span className="truncate font-medium">{p.name}</span>
                       <ShareBar pct={p.sharePct} color={colorOf.get(p.id)} />
                       <span className="flex items-center justify-end gap-2 tabular">
-                        {p.mentions === null ? <StatusBadge status="not_scanned" /> : <>{p.mentions.toLocaleString("en-US")}{p.status !== "monitored" && <StatusBadge status={p.status} />}</>}
+                        {p.mentions === null ? <span className="text-muted-foreground">Not scanned yet</span> : p.mentions.toLocaleString("en-US")}
                         <Growth pct={p.growthPct} />
                       </span>
                     </li>
@@ -617,7 +560,6 @@ function PlatformTable({ rows, now, stopped, at, colorOf }: { rows: KeywordRanki
             <th scope="col" className="text-right font-medium">Growth</th>
             <th scope="col" className="pl-4 font-medium">Refresh</th>
             <th scope="col" className="font-medium">Next scan</th>
-            <th scope="col" className="font-medium">Coverage</th>
           </tr>
         </thead>
         <tbody>
@@ -630,7 +572,6 @@ function PlatformTable({ rows, now, stopped, at, colorOf }: { rows: KeywordRanki
               <td className="text-right"><Growth pct={r.growthPct} /></td>
               <td className="pl-4 tabular">{r.platform.intervalMinutes ? `every ${formatInterval(r.platform.intervalMinutes)}` : "—"}</td>
               <td className="tabular" title={r.platform.nextScanAt ? at(r.platform.nextScanAt) : undefined}>{next(r.platform)}</td>
-              <td><StatusBadge status={r.status} /></td>
             </tr>
           ))}
         </tbody>
@@ -640,7 +581,6 @@ function PlatformTable({ rows, now, stopped, at, colorOf }: { rows: KeywordRanki
           <li key={r.id} className="grid gap-1.5 rounded-2xl border border-foreground/[0.08] p-3.5 text-[13px]">
             <div className="flex items-center justify-between gap-2">
               <span className="font-medium"><span className="mr-1.5 tabular text-muted-foreground">{r.rank ?? "–"}</span>{r.name}</span>
-              <StatusBadge status={r.status} />
             </div>
             <div className="flex items-center gap-2"><ShareBar pct={r.sharePct} color={colorOf.get(r.id)} /><span className="shrink-0 tabular">{r.mentions === null ? "—" : r.mentions.toLocaleString("en-US")}{r.sharePct !== null && ` · ${r.sharePct}%`}</span></div>
             <div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">

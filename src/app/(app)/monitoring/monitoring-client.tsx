@@ -4,33 +4,7 @@ import { Fragment, useState } from "react";
 import { ArrowDownRight, ArrowRight, ArrowUpRight, ChevronDown, Minus, Sparkle } from "lucide-react";
 import { Badge } from "@/components/ui/primitives";
 import type { SkippedKeyword } from "@/lib/sources/query-optimizer";
-import { setSourceEnabledAction } from "@/app/actions/monitoring";
-import { FormMessage, SubmitButton, useFormAction } from "@/components/ui/form";
-import { idle } from "@/lib/action-state";
 import { cn } from "@/lib/utils";
-
-export function SourceToggle({ productId, platform, name, enabled, disabledReason }: {
-  productId: string; platform: string; name: string; enabled: boolean; paid: boolean; disabledReason?: string;
-}) {
-  const [state, action] = useFormAction(setSourceEnabledAction, idle);
-  return (
-    <form action={action} className="grid gap-1.5">
-      <input type="hidden" name="productId" value={productId} />
-      <input type="hidden" name="platform" value={platform} />
-      <input type="hidden" name="enabled" value={enabled ? "false" : "true"} />
-      <SubmitButton
-        size="sm"
-        variant={enabled ? "secondary" : "ghost"}
-        disabled={Boolean(disabledReason)}
-        aria-label={`${enabled ? "Turn off" : "Turn on"} ${name}`}
-        pendingLabel="Saving…"
-      >
-        {enabled ? "Turn off" : "Turn on"}
-      </SubmitButton>
-      <FormMessage state={state} />
-    </form>
-  );
-}
 
 export interface RankingRow {
   id: string;
@@ -73,8 +47,6 @@ export interface RankingRow {
   toggle: boolean;
 }
 
-const CONF_TONE = { high: "positive", medium: "warning", low: "negative" } as const;
-const CONF_LABEL = { high: "High", medium: "Medium", low: "Low" } as const;
 
 function Trend({ r }: { r: RankingRow }) {
   const pct = r.growthPct !== null && Math.abs(r.growthPct) >= 1 ? ` ${r.growthPct > 0 ? "+" : ""}${r.growthPct}%` : "";
@@ -101,13 +73,6 @@ function Score({ r }: { r: RankingRow }) {
   }
   if (r.score === null) return <span className="text-muted-foreground">Learning</span>;
   return <span className="tabular font-medium">{r.score}<span className="text-muted-foreground">/100</span></span>;
-}
-
-const RISK_LABEL = { watch: "Busy — watched closely", at_risk: "Overflow risk", unavoidable: "More than checks can read" } as const;
-
-function Coverage({ r }: { r: RankingRow }) {
-  if (!r.confidence) return <span className="text-muted-foreground">—</span>;
-  return <Badge tone={CONF_TONE[r.confidence]}>{CONF_LABEL[r.confidence]}</Badge>;
 }
 
 /** One signal as a diverging bar: what pushed this platform up (ink) or down (red); the detail is in the tooltip. */
@@ -137,17 +102,7 @@ function SignalBars({ r }: { r: RankingRow }) {
   );
 }
 
-function MiniRing({ value }: { value: number }) {
-  const c = 2 * Math.PI * 16;
-  return (
-    <svg viewBox="0 0 40 40" className="size-10 shrink-0 -rotate-90" aria-hidden>
-      <circle cx="20" cy="20" r="16" fill="none" stroke="color-mix(in oklab, var(--foreground) 8%, transparent)" strokeWidth="5" />
-      {value > 0 && <circle cx="20" cy="20" r="16" fill="none" stroke={value < 50 ? "var(--signal)" : "var(--foreground)"} strokeWidth="5" strokeLinecap="round" strokeDasharray={`${(value / 100) * c} ${c}`} />}
-    </svg>
-  );
-}
-
-function Details({ r, productId, canEdit }: { r: RankingRow; productId: string; canEdit: boolean }) {
+function Details({ r }: { r: RankingRow }) {
   const kw = r.keywords;
   return (
     <div className="grid gap-5 text-[13px] lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
@@ -175,40 +130,18 @@ function Details({ r, productId, canEdit }: { r: RankingRow; productId: string; 
       </div>
       <div className="grid content-start gap-4">
         <section className="grid gap-2.5">
-          <h4 className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">Coverage</h4>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <Badge tone={r.stateTone}>{r.stateLabel}</Badge>
-            {r.paid && <Badge>Paid</Badge>}
-            {r.saturated && <Badge tone="warning">Hit page limit recently</Badge>}
-            {r.risk && r.risk !== "none" && <Badge tone={r.risk === "watch" ? "info" : "warning"} title={r.riskDetail ?? undefined}>{RISK_LABEL[r.risk]}</Badge>}
-            {r.failures > 0 && <Badge tone="negative">{r.failures} failed check{r.failures === 1 ? "" : "s"}</Badge>}
-          </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
-            <div className="flex items-center gap-2.5 rounded-xl bg-foreground/[0.03] p-2.5">
-              {r.completeSharePct !== null && <MiniRing value={r.completeSharePct} />}
-              <span className="grid">
-                <span className="text-[15px] font-semibold tabular-nums">{r.completeSharePct !== null ? `${r.completeSharePct}%` : "—"}</span>
-                <span className="text-[11px] text-muted-foreground">covered, 7 days</span>
-              </span>
-            </div>
+          <h4 className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">Schedule</h4>
+          <div className="grid grid-cols-3 gap-2">
             <div className="grid rounded-xl bg-foreground/[0.03] p-2.5" title={r.lastAt ?? undefined}>
               <span className="text-[15px] font-semibold">{r.last}</span><span className="text-[11px] text-muted-foreground">Last checked</span>
             </div>
             <div className="grid rounded-xl bg-foreground/[0.03] p-2.5" title={r.nextAt ?? undefined}>
               <span className="text-[15px] font-semibold">{r.next}</span><span className="text-[11px] text-muted-foreground">Next check</span>
             </div>
-            <div className="grid rounded-xl bg-foreground/[0.03] p-2.5" title={r.discovery ?? undefined}>
-              <span className="text-[15px] font-semibold">{r.arrivalPerDay !== null && !r.learning ? `~${r.arrivalPerDay >= 10 ? Math.round(r.arrivalPerDay) : r.arrivalPerDay}/day` : "—"}</span>
-              <span className="text-[11px] text-muted-foreground">Relevant mentions</span>
+            <div className="grid rounded-xl bg-foreground/[0.03] p-2.5">
+              <span className="text-[15px] font-semibold">every {r.interval}</span><span className="text-[11px] text-muted-foreground">Interval</span>
             </div>
           </div>
-          {r.arrivalPerDay !== null && !r.learning && (
-            <p className="sr-only">About {r.arrivalPerDay >= 10 ? Math.round(r.arrivalPerDay) : r.arrivalPerDay} relevant mention{r.arrivalPerDay === 1 ? "" : "s"} a day here (estimated from recent checks).</p>
-          )}
-          {r.riskDetail && <p className="text-[12px] text-warning">{r.riskDetail}</p>}
-          {r.incomplete && <p className="text-[12px] text-warning">Coverage is incomplete, so a low count here doesn&apos;t prove the platform is quiet.</p>}
-          {r.stateDetail && <p className="text-[12px] text-muted-foreground">{r.stateDetail}</p>}
-          {r.discovery && <p className="sr-only">Expected discovery: {r.discovery}</p>}
         </section>
         <section className="grid gap-1.5">
           <h4 className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">Keywords on {r.name}</h4>
@@ -228,16 +161,13 @@ function Details({ r, productId, canEdit }: { r: RankingRow; productId: string; 
             </>
           )}
         </section>
-        {canEdit && r.toggle && (
-          <div className="w-fit"><SourceToggle productId={productId} platform={r.id} name={r.name} enabled paid={r.paid} /></div>
-        )}
       </div>
     </div>
   );
 }
 
 /** Ranked platforms (desktop table, mobile cards) with expandable explanations. */
-export function RankingTable({ rows, productId, canEdit }: { rows: RankingRow[]; productId: string; canEdit: boolean }) {
+export function RankingTable({ rows }: { rows: RankingRow[] }) {
   const [open, setOpen] = useState<string | null>(null);
   const ranked = rows.filter((r) => !r.learning).sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));
   const learning = rows.filter((r) => r.learning).sort((a, b) => a.name.localeCompare(b.name));
@@ -257,14 +187,13 @@ export function RankingTable({ rows, productId, canEdit }: { rows: RankingRow[];
               <th scope="col" className="py-2 pr-2 font-medium">Trend</th>
               <th scope="col" className="py-2 pr-2 font-medium">Refresh interval</th>
               <th scope="col" className="py-2 pr-2 font-medium">Next scan</th>
-              <th scope="col" className="py-2 font-medium">Coverage</th>
             </tr>
           </thead>
           <tbody>
             {ordered.map((r, i) => (
               <Fragment key={r.id}>
                 {r.learning && (i === 0 || !ordered[i - 1]!.learning) && (
-                  <tr><td colSpan={8} className="pb-1 pt-3 text-xs font-medium text-muted-foreground">New platforms (learning, not ranked yet)</td></tr>
+                  <tr><td colSpan={7} className="pb-1 pt-3 text-xs font-medium text-muted-foreground">New platforms (learning, not ranked yet)</td></tr>
                 )}
                 <tr className={cn("border-b border-foreground/[0.06] align-middle transition-colors hover:bg-foreground/[0.025]", open === r.id && "border-b-0 bg-foreground/[0.03]")}>
                   <td className="py-2 pr-2 tabular font-medium">{r.rank !== null ? `#${r.rank}` : <Badge tone="info">New</Badge>}</td>
@@ -289,11 +218,10 @@ export function RankingTable({ rows, productId, canEdit }: { rows: RankingRow[];
                     {r.keywordInterval && <span className="block text-xs text-muted-foreground">keywords every {r.keywordInterval}</span>}
                   </td>
                   <td className="py-2 pr-2" title={r.nextAt ?? undefined}>{r.next}</td>
-                  <td className="py-2"><Coverage r={r} /></td>
                 </tr>
                 {open === r.id && (
                   <tr id={`details-${r.id}`} className="border-b border-foreground/[0.06] bg-foreground/[0.03]">
-                    <td colSpan={8} className="px-4 pb-5 pt-2"><Details r={r} productId={productId} canEdit={canEdit} /></td>
+                    <td colSpan={7} className="px-4 pb-5 pt-2"><Details r={r} /></td>
                   </tr>
                 )}
               </Fragment>
@@ -326,11 +254,10 @@ export function RankingTable({ rows, productId, canEdit }: { rows: RankingRow[];
                 <span className="grid"><span className="text-muted-foreground">Trend</span><Trend r={r} /></span>
                 <span className="grid"><span className="text-muted-foreground">Every</span><span className="tabular">{r.interval}{r.keywordInterval && <span className="block text-muted-foreground">kw {r.keywordInterval}</span>}</span></span>
                 <span className="grid"><span className="text-muted-foreground">Next</span><span>{r.next}</span></span>
-                <span className="grid justify-items-start"><span className="text-muted-foreground">Coverage</span><Coverage r={r} /></span>
               </span>
             </button>
             {open === r.id && (
-              <div id={`card-${r.id}`} className="border-t p-3"><Details r={r} productId={productId} canEdit={canEdit} /></div>
+              <div id={`card-${r.id}`} className="border-t p-3"><Details r={r} /></div>
             )}
           </li>
         ))}

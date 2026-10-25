@@ -151,7 +151,7 @@ test("historical search progress: real states per platform, provider limits, no 
   await expect(progress).toHaveCount(0, { timeout: 15_000 });
 });
 
-test("smart monitoring shows product-relative share and overflow risk", async ({ page }) => {
+test("monitoring shows product-relative share and a platform's details", async ({ page }) => {
   await adminInsert("platform_activity", {
     product_id: ids.productId, workspace_id: ids.workspaceId, platform: "hackernews", phase: "ranked", score: 64, rank: 1,
     trend: "stable", coverage_confidence: "high", recommended_interval: 1440, interval_minutes: 1440, reasons: ["Busy search: checked within 1 h so results don't overflow what one check can read"],
@@ -164,8 +164,7 @@ test("smart monitoring shows product-relative share and overflow risk", async ({
   await expect(hn).toContainText("64%");
   await hn.getByRole("button", { name: "Hacker News" }).click();
   const details = page.locator("#details-hackernews");
-  await expect(details).toContainText("More than checks can read");
-  await expect(details).toContainText("some may be missed and coverage is marked partial");
-  await expect(details).toContainText("About 40 relevant mentions a day here");
+  await expect(details).toContainText("Why this rank");
+  await expect(details).toContainText("Last checked");
 
 });

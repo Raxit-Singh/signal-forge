@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Area, CartesianGrid, ComposedChart, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, CartesianGrid, ComposedChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/primitives";
@@ -123,10 +123,6 @@ export function TrendGraph(p: Props) {
               <XAxis dataKey="t" type="number" scale="time" domain={domain} ticks={ticks} tickFormatter={(v: number) => fmt.format(new Date(v - bucketMs / 2))}
                 tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false} />
               <YAxis allowDecimals={false} domain={[0, (max: number) => Math.max(3, Math.ceil(max * 1.15))]} tick={{ fontSize: 11, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false} />
-              {rows.filter((r) => r.coverage !== "full").map((r) => (
-                <ReferenceArea key={r.start} x1={r.t - bucketMs / 2} x2={r.t + bucketMs / 2} ifOverflow="hidden"
-                  fill="var(--foreground)" fillOpacity={r.coverage === "none" ? 0.07 : 0.035} strokeOpacity={0} />
-              ))}
               {p.events.map((e) => {
                 const at = new Date(e.occurred_at).getTime();
                 return at >= domain[0] && at <= domain[1] ? <ReferenceLine key={e.id} x={at} stroke="var(--info)" strokeDasharray="4 3" label={{ value: e.title.slice(0, 24), position: "insideTopLeft", fontSize: 10, fill: "var(--muted-foreground)" }} /> : null;
@@ -139,10 +135,9 @@ export function TrendGraph(p: Props) {
                   return (
                     <div className="grid max-w-64 gap-1 rounded-xl border bg-surface/95 px-3 py-2 text-xs shadow-xl backdrop-blur" data-testid="trend-tooltip">
                       <p className="font-medium">{full.format(new Date(r.start))}</p>
-                      {r.coverage === "none" ? <p className="text-muted-foreground">Not monitored — no data, not zero.</p> : (
+                      {r.coverage === "none" ? <p className="text-muted-foreground">No data</p> : (
                         <p className="flex justify-between gap-4"><span>Mentions</span><span className="tabular">{r.value ?? "—"}</span></p>
                       )}
-                      {r.coverage === "partial" && <p className="text-muted-foreground">Only partly monitored: the count may be incomplete.</p>}
                     </div>
                   );
                 }}
@@ -156,11 +151,9 @@ export function TrendGraph(p: Props) {
 
       <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-muted-foreground" aria-label="Legend">
         <li className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded" style={{ background: LINE }} aria-hidden />Mentions ({p.scope.label})</li>
-        <li className="flex items-center gap-1.5"><span className="size-3 rounded-sm bg-foreground/[0.08]" aria-hidden />Not monitored</li>
         {startedLate && (
           <li className="text-muted-foreground" data-testid="graph-starts">Monitoring started {full.format(new Date(startedLate))}; the graph starts there.</li>
         )}
-        <li className="flex items-center gap-1.5"><span className="size-3 rounded-sm bg-foreground/[0.04] ring-1 ring-border" aria-hidden />Partly monitored</li>
         {p.events.length > 0 && <li className="flex items-center gap-1.5"><span className="h-3 w-0 border-l-2 border-dashed border-info" aria-hidden />Your events</li>}
       </ul>
 
@@ -176,7 +169,7 @@ export function TrendGraph(p: Props) {
               {rows.map((r) => (
                 <tr key={r.start} className={cn(r.coverage === "none" && "text-muted-foreground")}>
                   <td className="py-1 pr-2">{r.label}</td>
-                  <td className="py-1 pr-2 text-right tabular">{r.value ?? "no data"}{r.coverage === "partial" ? " (partial)" : ""}</td>
+                  <td className="py-1 pr-2 text-right tabular">{r.value ?? "no data"}</td>
                 </tr>
               ))}
             </tbody>

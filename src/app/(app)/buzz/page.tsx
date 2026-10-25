@@ -1,7 +1,7 @@
 import { getTimeZone } from "@/lib/server/timezone";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, Minus, PackagePlus, Waves } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Minus, PackagePlus, Waves } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveProduct, requireWorkspace } from "@/lib/server/session";
 import { getBuzzDashboard } from "@/lib/server/analytics/buzz";
@@ -10,7 +10,7 @@ import { parseRange } from "@/lib/domain/date-range";
 import { integrationInfo } from "@/lib/domain/integrations";
 import { isPublicSource } from "@/lib/sources/registry";
 import { formatCount } from "@/lib/format";
-import { CoverageNotice, EmptyState, PageHeader } from "@/components/page";
+import { EmptyState, PageHeader } from "@/components/page";
 import { Badge } from "@/components/ui/primitives";
 import { CountUp } from "@/components/motion";
 import { cn } from "@/lib/utils";
@@ -79,13 +79,11 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
     { label: "Last 24 h vs previous 24 h", value: d.daily.current, growth: d.daily },
     { label: "Last 7 days vs previous 7", value: d.weekly.current, growth: d.weekly },
   ];
-  const coverage = Math.round(d.coverage.range * 100);
   const growthPct = d.rangeGrowth.change === null ? null : Math.round(d.rangeGrowth.change * 1000) / 10;
   const platformItems = t.bySource.filter((r) => r.relevant > 0).map((r) => ({ id: r.source, label: nameOf(r.source), value: Number(r.relevant) })).sort((a, b) => b.value - a.value);
 
   return (
     <>
-      <CoverageNotice />
 
       {nothingMonitored ? (
         <>
@@ -136,19 +134,7 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
             </div>
             <div className="rise grid grid-cols-2 gap-3 self-end" style={{ ["--d" as string]: "120ms" }}>
               {momentum.map((m, i) => <Momentum key={m.label} i={i} {...m} />)}
-              <div className="panel rise flex min-w-0 items-center gap-3 rounded-[18px] p-4" style={{ ["--d" as string]: "340ms" }}>
-                <Ring value={d.coverage.range} />
-                <div className="grid min-w-0 gap-1">
-                  <span className="text-[12px] text-muted-foreground">Monitoring coverage</span>
-                  <span className="text-[26px] font-semibold leading-none tracking-[-0.03em] tabular">{coverage}%</span>
-                  <span className="truncate text-[12px] text-muted-foreground/80" title={[
-                    d.coverage.gaps ? `${d.coverage.gaps} period${d.coverage.gaps === 1 ? "" : "s"} not monitored` : null,
-                    d.coverage.complete < d.coverage.range - 0.01 ? `${Math.round(d.coverage.complete * 100)}% complete — some checks hit page limits` : null,
-                  ].filter(Boolean).join(" · ") || undefined}>
-                    {d.coverage.gaps ? `${d.coverage.gaps} period${d.coverage.gaps === 1 ? "" : "s"} not monitored` : "Every period monitored"}
-                  </span>
-                </div>
-              </div>
+              <Momentum i={3} label="Last 30 days vs previous 30" value={d.monthly.current} growth={d.monthly} />
             </div>
           </section>
 
@@ -156,7 +142,7 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
             <div className="grid gap-1">
               <h2 className="text-[20px] font-medium tracking-[-0.02em]">Mentions over time</h2>
               <p className="max-w-[90ch] text-[12px] text-muted-foreground">
-                By publication time ({d.bucket === "hour" ? "hourly" : "daily"}, {tz}). Shaded periods weren&apos;t (fully) monitored — gaps, not zeros.
+                By publication time ({d.bucket === "hour" ? "hourly" : "daily"}, {tz}).
                 {t.undated > 0 && ` ${t.undated} web result${t.undated === 1 ? "" : "s"} without a publication date ${t.undated === 1 ? "is" : "are"} not charted.`}
                 {scope.kind === "keyword" && " The numbers above are for all activity; this graph shows only this keyword."}
               </p>
@@ -240,12 +226,6 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
             Counts come only from mentions SignalForge stored: duplicates and reposts are excluded, publication time is used (not discovery time),
             and late-arriving mentions update past periods. Monitoring freshness per platform is on{" "}
             <Link href="/monitoring" className="underline underline-offset-2">Monitoring</Link>.
-            {d.daily.reliable && d.weekly.reliable ? null : (
-              <span className="mt-1 flex items-start gap-1 text-warning">
-                <AlertTriangle className="mt-px size-3.5 shrink-0" aria-hidden />
-                Some growth figures compare periods that weren&apos;t fully monitored; treat them as approximate.
-              </span>
-            )}
           </p>
         </div>
       )}
@@ -308,8 +288,7 @@ function PlatformDonut({ items, total, active, hrefFor }: { items: Array<{ id: s
 function GrowthLine({ growth }: { growth: Growth }) {
   const Icon = growth.change === 0 ? Minus : growth.change === null || growth.change > 0 ? ArrowUpRight : ArrowDownRight;
   return (
-    <span className={cn("flex items-center gap-1 text-[12px]", !growth.reliable ? "text-warning" : growth.change !== null && growth.change < 0 ? "text-signal" : growth.change ? "text-positive" : "text-muted-foreground")}
-      title={!growth.reliable ? "Compares periods that weren't fully monitored" : undefined}>
+    <span className={cn("flex items-center gap-1 text-[12px]", growth.change !== null && growth.change < 0 ? "text-signal" : growth.change ? "text-positive" : "text-muted-foreground")}>
       <Icon className="size-3.5 shrink-0" aria-hidden />
       <span className="truncate">{growth.label}{growth.change !== null && ` (was ${formatCount(growth.previous)})`}</span>
     </span>
@@ -323,19 +302,6 @@ function Momentum({ i, label, value, growth, hint }: { i: number; label: string;
       <CountUp value={value} className="text-[26px] font-semibold leading-none tracking-[-0.03em]" />
       {growth ? <GrowthLine growth={growth} /> : <span className="text-[12px] text-muted-foreground">{hint}</span>}
     </div>
-  );
-}
-
-/** Monitoring coverage as a ring (red when under half the period was monitored). */
-function Ring({ value }: { value: number }) {
-  const c = 2 * Math.PI * 22;
-  const low = value < 0.5;
-  return (
-    <svg viewBox="0 0 56 56" className="size-12 shrink-0 -rotate-90" aria-hidden>
-      <circle cx="28" cy="28" r="22" fill="none" stroke="color-mix(in oklab, var(--foreground) 8%, transparent)" strokeWidth="6" />
-      {value > 0 && <circle cx="28" cy="28" r="22" fill="none" stroke={low ? "var(--signal)" : "var(--foreground)"} strokeWidth="6" strokeLinecap="round"
-        strokeDasharray={`${value * c} ${c}`} className="ring-fill" style={{ ["--len" as string]: c, ["--d" as string]: "500ms" }} />}
-    </svg>
   );
 }
 

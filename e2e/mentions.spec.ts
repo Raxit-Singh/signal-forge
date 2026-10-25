@@ -164,12 +164,3 @@ test("mobile: stacked cards, compact pagination, touch-sized controls, no horizo
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });
-
-test("discloses which sources are included", async ({ page }) => {
-  const notice = page.getByTestId("coverage-notice");
-  await notice.locator("summary").click();
-  await expect(notice).toContainText("Hacker News");
-  await expect(notice).toContainText("GitHub");
-  // No YouTube key on this server: it must be listed as not included, not silently counted as zero.
-  if (!process.env.YOUTUBE_API_KEY) await expect(notice).toContainText("YouTube (not configured)");
-});

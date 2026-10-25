@@ -9,7 +9,7 @@ import { parseRange } from "@/lib/domain/date-range";
 import { integrationInfo } from "@/lib/domain/integrations";
 import { formatCount, formatTime } from "@/lib/format";
 import { getTimeZone } from "@/lib/server/timezone";
-import { CoverageNotice, EmptyState, PageHeader } from "@/components/page";
+import { EmptyState, PageHeader } from "@/components/page";
 import { Badge } from "@/components/ui/primitives";
 import { AddCompetitorForm, CompetitorControls, VolumeChart } from "./competitors-client";
 
@@ -67,7 +67,6 @@ export default async function CompetitorsPage({ searchParams }: { searchParams: 
 
   return (
     <>
-      <CoverageNotice />
       <div className="grid grid-cols-[minmax(0,1fr)] gap-5 pb-10">
         {/* Hero: your share of the conversation against the competitors you track. */}
         <section className="grid grid-cols-[minmax(0,1fr)] gap-8 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">

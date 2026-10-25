@@ -53,7 +53,6 @@ test("simple view: summary, keywords and platforms ranked by mention count, no t
   await expect(rows.nth(1)).toContainText("92%");
   await expect(rows.nth(2)).toContainText("GitHub");
   await expect(rows.nth(3)).toContainText("Stack Overflow");
-  await expect(rows.nth(3)).toContainText("Not scanned yet");
   await expect(rows.nth(3).getByRole("cell").first()).toHaveText("–");
 
   // Keyword: total, best platform; expanding shows that keyword's own platform ranking.
@@ -193,7 +192,6 @@ test("dashboard shows each keyword's actual scheduled refresh, not only the plat
   const byPlatform = page.getByRole("list", { name: "FixtureFlow by platform" });
   await expect(byPlatform.getByRole("listitem").filter({ hasText: "Stack Overflow" })).toContainText("every 2 days");
   await expect(byPlatform.getByRole("listitem").filter({ hasText: "Stack Overflow" })).not.toContainText("(est.)");
-  await expect(page.getByRole("list", { name: "Keyword schedule conflicts" })).toContainText("not met on Stack Overflow");
 });
 
 test("Stop scan parks every search and ends a running historical search; Resume makes them due again", async ({ page }) => {
@@ -231,32 +229,4 @@ test("mobile: rankings become cards with no horizontal overflow", async ({ page 
   await expect(card).toContainText("Why this interval");
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(0);
-});
-
-test("paid platforms included in the plan are on by default, and can be turned off and on again", async ({ page }) => {
-  await adminInsert("internal_plan_grants", {
-    workspace_id: ids.workspaceId, plan_id: "internal_unlimited", reason: "development", granted_by: "e2e-monitoring", expires_at: new Date(Date.now() + 86_400_000).toISOString(),
-  });
-  // A plan change takes effect when the product's searches are re-planned (here: saving keywords).
-  await page.goto(`/settings/products/${ids.productId}/keywords`);
-  await page.getByRole("button", { name: "Save keywords" }).click();
-  await expect(page.getByText("Keywords saved.")).toBeVisible();
-  await page.goto("/monitoring");
-  const setting = () => adminSelect(`product_source_settings?product_id=eq.${ids.productId}&platform=eq.reddit&select=enabled`);
-  const offCard = page.locator("form", { has: page.locator('input[name="platform"][value="reddit"]') }).filter({ hasText: "Turn on" });
-  test.skip(await page.getByText("Paid sources are switched off on this server").first().isVisible(), "PAID_SOURCES_ENABLED is not true on this server");
-  // On by default: no checkbox, nothing to switch on; Reddit is already among the monitored platforms.
-  await expect(offCard).toHaveCount(0);
-  await expect(page.getByText("I authorize paid checks")).toHaveCount(0);
-  expect(await setting()).toEqual([]);
-
-  await openAdvanced(page);
-  await ranking(page).getByRole("button", { name: "Reddit", exact: true }).click();
-  await page.getByRole("button", { name: "Turn off Reddit" }).click();
-  await expect.poll(setting).toEqual([{ enabled: false }]);
-
-  await page.reload();
-  await openAdvanced(page); // platforms that can be switched on are listed under Advanced details
-  await page.getByRole("button", { name: "Turn on Reddit" }).click();
-  await expect.poll(setting).toEqual([{ enabled: true }]);
 });

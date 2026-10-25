@@ -58,7 +58,6 @@ test("the graph starts when monitoring started; counts use publication time, not
   await page.getByText("Show as table").click();
   const rows = page.locator("table tbody tr");
   await expect(rows.last()).not.toContainText("no data");
-  await expect(page.getByText("Shaded periods weren't (fully) monitored")).toBeVisible();
   // Every fixture was inserted just now but published over 10 days: they are spread out, not piled into today.
   const counts = (await rows.locator("td:nth-child(2)").allInnerTexts()).map((t) => Number.parseInt(t, 10)).filter((n) => !Number.isNaN(n));
   expect(counts.reduce((a, b) => a + b, 0)).toBe(11);

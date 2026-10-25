@@ -14,7 +14,7 @@ import { getBuzzDashboard } from "@/lib/server/analytics/buzz";
 import { CountUp } from "@/components/motion";
 import { Periods } from "@/components/periods";
 import { pageCount, pageHref, pageItems, pageRange, parsePage } from "@/lib/pagination";
-import { CoverageNotice, EmptyState, PageHeader } from "@/components/page";
+import { EmptyState, PageHeader } from "@/components/page";
 import { Badge } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -213,7 +213,6 @@ export default async function MentionsPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <CoverageNotice />
 
       {neverCollected ? (
         <>

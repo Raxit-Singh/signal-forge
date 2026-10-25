@@ -3,7 +3,7 @@ import Link from "next/link";
 import { PackagePlus, Radar } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveProduct, requireWorkspace } from "@/lib/server/session";
-import { CoverageNotice, EmptyState, PageHeader } from "@/components/page";
+import { EmptyState, PageHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { getCoverageSummary } from "@/lib/server/collection/status";
 import { getBuzzDashboard } from "@/lib/server/analytics/buzz";
@@ -205,7 +205,6 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
           Setup isn&apos;t finished yet.<Button asChild size="sm"><Link href="/onboarding">Finish setup</Link></Button>
         </p>
       )}
-      <CoverageNotice />
       <OverviewBoard d={data} />
     </>
   );
