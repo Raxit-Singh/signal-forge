@@ -5,8 +5,8 @@ export function Input({ className, ...props }: React.ComponentProps<"input">) {
   return (
     <input
       className={cn(
-        "h-8 w-full min-w-0 rounded-md border border-input bg-surface px-2.5 text-base shadow-xs outline-none sm:text-sm",
-        "placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30",
+        "h-10 w-full min-w-0 rounded-xl border border-foreground/[0.1] bg-foreground/[0.03] px-3.5 text-base outline-none transition-colors sm:text-sm",
+        "placeholder:text-muted-foreground/70 hover:border-foreground/20 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/25",
         "disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-negative aria-invalid:ring-negative/20",
         className,
       )}
@@ -19,8 +19,8 @@ export function Textarea({ className, ...props }: React.ComponentProps<"textarea
   return (
     <textarea
       className={cn(
-        "min-h-20 w-full rounded-md border border-input bg-surface px-2.5 py-2 text-base shadow-xs outline-none sm:text-sm",
-        "placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30",
+        "min-h-20 w-full rounded-xl border border-foreground/[0.1] bg-foreground/[0.03] px-3.5 py-2.5 text-base outline-none transition-colors sm:text-sm",
+        "placeholder:text-muted-foreground/70 hover:border-foreground/20 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/25",
         "aria-invalid:border-negative",
         className,
       )}
@@ -34,23 +34,23 @@ export function Label({ className, ...props }: React.ComponentProps<"label">) {
 }
 
 export function Card({ className, ...props }: React.ComponentProps<"div">) {
-  return <div className={cn("panel rounded-2xl", className)} {...props} />;
+  return <div className={cn("panel rounded-[18px]", className)} {...props} />;
 }
 
 export function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
-  return <div className={cn("flex flex-col gap-1 border-b px-4 py-3", className)} {...props} />;
+  return <div className={cn("flex flex-col gap-1.5 px-5 pb-1 pt-5", className)} {...props} />;
 }
 
 export function CardTitle({ className, ...props }: React.ComponentProps<"h2">) {
-  return <h2 className={cn("text-sm font-semibold", className)} {...props} />;
+  return <h2 className={cn("text-[16px] font-medium tracking-[-0.01em]", className)} {...props} />;
 }
 
 export function CardDescription({ className, ...props }: React.ComponentProps<"p">) {
-  return <p className={cn("text-[13px] text-muted-foreground", className)} {...props} />;
+  return <p className={cn("max-w-[70ch] text-[13px] leading-relaxed text-muted-foreground", className)} {...props} />;
 }
 
 export function CardContent({ className, ...props }: React.ComponentProps<"div">) {
-  return <div className={cn("p-4", className)} {...props} />;
+  return <div className={cn("p-5", className)} {...props} />;
 }
 
 const badgeTones = {

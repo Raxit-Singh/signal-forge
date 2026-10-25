@@ -45,7 +45,7 @@ export default async function AgentSettings() {
   const examples = [
     `What are the top complaints about ${name} this week?`,
     `Summarize the bug reports about ${name} and where they come from.`,
-    `Why did mentions of ${name} spike recently?`,
+    `Which platforms talk about ${name} the most?`,
   ];
 
   const { data: grants } = isAdmin
@@ -64,7 +64,7 @@ export default async function AgentSettings() {
             <Badge tone={TONE[state]} data-testid="claude-state">{CLAUDE_STATE_LABEL[state]}</Badge>
           </CardTitle>
           <CardDescription>
-            Connect Claude to SignalForge and Claude can read {name}&apos;s feedback, issues and spikes, and investigate issues in your code. Works in
+            Connect Claude to SignalForge and Claude can read {name}&apos;s feedback and issues, and investigate issues in your code. Works in
             Claude on the web, the desktop app and Claude Code, on your own Claude plan. Needed for “Investigate with Claude”.
           </CardDescription>
         </CardHeader>

@@ -30,18 +30,22 @@ test("pricing: Free $0, Pro $100, Scale $300 with keyword and mention allowances
   await page.goto(await signInPath(user!.email, "/settings/billing"));
   await expect(page.getByText("Current plan: Free")).toBeVisible();
   const free = page.getByLabel("Free plan");
+  const starter = page.getByLabel("Starter plan");
   const pro = page.getByLabel("Pro plan");
   const scale = page.getByLabel("Scale plan");
   await expect(free).toContainText("$0/month");
   await expect(free).toContainText("1 keyword");
   await expect(free).toContainText("100 mentions / month");
-  await expect(pro).toContainText("$100/month");
-  await expect(pro).toContainText("10 keywords");
-  await expect(pro).toContainText("15,000 mentions / month");
+  await expect(starter).toContainText("$70/month");
+  await expect(starter).toContainText("1 keyword");
+  await expect(starter).toContainText("4,000 mentions / month");
+  await expect(pro).toContainText("$110/month");
+  await expect(pro).toContainText("3 keywords");
+  await expect(pro).toContainText("10,000 mentions / month");
   await expect(scale).toContainText("$300/month");
   await expect(scale).toContainText("40 keywords");
   await expect(scale).toContainText("50,000 mentions / month");
-  for (const old of ["$9", "$19", "$29", "$49", "Starter", "Business"]) await expect(page.getByText(old, { exact: true })).toHaveCount(0);
+  for (const old of ["$9", "$19", "$29", "$49", "$100", "Business"]) await expect(page.getByText(old, { exact: true })).toHaveCount(0);
   await expect(free.getByRole("button", { name: "Current plan" })).toBeDisabled();
   if (process.env.STRIPE_SECRET_KEY) {
     // With Stripe (test mode) the owner can start checkout for a priced plan.
@@ -83,7 +87,7 @@ test("usage warnings at 80 % and 90 %, and the 100 % hold state", async ({ page 
   await adminUpdate(`subscriptions?workspace_id=eq.${ids.workspaceId}`, { plan_id: "pro" });
   await page.reload();
   await expect(page.getByText("Current plan: Pro")).toBeVisible();
-  await expect(page.getByRole("region", { name: "Mention allowance" })).toContainText("100 of 15,000 used");
+  await expect(page.getByRole("region", { name: "Mention allowance" })).toContainText("100 of 10,000 used");
   await expect(page.getByRole("alert", { name: "Mention allowance" })).toHaveCount(0);
   await page.getByRole("button", { name: /Deliver up to 3 held mentions/ }).click();
   await expect(page.getByText(/Delivered 0 held mentions|No held mentions could be delivered/)).toBeVisible();

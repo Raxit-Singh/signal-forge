@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Check } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspacePlan, getWorkspaceUsage, hasRole, requireWorkspace } from "@/lib/server/session";
-import { paidCollectionEnabled } from "@/lib/server/collection/sources";
 import { formatPrice, mentionUsageLevel, planFromRow, type PlanRow } from "@/lib/domain/plans";
 import { formatInterval } from "@/lib/sources/adaptive";
 import { Button } from "@/components/ui/button";
@@ -38,9 +37,8 @@ export default async function BillingSettings({ searchParams }: { searchParams: 
   const subscribed = sub?.provider === "stripe";
   const priced = new Set((rows ?? []).filter((r) => r.stripe_price_id).map((r) => r.id as string));
   const plans = (rows ?? []).map((r) => planFromRow(r as PlanRow)).filter((p) => !p.retired);
-  const paidOn = paidCollectionEnabled();
   const level = usage ? mentionUsageLevel(usage.mentionsConsumed, usage.mentionAllowance) : null;
-  const barTone = !level || level.level === "ok" ? "bg-primary" : level.level === "warning" ? "bg-warning" : "bg-negative";
+  const barTone = !level || level.level === "ok" ? "bg-foreground" : level.level === "warning" ? "bg-warning" : "bg-signal";
 
   return (
     <>
@@ -52,9 +50,10 @@ export default async function BillingSettings({ searchParams }: { searchParams: 
           {isOwner && <div className="w-40"><PortalButton workspaceId={workspace.id} label="Update payment method" variant="default" /></div>}
         </div>
       )}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex flex-wrap items-center gap-2">
+      <Card className="relative overflow-hidden">
+        <span className="pointer-events-none absolute -right-24 -top-24 size-64 rounded-full bg-signal/10 blur-3xl" aria-hidden />
+        <CardHeader className="relative">
+          <CardTitle className="flex flex-wrap items-center gap-2 text-[20px]">
             Current plan: {current.name}
             {internalGrant ? (
               <Badge tone="info">Internal testing entitlement — not a paid subscription</Badge>
@@ -73,8 +72,8 @@ export default async function BillingSettings({ searchParams }: { searchParams: 
           </CardDescription>
         </CardHeader>
         {usage && (
-          <CardContent className="grid gap-4">
-            <section aria-label="Mention allowance" className="grid gap-1.5">
+          <CardContent className="relative grid gap-5">
+            <section aria-label="Mention allowance" className="grid gap-2">
               <div className="flex flex-wrap items-baseline justify-between gap-2 text-[13px]">
                 <span className="font-medium">Mentions this period</span>
                 <span className="tabular">
@@ -83,14 +82,14 @@ export default async function BillingSettings({ searchParams }: { searchParams: 
                 </span>
               </div>
               <div
-                className="h-2 overflow-hidden rounded-full bg-muted"
+                className="h-2.5 overflow-hidden rounded-full bg-foreground/[0.07]"
                 role="progressbar"
                 aria-label="Mentions used"
                 aria-valuemin={0}
                 aria-valuemax={usage.mentionAllowance}
                 aria-valuenow={usage.mentionsConsumed}
               >
-                <div className={cn("h-full", barTone)} style={{ width: `${level?.percent ?? 0}%` }} />
+                <div className={cn("grow-x h-full rounded-full", barTone)} style={{ width: `${level?.percent ?? 0}%` }} />
               </div>
               {level?.level === "warning" && <p className="text-xs text-warning">{level.percent}% used. You&apos;ll be warned again at 90%.</p>}
               {level?.level === "critical" && (
@@ -115,13 +114,14 @@ export default async function BillingSettings({ searchParams }: { searchParams: 
                   )}
                 </div>
               )}
-              <p className="text-xs text-muted-foreground">
-                Counted: each new, unique mention that matches your keywords (rule-based relevance) or that your team marks relevant. Not counted:
+              <details className="text-xs text-muted-foreground">
+                <summary className="w-fit cursor-pointer hover:text-foreground">What counts as a mention</summary>
+                <p className="mt-1.5 max-w-[80ch]">Counted: each new, unique mention that matches your keywords (rule-based relevance) or that your team marks relevant. Not counted:
                 duplicates, reposts of a stored mention, items seen again, “Needs review” and excluded items, empty searches and failed requests.
-                Marking a counted mention “Not relevant” returns it to this period&apos;s allowance.
-              </p>
+                Marking a counted mention “Not relevant” returns it to this period&apos;s allowance.</p>
+              </details>
             </section>
-            <section aria-label="Keyword allowance" className="flex flex-wrap items-baseline justify-between gap-2 text-[13px]">
+            <section aria-label="Keyword allowance" className="flex flex-wrap items-baseline justify-between gap-2 border-t border-foreground/[0.06] pt-4 text-[13px]">
               <span className="font-medium">Active keywords</span>
               <span className="tabular">{usage.activeKeywords} of {usage.maxKeywords}</span>
               {usage.activeKeywords > usage.maxKeywords && (
@@ -134,41 +134,52 @@ export default async function BillingSettings({ searchParams }: { searchParams: 
         )}
       </Card>
 
-      <div className="grid gap-3 md:grid-cols-3">
-        {plans.map((p) => {
+      <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-4">
+        {plans.map((p, idx) => {
           const isCurrent = p.id === current.id;
           return (
-            <Card key={p.id} className={cn("flex flex-col p-4", isCurrent && "border-primary ring-1 ring-primary")} aria-label={`${p.name} plan`}>
-              <div className="flex items-baseline justify-between">
-                <h3 className="font-semibold">{p.name}</h3>
-                {isCurrent && <Badge tone="accent">Current</Badge>}
+            <Card key={p.id} className={cn("lift rise relative flex flex-col overflow-hidden p-5", isCurrent && "border-signal/40 shadow-[0_0_0_1px_color-mix(in_oklab,var(--signal)_35%,transparent),0_20px_50px_-30px_color-mix(in_oklab,var(--signal)_70%,transparent)]")}
+              style={{ ["--d" as string]: `${120 + idx * 60}ms` }} aria-label={`${p.name} plan`}>
+              {isCurrent && <span className="pointer-events-none absolute -right-16 -top-16 size-40 rounded-full bg-signal/15 blur-3xl" aria-hidden />}
+              <div className="relative flex items-center justify-between gap-2">
+                <h3 className="text-[15px] font-medium">{p.name}</h3>
+                {isCurrent && <Badge tone="negative">Current</Badge>}
               </div>
-              <p className="mt-1 text-xl font-semibold tabular">
-                {p.priceCentsMonthly === 0 ? "$0" : formatPrice(p.priceCentsMonthly, p.currency)}
-                <span className="text-[13px] font-normal text-muted-foreground">/month</span>
+              <p className="relative mt-3 flex items-baseline gap-1">
+                <span className="text-[36px] font-semibold leading-none tracking-[-0.04em] tabular-nums">{p.priceCentsMonthly === 0 ? "$0" : formatPrice(p.priceCentsMonthly, p.currency)}</span>
+                <span className="text-[13px] text-muted-foreground">/month</span>
               </p>
-              {p.description && <p className="mt-1 text-xs text-muted-foreground">{p.description}</p>}
-              <ul className="mt-3 grid gap-1.5 text-[13px]">
-                <li className="tabular">{p.maxKeywords} keyword{p.maxKeywords === 1 ? "" : "s"}</li>
-                <li className="tabular">{p.monthlyMentionLimit.toLocaleString("en-US")} mentions / month</li>
-                <li className="tabular">{p.maxProducts} product{p.maxProducts === 1 ? "" : "s"}</li>
-                <li>
-                  {p.monitoringIntervalMinutes <= 60 ? "Automatic Smart Monitoring, as often as hourly" : `Automatic monitoring, at most every ${formatInterval(p.monitoringIntervalMinutes)}`}
-                </li>
-                <li>Keyword refresh target: within {formatInterval(p.keywordRefreshTargetMinutes)}</li>
-                <li>{p.priceCentsMonthly > 0 ? "All supported platforms, subject to availability" : "Free sources only (paid platforms not included)"}</li>
-                <li className="tabular">{p.historyDays} days of history</li>
-                {Object.entries(FEATURE_LABELS).filter(([k]) => p.features[k]).map(([k, label]) => (
-                  <li key={k} className="flex items-center gap-1.5 text-muted-foreground">
-                    <Check className="size-3.5 text-positive" aria-hidden />{label}
+              {p.description && <p className="relative mt-2 text-[12px] text-muted-foreground">{p.description}</p>}
+              <div className="relative mt-4 grid grid-cols-2 gap-2">
+                <span className="grid rounded-xl bg-foreground/[0.04] p-2.5">
+                  <span className="text-[18px] font-semibold leading-none tabular-nums">{p.monthlyMentionLimit.toLocaleString("en-US")}</span>
+                  <span className="mt-1 text-[11px] text-muted-foreground">mentions / month</span>
+                </span>
+                <span className="grid rounded-xl bg-foreground/[0.04] p-2.5">
+                  <span className="text-[18px] font-semibold leading-none tabular-nums">{p.maxKeywords}</span>
+                  <span className="mt-1 text-[11px] text-muted-foreground">keyword{p.maxKeywords === 1 ? "" : "s"}</span>
+                </span>
+              </div>
+              <ul className="relative mt-4 grid gap-2 text-[13px]">
+                <li className="sr-only">{p.maxKeywords} keyword{p.maxKeywords === 1 ? "" : "s"} · {p.monthlyMentionLimit.toLocaleString("en-US")} mentions / month</li>
+                {[
+                  `${p.maxProducts} product${p.maxProducts === 1 ? "" : "s"}`,
+                  p.maxCompetitorsPerProduct > 0 ? `Up to ${p.maxCompetitorsPerProduct} competitor${p.maxCompetitorsPerProduct === 1 ? "" : "s"}` : "No competitor tracking",
+                  p.monitoringIntervalMinutes <= 60 ? "Checked as often as hourly" : `Checked at most every ${formatInterval(p.monitoringIntervalMinutes)}`,
+                  p.priceCentsMonthly > 0 ? "All supported platforms" : "Free sources only",
+                  `${p.historyDays} days of history`,
+                  ...Object.entries(FEATURE_LABELS).filter(([k]) => p.features[k]).map(([, label]) => label),
+                ].map((x) => (
+                  <li key={x} className="flex items-start gap-2 text-foreground/85">
+                    <Check className="mt-0.5 size-3.5 shrink-0 text-positive" aria-hidden />{x}
                   </li>
                 ))}
               </ul>
-              <div className="mt-auto pt-4">
+              <div className="relative mt-auto pt-5">
                 {isCurrent ? (
-                  <Button size="sm" variant="secondary" disabled className="w-full">Current plan</Button>
+                  <Button variant="secondary" disabled className="w-full">Current plan</Button>
                 ) : !online || !isOwner || internalGrant ? (
-                  <Button size="sm" disabled className="w-full" aria-describedby="checkout-note">
+                  <Button disabled className="w-full" aria-describedby="checkout-note">
                     {p.priceCentsMonthly > current.priceCentsMonthly ? "Upgrade" : "Change plan"}
                   </Button>
                 ) : subscribed ? (
@@ -176,7 +187,7 @@ export default async function BillingSettings({ searchParams }: { searchParams: 
                 ) : p.priceCentsMonthly > 0 && priced.has(p.id) ? (
                   <CheckoutButton workspaceId={workspace.id} planId={p.id} label={`Upgrade to ${p.name}`} />
                 ) : (
-                  <Button size="sm" disabled className="w-full" aria-describedby="checkout-note">{p.priceCentsMonthly === 0 ? "Included" : "Not available yet"}</Button>
+                  <Button disabled className="w-full" aria-describedby="checkout-note">{p.priceCentsMonthly === 0 ? "Included" : "Not available yet"}</Button>
                 )}
               </div>
             </Card>
@@ -192,15 +203,13 @@ export default async function BillingSettings({ searchParams }: { searchParams: 
           <div className="w-44"><PortalButton workspaceId={workspace.id} /></div>
         </div>
       )}
-      <p id="checkout-note" className="text-xs text-muted-foreground">
+      <p id="checkout-note" className="px-1 text-[12px] text-muted-foreground/80">
         {!online
           ? "Online payment isn't set up on this server yet, so plans can't be purchased or changed in the app. "
           : !isOwner ? "Only the workspace owner can change the plan. "
           : stripeMode() === "test" ? "Payments are in Stripe test mode: use a test card (4242 4242 4242 4242); nothing is charged. " : ""}
         Payments are handled by Stripe; SignalForge never sees card details. Prices are in USD, billed monthly; no annual
-        plans for now. Refresh intervals and keyword refresh targets are scheduling targets, not guaranteed discovery times; platforms that only
-        support polling are never real-time.
-        {paidOn ? "" : " Paid platforms (Reddit, X, LinkedIn, TikTok, Instagram, Facebook, Substack, Google web/news, Trustpilot) are not switched on for this server yet."}
+        plans for now.
       </p>
     </>
   );

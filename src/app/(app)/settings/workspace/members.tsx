@@ -9,7 +9,7 @@ import { idle, type ActionState } from "@/lib/action-state";
 import { inviteMemberAction, removeMemberAction, revokeInvitationAction, setMemberRoleAction, type InviteState } from "@/app/actions/members";
 
 const ROLE_HELP = "Viewers read everything; members can also act on issues and run analyses; admins manage products, keywords, sources and members.";
-const SELECT = "h-9 rounded-md border bg-surface px-2 text-[13px]";
+const SELECT = "h-10 cursor-pointer rounded-xl border border-foreground/[0.1] bg-foreground/[0.03] px-3 text-[13px] outline-none transition-colors hover:border-foreground/20 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/25";
 
 export function InviteForm({ workspaceId, canInviteAdmins }: { workspaceId: string; canInviteAdmins: boolean }) {
   const [state, action] = React.useActionState(inviteMemberAction, idle as InviteState);
