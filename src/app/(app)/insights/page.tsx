@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Check, Lightbulb, PackagePlus } from "lucide-react";
+import { Check, Lightbulb, PackagePlus } from "lucide-react";
 import { CountUp } from "@/components/motion";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -20,13 +20,35 @@ const KIND_LABEL: Record<string, string> = {
   cluster_summary: "Summary", feature_evaluation: "Feature evaluation", issue_draft: "GitHub draft",
   github_duplicates: "GitHub check", spike_explanation: "Spike explanation",
 };
-const PLURAL: Record<string, string> = {
-  cluster_summary: "Summaries", feature_evaluation: "Feature evaluations", issue_draft: "GitHub drafts", github_duplicates: "GitHub checks",
-};
 const RESULT: Record<string, { label: string; tone: "positive" | "neutral" | "negative" | "info" }> = {
   completed: { label: "Ready", tone: "positive" }, insufficient_data: { label: "Insufficient data", tone: "neutral" },
   failed: { label: "Failed", tone: "negative" }, pending: { label: "Working", tone: "info" }, running: { label: "Working", tone: "info" },
 };
+
+/** The analyses that apply to an issue, in the order they're usually done. */
+const stepsFor = (category: string) =>
+  category === "feature_request"
+    ? ["cluster_summary", "feature_evaluation", "github_duplicates", "issue_draft"]
+    : ["cluster_summary", "github_duplicates", "issue_draft"];
+
+/** Analysed share of open issues as a ring, the count in the middle. */
+function Ring({ value, total }: { value: number; total: number }) {
+  const c = 2 * Math.PI * 52;
+  const share = total > 0 ? value / total : 0;
+  return (
+    <div className="relative size-[132px] shrink-0">
+      <svg viewBox="0 0 120 120" className="size-full -rotate-90" aria-hidden>
+        <circle cx="60" cy="60" r="52" fill="none" stroke="color-mix(in oklab, var(--foreground) 8%, transparent)" strokeWidth="10" />
+        {share > 0 && <circle cx="60" cy="60" r="52" fill="none" stroke="var(--foreground)" strokeWidth="10" strokeLinecap="round"
+          strokeDasharray={`${share * c} ${c}`} className="ring-fill" style={{ ["--len" as string]: c, ["--d" as string]: "400ms" }} />}
+      </svg>
+      <div className="absolute inset-0 grid place-content-center text-center">
+        <span className="text-[38px] font-semibold leading-none tracking-[-0.04em]"><CountUp value={value} /></span>
+        <span className="mt-1 text-[12px] text-muted-foreground">of {total}</span>
+      </div>
+    </div>
+  );
+}
 
 export default async function InsightsPage() {
   const tz = await getTimeZone();
@@ -67,6 +89,14 @@ export default async function InsightsPage() {
 
   const counts = Object.fromEntries(Object.keys(KIND_LABEL).map((k) => [k, invs.filter((i) => i.kind === k && i.status === "completed").length]));
   const analysed = clusters.filter((c) => done.has(c.id)).length;
+  const issuesWith = (kind: string) => clusters.filter((c) => done.get(c.id)?.has(kind)).length;
+  const funnel = [
+    { label: "Open issues", value: clusters.length },
+    { label: "Summarised", value: issuesWith("cluster_summary") },
+    { label: "Checked on GitHub", value: issuesWith("github_duplicates") },
+    { label: "Drafted for GitHub", value: issuesWith("issue_draft") },
+    { label: "Sent to Claude", value: new Set(tasks.map((t) => t.cluster_id).filter(Boolean)).size },
+  ];
   const PRIORITY_INK: Record<string, string> = {
     critical: "var(--signal)", high: "color-mix(in oklab, var(--signal) 55%, var(--foreground) 25%)",
     medium: "color-mix(in oklab, var(--foreground) 55%, transparent)", low: "color-mix(in oklab, var(--foreground) 22%, transparent)",
@@ -81,13 +111,11 @@ export default async function InsightsPage() {
             <h1 className="text-[34px] font-medium leading-[1.05] tracking-[-0.035em] sm:text-[44px]">Insights</h1>
             <p className="max-w-[60ch] text-[14px] text-muted-foreground">Evidence-based analysis of {product.name}&apos;s issues: summaries, feature evaluations, existing GitHub issues and issue drafts, with the posts behind every statement.</p>
           </div>
-          <div className="grid gap-2">
-            <div className="flex items-baseline gap-3">
-              <CountUp value={analysed} className="text-[56px] font-semibold leading-none tracking-[-0.045em] sm:text-[64px]" />
-              <span className="text-[15px] text-muted-foreground">of {clusters.length} open issue{clusters.length === 1 ? "" : "s"} analysed</span>
-            </div>
-            <div className="h-1.5 max-w-sm overflow-hidden rounded-full bg-foreground/[0.07]" aria-hidden>
-              <div className="grow-x h-full rounded-full bg-foreground/80" style={{ width: `${clusters.length ? (analysed / clusters.length) * 100 : 0}%`, ["--d" as string]: "400ms" }} />
+          <div className="flex items-center gap-5">
+            <Ring value={analysed} total={clusters.length} />
+            <div className="grid gap-1">
+              <span className="text-[15px]">open issue{clusters.length === 1 ? "" : "s"} analysed</span>
+              <span className="text-[13px] text-muted-foreground">{clusters.length - analysed} still waiting · analyses run only when you ask</span>
             </div>
           </div>
           <div className={`panel flex w-fit flex-wrap items-center gap-2 rounded-full px-4 py-2 text-[13px] ${ai.ok ? "" : "text-muted-foreground"}`}>
@@ -95,15 +123,29 @@ export default async function InsightsPage() {
             {ai.ok ? "SignalForge Intelligence on" : <>{ai.message} <Link href="/settings/ai" className="underline underline-offset-2">Details</Link></>}
           </div>
         </div>
-        <div className="rise grid grid-cols-2 gap-3 self-end" style={{ ["--d" as string]: "120ms" }}>
-          {(["cluster_summary", "feature_evaluation", "issue_draft", "github_duplicates"] as const).map((k, i) => (
-            <div key={k} className="panel rise grid gap-2 rounded-[18px] p-4" style={{ ["--d" as string]: `${160 + i * 60}ms` }}>
-              <span className="text-[12px] text-muted-foreground">{PLURAL[k]}</span>
-              <CountUp value={counts[k] ?? 0} className="text-[26px] font-semibold leading-none tracking-[-0.03em]" />
-              <span className="text-[12px] text-muted-foreground/80">ready</span>
-            </div>
-          ))}
-        </div>
+        <section className="panel rise grid content-start gap-4 self-end rounded-[18px] p-5" style={{ ["--d" as string]: "120ms" }} aria-label="From feedback to fix">
+          <div className="grid gap-1">
+            <h2 className="text-[13px] text-muted-foreground">From feedback to fix</h2>
+            <p className="text-[12px] text-muted-foreground/80">How far your open issues have got. Each step is done from an issue&apos;s page.</p>
+          </div>
+          <ol className="grid gap-2.5">
+            {funnel.map((f, i) => (
+              <li key={f.label} className="grid grid-cols-[8.5rem_minmax(0,1fr)_2.5rem] items-center gap-3 text-[13px]">
+                <span className="truncate text-foreground/85">{f.label}</span>
+                <span className="block h-7 overflow-hidden rounded-full bg-foreground/[0.04]" aria-hidden>
+                  <span className="grow-x flex h-full items-center rounded-full"
+                    style={{ width: `${Math.max(f.value > 0 ? 6 : 0, (f.value / Math.max(1, clusters.length)) * 100)}%`, ["--d" as string]: `${300 + i * 90}ms`,
+                      background: i === 0 ? "var(--foreground)" : `color-mix(in oklab, var(--foreground) ${70 - i * 10}%, transparent)` }} />
+                </span>
+                <span className="text-right text-[15px] font-semibold tabular-nums">{f.value}</span>
+              </li>
+            ))}
+          </ol>
+          <p className="text-[11px] text-muted-foreground/80">
+            {[["cluster_summary", "summary", "summaries"], ["feature_evaluation", "feature evaluation", "feature evaluations"], ["github_duplicates", "GitHub check", "GitHub checks"], ["issue_draft", "draft", "drafts"]]
+              .map(([k, one, many]) => `${counts[k!] ?? 0} ${(counts[k!] ?? 0) === 1 ? one : many}`).join(" · ")} ready
+          </p>
+        </section>
       </section>
 
       {!ai.ok && (
@@ -137,11 +179,27 @@ export default async function InsightsPage() {
                     <Link href={`/insights/${c.id}`} className="text-[16px] font-medium leading-snug tracking-[-0.01em] after:absolute after:inset-0 after:content-[''] hover:underline hover:underline-offset-2">{c.title}</Link>
                     <span className="text-[12px] text-muted-foreground">{c.report_count} reporter{c.report_count === 1 ? "" : "s"}{c.platforms.length > 0 && ` · ${c.platforms.map(nameOf).join(", ")}`}</span>
                   </div>
-                  <div className="flex flex-wrap items-center gap-1.5 border-t border-foreground/[0.06] pt-3">
-                    {kinds && kinds.size > 0
-                      ? [...kinds].map((k) => <span key={k} className="flex items-center gap-1 rounded-full bg-positive/10 px-2 py-0.5 text-[11px] text-positive"><Check className="size-3" aria-hidden />{KIND_LABEL[k] ?? k}</span>)
-                      : <span className="text-[12px] text-muted-foreground/80">Not analysed yet</span>}
-                    <ArrowRight className="ml-auto size-4 text-muted-foreground" aria-hidden />
+                  <div className="flex items-center gap-3 border-t border-foreground/[0.06] pt-3">
+                    <div className="flex min-w-0 flex-1 items-start" role="group" aria-label="Analyses">
+                      {stepsFor(c.category).map((k, i, all) => {
+                        const ok = kinds?.has(k) ?? false;
+                        return (
+                          <div key={k} className="relative flex min-w-0 flex-1 flex-col items-center gap-1.5 text-center">
+                            {i < all.length - 1 && <span className={`absolute left-1/2 top-[9px] h-px w-full ${ok && kinds?.has(all[i + 1]!) ? "bg-foreground/50" : "bg-foreground/10"}`} aria-hidden />}
+                            <span className={`relative z-10 flex size-[18px] items-center justify-center rounded-full border ${ok ? "border-transparent bg-foreground text-background" : "border-foreground/20 bg-surface"}`}>
+                              {ok && <Check className="size-3" strokeWidth={3} aria-hidden />}
+                            </span>
+                            <span className={`truncate px-1 text-[11px] ${ok ? "text-foreground" : "text-muted-foreground/70"}`}>
+                              {KIND_LABEL[k]}<span className="sr-only">{ok ? " done" : " not done"}</span>
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="grid shrink-0 justify-items-end leading-none">
+                      <span className={`text-[26px] font-semibold tracking-[-0.03em] tabular-nums ${hot ? "text-signal" : ""}`}>{c.unique_reporters ?? c.report_count}</span>
+                      <span className="mt-1 text-[11px] text-muted-foreground">people</span>
+                    </div>
                   </div>
                 </li>
               );
