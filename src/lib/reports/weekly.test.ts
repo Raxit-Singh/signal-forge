@@ -42,8 +42,7 @@ test("highlights are rules over the numbers: volume, top platform, negativity sh
   assert.equal(h[2], "50% of classified mentions were negative, up from 20%.");
   assert.match(h[3]!, /1 high-priority issue had activity, led by “Login freezes”/);
   assert.match(h[4]!, /1 new issue appeared/);
-  assert.equal(h[5], "1 confirmed spike in mention volume.");
-  assert.match(h[6]!, /covered 80% of the week/);
+  assert.equal(h.length, 5, "no spike or coverage lines: spikes and coverage aren't shown to customers");
   assert.deepEqual(highlights(base(), (s) => s), ["No relevant mentions were collected this week."]);
 });
 

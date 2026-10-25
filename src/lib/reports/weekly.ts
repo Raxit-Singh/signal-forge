@@ -74,13 +74,10 @@ export function highlights(d: Omit<ReportData, "highlights">, sourceName: (id: s
   const urgent = d.issues.filter((i) => i.priority === "critical" || i.priority === "high");
   if (urgent.length) out.push(`${urgent.length} high-priority issue${urgent.length === 1 ? "" : "s"} had activity, led by “${urgent[0]!.title}”.`);
   if (fresh.length) out.push(`${fresh.length} new issue${fresh.length === 1 ? "" : "s"} appeared${fresh.length ? `, including “${fresh[0]!.title}”` : ""}.`);
-  const confirmed = d.spikes.filter((x) => x.confidence === "confirmed");
-  if (confirmed.length) out.push(`${confirmed.length} confirmed spike${confirmed.length === 1 ? "" : "s"} in mention volume.`);
   if (d.competitors && d.competitors.rows.length > 1) {
     const me = d.competitors.rows.find((r) => r.isProduct);
     if (me?.share !== null && me?.share !== undefined) out.push(`Share of voice against tracked competitors: ${Math.round(me.share * 100)}%.`);
   }
-  if (d.current.coverage < 0.9) out.push(`Monitoring covered ${Math.round(d.current.coverage * 100)}% of the week, so counts may be incomplete.`);
   return out;
 }
 
