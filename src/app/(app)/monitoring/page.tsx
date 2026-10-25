@@ -385,8 +385,8 @@ function PlatformDonut({ rows, total, colorOf }: { rows: KeywordRankings["platfo
   const lens = items.map((it) => ((it.mentions ?? 0) / sum) * c);
   const starts = lens.map((_, i) => lens.slice(0, i).reduce((t, x) => t + x, 0));
   return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] items-center gap-5 sm:grid-cols-[160px_minmax(0,1fr)]">
-      <div className="relative mx-auto size-[160px]">
+    <div className="flex min-w-0 flex-wrap items-center justify-center gap-6">
+      <div className="relative shrink-0" style={{ width: 160, height: 160 }}>
         <svg viewBox="0 0 160 160" className="size-full -rotate-90" aria-hidden>
           {items.map((it, i) => (
             <circle key={it.id} cx="80" cy="80" r={r} fill="none" stroke={colorOf.get(it.id) ?? GREY} strokeWidth="18"
@@ -398,11 +398,12 @@ function PlatformDonut({ rows, total, colorOf }: { rows: KeywordRankings["platfo
           <span className="mt-1 text-[12px] text-muted-foreground/80">mentions</span>
         </div>
       </div>
-      <ul className="grid min-w-0 gap-1.5 text-[13px]">
+      {/* Flex, not an arbitrary grid track: the legend always shrinks to the card and long names truncate. */}
+      <ul className="grid gap-1.5 text-[13px]" style={{ flex: "1 1 13rem", minWidth: 0 }}>
         {items.slice(0, 7).map((it) => (
-          <li key={it.id} className="flex items-center gap-2.5">
+          <li key={it.id} className="flex min-w-0 items-center gap-2.5">
             <span className="size-2.5 shrink-0 rounded-full" style={{ background: colorOf.get(it.id) ?? GREY }} aria-hidden />
-            <span className="min-w-0 flex-1 truncate">{it.name}</span>
+            <span className="min-w-0 flex-1 truncate" title={it.name}>{it.name.replace(/ \/ Stack Exchange$/, "")}</span>
             <span className="shrink-0 whitespace-nowrap tabular-nums text-[12px] text-muted-foreground">{(it.mentions ?? 0).toLocaleString("en-US")} · {it.sharePct ?? 0}%</span>
           </li>
         ))}
