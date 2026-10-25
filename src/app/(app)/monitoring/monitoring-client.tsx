@@ -4,9 +4,8 @@ import { Fragment, useState } from "react";
 import { ArrowDownRight, ArrowRight, ArrowUpRight, ChevronDown, Minus, Sparkle } from "lucide-react";
 import { Badge } from "@/components/ui/primitives";
 import type { SkippedKeyword } from "@/lib/sources/query-optimizer";
-import { cancelBoostAction, createBoostAction, setSourceEnabledAction } from "@/app/actions/monitoring";
+import { setSourceEnabledAction } from "@/app/actions/monitoring";
 import { FormMessage, SubmitButton, useFormAction } from "@/components/ui/form";
-import { Input, Label } from "@/components/ui/primitives";
 import { idle } from "@/lib/action-state";
 import { cn } from "@/lib/utils";
 
@@ -28,88 +27,6 @@ export function SourceToggle({ productId, platform, name, enabled, disabledReaso
       >
         {enabled ? "Turn off" : "Turn on"}
       </SubmitButton>
-      <FormMessage state={state} />
-    </form>
-  );
-}
-
-export function BoostForm({ productId, platforms, maxPaidChecks, boostMinHours }: {
-  productId: string;
-  platforms: Array<{ id: string; name: string; paid: boolean }>;
-  maxPaidChecks: number;
-  boostMinHours: number;
-}) {
-  const [state, action] = useFormAction(createBoostAction, idle);
-  const [picked, setPicked] = useState<string[]>([]);
-  const paidPicked = platforms.filter((p) => p.paid && picked.includes(p.id));
-  const now = new Date();
-  const local = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-  return (
-    <form action={action} className="grid gap-3">
-      <input type="hidden" name="productId" value={productId} />
-      <input type="hidden" name="tzOffsetMinutes" value={now.getTimezoneOffset()} />
-      <div className="grid gap-1.5">
-        <Label htmlFor="boost-title">Name</Label>
-        <Input id="boost-title" name="title" placeholder="v2.0 launch" maxLength={120} required defaultValue={state.status === "error" ? state.values?.title : undefined} />
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="grid gap-1.5">
-          <Label htmlFor="boost-start">Starts</Label>
-          <Input id="boost-start" name="startsAt" type="datetime-local" required defaultValue={local(now)} />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="boost-end">Ends (max 14 days)</Label>
-          <Input id="boost-end" name="endsAt" type="datetime-local" required defaultValue={local(new Date(now.getTime() + 3 * 86_400_000))} />
-        </div>
-      </div>
-      <fieldset className="grid gap-1.5">
-        <legend className="mb-1 text-[13px] font-medium">Platforms</legend>
-        {platforms.length === 0 ? (
-          <p className="text-xs text-muted-foreground">No platforms are monitored for this product yet.</p>
-        ) : (
-          <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-            {platforms.map((p) => (
-              <label key={p.id} className="flex items-center gap-1.5 text-[13px]">
-                <input
-                  type="checkbox" name="platforms" value={p.id} checked={picked.includes(p.id)}
-                  onChange={(e) => setPicked((xs) => (e.target.checked ? [...xs, p.id] : xs.filter((x) => x !== p.id)))}
-                />
-                {p.name}{p.paid && <span className="text-xs text-muted-foreground">(paid)</span>}
-              </label>
-            ))}
-          </div>
-        )}
-      </fieldset>
-      <p className="text-xs text-muted-foreground">
-        {boostMinHours >= 3
-          ? `During the boost, selected platforms are checked every ${boostMinHours} h (the fastest a boost allows on your plan).`
-          : `During the boost, selected platforms are checked at least every 3 h, and as often as every ${boostMinHours} h when activity is high.`}
-      </p>
-      {paidPicked.length > 0 && (
-        <div className={cn("grid gap-2 rounded-md border border-warning/40 bg-warning/8 p-3")}>
-          <div className="grid gap-1.5">
-            <Label htmlFor="boost-paid">Extra paid checks allowed (max {maxPaidChecks})</Label>
-            <Input id="boost-paid" name="maxPaidChecks" type="number" min={1} max={maxPaidChecks} defaultValue={Math.min(50, maxPaidChecks)} className="w-32" />
-          </div>
-          <label className="flex items-start gap-1.5 text-xs">
-            <input type="checkbox" name="confirmPaid" value="yes" className="mt-0.5" />
-            <span>I authorize up to this many paid checks on {paidPicked.map((p) => p.name).join(", ")} during the boost. They count toward the plan&apos;s paid-source allowance and stop when either limit is reached.</span>
-          </label>
-        </div>
-      )}
-      <div><SubmitButton size="sm" pendingLabel="Scheduling…" disabled={picked.length === 0}>Schedule boost</SubmitButton></div>
-      <FormMessage state={state} />
-    </form>
-  );
-}
-
-export function CancelBoost({ productId, boostId }: { productId: string; boostId: string }) {
-  const [state, action] = useFormAction(cancelBoostAction, idle);
-  return (
-    <form action={action} className="grid gap-1">
-      <input type="hidden" name="productId" value={productId} />
-      <input type="hidden" name="boostId" value={boostId} />
-      <SubmitButton size="sm" variant="secondary" pendingLabel="Canceling…">Cancel</SubmitButton>
       <FormMessage state={state} />
     </form>
   );

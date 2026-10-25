@@ -83,9 +83,6 @@ test("simple view: summary, keywords and platforms ranked by mention count, no t
   const byPlatform = page.getByRole("list", { name: "FixtureFlow by platform" });
   await expect(byPlatform.getByRole("listitem").filter({ hasText: "Hacker News" })).toContainText("every 24 h");
   await expect(byPlatform.getByRole("listitem").filter({ hasText: "Stack Overflow" })).toContainText("Searched every check");
-  const other = page.getByRole("list", { name: "Other platforms" });
-  await expect(other).toContainText("Reddit");
-  await expect(other).toContainText(/Not configured on this server|switched off/);
 });
 
 test("each keyword has its own platform ranking; growth is shown but doesn't change rank", async ({ page }) => {
@@ -124,7 +121,7 @@ test("each keyword has its own platform ranking; growth is shown but doesn't cha
   await expect(rows.nth(2)).toContainText("GitHub");
 });
 
-test("ranking from stored activity, explanations, and a Launch Boost that returns to automatic intervals", async ({ page }) => {
+test("ranking from stored activity, with the reasons behind each interval", async ({ page }) => {
   // Enough completed checks for Hacker News to leave discovery (GitHub stays new).
   for (const daysAgo of [2, 1]) {
     await adminInsert("coverage_windows", {
@@ -138,15 +135,15 @@ test("ranking from stored activity, explanations, and a Launch Boost that return
     query_id: hnQuery!.id, workspace_id: ids.workspaceId, product_id: ids.productId, platform: "hackernews", stream: "default",
     raw_alpha: 6.5, raw_beta: 73, rel_alpha: 6.5, rel_beta: 73, observations: 3, exposure_hours: 72, last_observed_at: new Date().toISOString(),
   });
-  // Starting a boost now re-ranks the product from stored data (no API calls).
-  await page.getByLabel("Name").fill("E2E launch");
-  await page.getByRole("checkbox", { name: /Hacker News/ }).check();
-  await page.getByRole("button", { name: "Schedule boost" }).click();
-  await expect(page.getByText("Launch Boost scheduled")).toBeVisible();
+  // Resuming scanning re-ranks the product from stored data (no API calls).
+  await page.getByRole("button", { name: "Stop scan" }).click();
+  await page.getByRole("dialog", { name: "Stop scanning FixtureFlow?" }).getByRole("button", { name: "Stop scan" }).click();
+  await page.getByRole("button", { name: "Resume scanning" }).click();
+  await expect(page.getByRole("button", { name: "Stop scan" })).toBeVisible();
 
-  await expect.poll(() => adminSelect<Array<{ platform: string; phase: string; rank: number | null; mentions_7d: number; interval_minutes: number }>>(
-    `platform_activity?product_id=eq.${ids.productId}&select=platform,phase,rank,mentions_7d,interval_minutes&order=platform`,
-  ).then((r) => r.map((x) => `${x.platform}:${x.phase}:${x.rank}:${x.mentions_7d}:${x.interval_minutes}`).join(" "))).toContain("hackernews:ranked:1:12:360");
+  await expect.poll(() => adminSelect<Array<{ platform: string; phase: string; rank: number | null; mentions_7d: number }>>(
+    `platform_activity?product_id=eq.${ids.productId}&select=platform,phase,rank,mentions_7d&order=platform`,
+  ).then((r) => r.map((x) => `${x.platform}:${x.phase}:${x.rank}:${x.mentions_7d}`).join(" "))).toContain("hackernews:ranked:1:12");
 
   await page.reload();
   await openAdvanced(page);
@@ -154,7 +151,7 @@ test("ranking from stored activity, explanations, and a Launch Boost that return
   await expect(hn).toContainText("#1");
   await expect(hn).toContainText("%"); // share of this product's relevant mentions
   await expect(hn).toContainText("12");
-  await expect(hn).toContainText("6 h");
+  await expect(hn).toContainText("24 h");
   const gh = ranking(page).getByRole("row").filter({ hasText: "GitHub" });
   await expect(gh).toContainText("New");
   await expect(gh).toContainText("Learning");
@@ -165,27 +162,11 @@ test("ranking from stored activity, explanations, and a Launch Boost that return
   const details = page.locator("#details-hackernews");
   await expect(details).toContainText("Hacker News ranks #1");
   await expect(details).toContainText("12 relevant mentions in the last 7 days");
-  await expect(details).toContainText("Hacker News is checked every 6 h because a Launch Boost is active.");
   await expect(details).toContainText("Your Free plan checks each platform at most every 24 h");
   await expect(details).toContainText("of this product's relevant mentions over the last 4 weeks");
   await expect(details.getByRole("list", { name: "Hacker News measured signals" })).toContainText("Important feedback");
   await expect(details.getByRole("list", { name: "Hacker News measured signals" })).toContainText("not measured");
   await expect(details).toContainText("Searched: FixtureFlow");
-
-  // Cancel: back to the automatic interval (the Free plan's 24 h), and the change is logged with reasons.
-  const boosts = page.getByRole("list", { name: "Active and upcoming boosts" });
-  await boosts.getByRole("button", { name: "Cancel" }).click();
-  await expect(boosts).toHaveCount(0);
-  await expect.poll(() => adminSelect<Array<{ interval_minutes: number }>>(`platform_activity?product_id=eq.${ids.productId}&platform=eq.hackernews&select=interval_minutes`)
-    .then((r) => r[0]?.interval_minutes)).toBe(1440);
-  const changes = await adminSelect<Array<{ from_minutes: number; to_minutes: number; reasons: string[] }>>(
-    `monitoring_interval_changes?product_id=eq.${ids.productId}&platform=eq.hackernews&select=from_minutes,to_minutes,reasons`,
-  );
-  assert(changes.some((c) => c.from_minutes === 360 && c.to_minutes === 1440 && c.reasons.length > 0), "interval change recorded with reasons");
-  await page.reload();
-  await openAdvanced(page);
-  await expect(ranking(page).getByRole("row").filter({ hasText: "Hacker News" })).toContainText("24 h");
-  await expect(page.locator("div", { has: page.getByText("Interval adjustments (7 days)", { exact: true }) }).last()).toContainText("1");
 });
 
 test("dashboard shows each keyword's actual scheduled refresh, not only the platform interval", async ({ page }) => {
@@ -253,10 +234,6 @@ test("mobile: rankings become cards with no horizontal overflow", async ({ page 
   expect(overflow).toBeLessThanOrEqual(0);
 });
 
-function assert(cond: boolean, message: string): asserts cond {
-  if (!cond) throw new Error(message);
-}
-
 test("paid platforms included in the plan are on by default, and can be turned off and on again", async ({ page }) => {
   await adminInsert("internal_plan_grants", {
     workspace_id: ids.workspaceId, plan_id: "internal_unlimited", reason: "development", granted_by: "e2e-monitoring", expires_at: new Date(Date.now() + 86_400_000).toISOString(),
@@ -280,6 +257,7 @@ test("paid platforms included in the plan are on by default, and can be turned o
   await expect.poll(setting).toEqual([{ enabled: false }]);
 
   await page.reload();
+  await openAdvanced(page); // platforms that can be switched on are listed under Advanced details
   await page.getByRole("button", { name: "Turn on Reddit" }).click();
   await expect.poll(setting).toEqual([{ enabled: true }]);
 });
