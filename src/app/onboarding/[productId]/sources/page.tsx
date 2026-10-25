@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
-import { Card, CardContent } from "@/components/ui/primitives";
 import { SubmitButton } from "@/components/ui/form";
-import { PlatformIcon } from "@/components/platform-icon";
+import { PlatformMark } from "@/components/brand-logo";
 import { advanceOnboardingAction } from "@/app/actions/product";
 import { sourceSetup } from "@/lib/server/collection/sources";
 import { StepHeader } from "../../steps";
 import { loadOnboardingProduct } from "../load";
 
-export const metadata: Metadata = { title: "Data sources" };
+export const metadata: Metadata = { title: "Platforms" };
 
 export default async function SourcesStep({ params }: { params: Promise<{ productId: string }> }) {
   const { productId } = await params;
@@ -15,20 +14,19 @@ export default async function SourcesStep({ params }: { params: Promise<{ produc
   const sources = sourceSetup().filter((x) => x.configured);
   return (
     <>
-      <StepHeader step={3} title="Data sources" description={<>Where SignalForge listens for {product.name}.</>} />
-      <div className="grid gap-4">
-        <Card>
-          <CardContent>
-            <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3" aria-label="Platforms">
-              {sources.map((s) => (
-                <li key={s.id} className="flex items-center gap-2.5 rounded-md border px-3 py-2 text-[13px] font-medium">
-                  <PlatformIcon id={s.id} />
-                  <span className="min-w-0 truncate">{s.name}</span>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
+      <StepHeader step={3} title="Where we listen"
+        description={<>SignalForge checks these {sources.length} platforms for {product.name} around the clock. Nothing to connect or configure.</>} />
+      <div className="grid gap-6">
+        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3" aria-label="Platforms">
+          {sources.map((s, i) => (
+            <li key={s.id} className="panel lift rise flex items-center gap-2.5 rounded-[18px] p-3 text-[13px] font-medium leading-tight sm:gap-3 sm:p-3.5 sm:text-[14px]"
+              style={{ ["--d" as string]: `${120 + Math.min(i, 12) * 35}ms` }}>
+              <PlatformMark source={s.id} size={34} />
+              <span className="line-clamp-2 min-w-0 break-words">{s.name.replace(/ \/ Stack Exchange$/, "")}</span>
+              <span className="breathe ml-auto hidden size-1.5 shrink-0 rounded-full bg-positive sm:block" title="Checked automatically" aria-hidden />
+            </li>
+          ))}
+        </ul>
         <form action={advanceOnboardingAction} className="flex justify-end">
           <input type="hidden" name="productId" value={product.id} />
           <input type="hidden" name="step" value="5" />

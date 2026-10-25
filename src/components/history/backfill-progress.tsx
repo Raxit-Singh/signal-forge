@@ -2,15 +2,16 @@ import { AlertTriangle, CheckCircle2, Clock, Loader2, MinusCircle, PauseCircle }
 import type { BackfillStatus } from "@/lib/server/collection/backfill-status";
 import type { TaskStatus } from "@/lib/sources/backfill-plan";
 import { Badge } from "@/components/ui/primitives";
+import { PlatformMark } from "@/components/brand-logo";
 import { formatCount } from "@/lib/format";
 
 const STATE: Record<TaskStatus, { label: string; icon: React.ReactNode; tone: "neutral" | "info" | "warning" | "positive" }> = {
-  queued: { label: "Queued", icon: <Clock className="size-4 text-muted-foreground" aria-hidden />, tone: "neutral" },
-  searching: { label: "Searching", icon: <Loader2 className="size-4 animate-spin text-info motion-reduce:animate-none" aria-hidden />, tone: "info" },
-  partial: { label: "Partially collected", icon: <AlertTriangle className="size-4 text-warning" aria-hidden />, tone: "warning" },
-  paused: { label: "Paused", icon: <PauseCircle className="size-4 text-warning" aria-hidden />, tone: "warning" },
-  completed: { label: "Completed", icon: <CheckCircle2 className="size-4 text-positive" aria-hidden />, tone: "positive" },
-  unavailable: { label: "Unavailable", icon: <MinusCircle className="size-4 text-muted-foreground" aria-hidden />, tone: "neutral" },
+  queued: { label: "Queued", icon: <Clock className="size-3.5 text-muted-foreground" aria-hidden />, tone: "neutral" },
+  searching: { label: "Searching", icon: <Loader2 className="size-3.5 animate-spin text-info motion-reduce:animate-none" aria-hidden />, tone: "info" },
+  partial: { label: "Partially collected", icon: <AlertTriangle className="size-3.5 text-warning" aria-hidden />, tone: "warning" },
+  paused: { label: "Paused", icon: <PauseCircle className="size-3.5 text-warning" aria-hidden />, tone: "warning" },
+  completed: { label: "Completed", icon: <CheckCircle2 className="size-3.5 text-positive" aria-hidden />, tone: "positive" },
+  unavailable: { label: "Unavailable", icon: <MinusCircle className="size-3.5 text-muted-foreground" aria-hidden />, tone: "neutral" },
 };
 
 const RUN_LABEL: Record<string, string> = {
@@ -48,15 +49,15 @@ export function BackfillProgress({ status, allowanceRemaining, renewsOn }: { sta
           </p>
         )}
       </div>
-      <ul className="divide-y rounded-md border">
+      <ul className="grid gap-2">
         {status.platforms.map((p) => {
           const s = STATE[p.status];
           return (
-            <li key={p.platform} className="grid gap-1 p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                {s.icon}
-                <span className="font-medium">{p.name}</span>
-                <span className="text-xs text-muted-foreground">{s.label}</span>
+            <li key={p.platform} className="grid gap-1 rounded-2xl border border-foreground/[0.08] bg-foreground/[0.02] p-3.5">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <PlatformMark source={p.platform} size={30} />
+                <span className="font-medium">{p.name.replace(/ \/ Stack Exchange$/, "")}</span>
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">{s.icon}{s.label}</span>
                 <span className="ml-auto text-xs tabular text-muted-foreground">
                   <span className="font-medium text-foreground">{formatCount(p.inserted)}</span> collected
                   {p.searches > 1 && ` · ${p.done}/${p.searches} searches done`}

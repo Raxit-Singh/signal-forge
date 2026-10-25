@@ -63,7 +63,7 @@ export default async function HistoryStep({ params }: { params: Promise<{ produc
             </>
           )}
 
-          <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-foreground/[0.06] pt-4">
             {run && (
               <Button asChild variant="secondary"><Link href="/mentions">View mentions</Link></Button>
             )}

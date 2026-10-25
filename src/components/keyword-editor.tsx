@@ -77,16 +77,17 @@ export function KeywordEditor({
       <input type="hidden" name="aliases" value={payload} />
       <FormMessage state={state} />
 
-      <ul className="divide-y rounded-md border" aria-label="Keywords">
+      <ul className="grid gap-2" aria-label="Keywords">
         {aliases.length === 0 && (
-          <li className="p-4 text-center text-[13px] text-muted-foreground">No keywords yet. Add at least one below.</li>
+          <li className="rounded-2xl border border-dashed p-5 text-center text-[13px] text-muted-foreground">No keywords yet. Add at least one below.</li>
         )}
         {aliases.map((a, i) => {
           const needsContext = a.isAmbiguous && a.contextTerms.length === 0;
           // The product name is always monitored: it can't be removed or switched off (only given context words).
           const brand = productName !== undefined && isBrandTerm(a.term, productName);
           return (
-            <li key={a.term} className={cn("grid gap-2 p-3", !a.enabled && "bg-surface-2")}>
+            <li key={a.term} className={cn("grid gap-2.5 rounded-2xl border p-3.5 transition-colors",
+              a.enabled ? "border-foreground/[0.12] bg-foreground/[0.04]" : "border-foreground/[0.06] bg-transparent")}>
               <div className="flex flex-wrap items-center gap-2">
                 <label className="flex min-w-0 items-center gap-2">
                   <input
@@ -98,7 +99,7 @@ export function KeywordEditor({
                     onChange={(e) => update(i, { enabled: e.target.checked })}
                     aria-label={`Listen for ${a.term}`}
                   />
-                  <span className={cn("truncate font-mono text-[13px]", !a.enabled && "text-muted-foreground")}>{a.term}</span>
+                  <span className={cn("truncate text-[14px] font-medium", !a.enabled && "font-normal text-muted-foreground")}>{a.term}</span>
                 </label>
                 <Badge>{KIND_LABEL[a.kind]}</Badge>
                 {brand && <Badge tone="info">Always monitored</Badge>}
@@ -192,11 +193,20 @@ export function KeywordEditor({
           {enabledCount} keywords are on, but your {allowance.planName} plan allows {allowance.available} for this product. Turn some off to save.
         </p>
       )}
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-xs text-muted-foreground tabular">
-          {enabledCount} of {aliases.length} keywords active
-          {allowance && ` · plan allows ${allowance.available}${allowance.available !== allowance.max ? ` here (${allowance.max} per workspace)` : ""}`}
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-foreground/[0.06] pt-4">
+        <div className="flex items-center gap-3">
+          {allowance && allowance.available > 0 && (
+            <span className="flex gap-1" aria-hidden>
+              {Array.from({ length: Math.min(allowance.available, 10) }, (_, k) => (
+                <span key={k} className={cn("h-1.5 w-5 rounded-full", k < enabledCount ? "bg-foreground" : "bg-foreground/[0.12]")} />
+              ))}
+            </span>
+          )}
+          <p className="text-xs text-muted-foreground tabular">
+            {enabledCount} of {aliases.length} keywords active
+            {allowance && ` · plan allows ${allowance.available}${allowance.available !== allowance.max ? ` here (${allowance.max} per workspace)` : ""}`}
+          </p>
+        </div>
         <SubmitButton disabled={enabledCount === 0 || overLimit} pendingLabel="Saving…">
           {mode === "onboarding" ? "Save and continue" : "Save keywords"}
         </SubmitButton>

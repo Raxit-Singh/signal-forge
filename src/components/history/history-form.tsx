@@ -51,17 +51,17 @@ export function HistoryForm(p: HistoryFormProps) {
       <input type="hidden" name="productId" value={p.productId} />
       <FormMessage state={state} />
       <fieldset className="grid gap-2">
-        <legend className="mb-1 text-[13px] font-medium">How far back should SignalForge search for mentions?</legend>
-        <div className="grid gap-1.5 sm:grid-cols-2">
+        <legend className="mb-2 text-[14px] font-medium">How far back should SignalForge search for mentions?</legend>
+        <div className="grid gap-2 sm:grid-cols-2">
           {HISTORY_OPTIONS.map((o) => {
             const tooFar = o.days !== undefined && o.days > p.planHistoryDays;
             return (
               <label
                 key={o.mode}
                 className={cn(
-                  "flex items-center gap-2 rounded-md border px-3 py-2 text-[13px]",
-                  mode === o.mode && "border-primary bg-accent/40",
-                  tooFar && "opacity-60",
+                  "press flex min-h-12 cursor-pointer items-center gap-3 rounded-2xl border border-foreground/[0.08] px-4 py-2.5 text-[14px] transition-colors hover:border-foreground/20",
+                  mode === o.mode && "border-foreground/35 bg-foreground/[0.06] shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--foreground)_10%,transparent)]",
+                  tooFar && "cursor-not-allowed opacity-50 hover:border-foreground/[0.08]",
                 )}
               >
                 <input
@@ -69,8 +69,8 @@ export function HistoryForm(p: HistoryFormProps) {
                   onChange={() => setMode(o.mode)} className="size-4 accent-[var(--primary)]"
                 />
                 <span>{o.label}</span>
-                {o.mode === DEFAULT_HISTORY_MODE && <span className="ml-auto text-[11px] text-muted-foreground">Recommended</span>}
-                {tooFar && <span className="ml-auto text-[11px] text-muted-foreground">Beyond your plan</span>}
+                {o.mode === DEFAULT_HISTORY_MODE && <span className="ml-auto rounded-full bg-foreground/[0.07] px-2 py-0.5 text-[11px] text-muted-foreground">Recommended</span>}
+                {tooFar && <span className="ml-auto rounded-full bg-foreground/[0.05] px-2 py-0.5 text-[11px] text-muted-foreground">Beyond your plan</span>}
               </label>
             );
           })}
@@ -93,7 +93,7 @@ export function HistoryForm(p: HistoryFormProps) {
         </div>
       )}
 
-      <div className="rounded-md border bg-surface-2 px-3 py-2 text-[13px]" aria-live="polite" data-testid="history-range">
+      <div className="rounded-2xl border border-foreground/[0.08] bg-foreground/[0.03] px-4 py-3 text-[13px]" aria-live="polite" data-testid="history-range">
         {range.ok ? (
           <p>
             <History className="mr-1 inline size-4 align-text-bottom text-muted-foreground" aria-hidden />
@@ -112,7 +112,7 @@ export function HistoryForm(p: HistoryFormProps) {
       {p.broad.length > 0 && (
         <ul className="grid gap-1.5" aria-label="Keyword warnings">
           {p.broad.map((b) => (
-            <li key={b.term} className="flex gap-2 rounded-md border border-warning/40 bg-warning/8 px-3 py-2 text-xs">
+            <li key={b.term} className="flex gap-2 rounded-2xl border border-warning/40 bg-warning/8 px-4 py-2.5 text-xs">
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden />
               <span>{b.message}{b.suggestion ? ` ${b.suggestion}` : ""}</span>
             </li>
@@ -121,7 +121,7 @@ export function HistoryForm(p: HistoryFormProps) {
       )}
       {warnings.map((w) => (
         <p key={w.message} role={w.level === "warning" ? "alert" : undefined}
-          className={cn("flex gap-2 rounded-md border px-3 py-2 text-[13px]", w.level === "warning" ? "border-warning/40 bg-warning/8" : "bg-surface-2")}>
+          className={cn("flex gap-2 rounded-2xl border px-4 py-2.5 text-[13px]", w.level === "warning" ? "border-warning/40 bg-warning/8" : "border-foreground/[0.08] bg-foreground/[0.03]")}>
           {w.level === "warning" ? <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden /> : <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />}
           <span>{w.message}</span>
         </p>

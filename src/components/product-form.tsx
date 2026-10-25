@@ -1,6 +1,7 @@
 "use client";
 
 import { Field, FormMessage, SubmitButton, useFormAction } from "@/components/ui/form";
+import { PlatformMark } from "@/components/brand-logo";
 import { idle } from "@/lib/action-state";
 import { createProductAction, updateProductAction } from "@/app/actions/product";
 
@@ -42,8 +43,13 @@ export function ProductForm({ mode, product }: { mode: "create" | "edit"; produc
           state={state} placeholder="Freelance developers" />
       </div>
 
-      <fieldset className="grid gap-4 rounded-md border border-dashed p-3">
-        <legend className="px-1 text-xs font-medium text-muted-foreground">Listings &amp; code (optional)</legend>
+      <fieldset className="grid gap-4 rounded-2xl border border-foreground/[0.08] bg-foreground/[0.02] p-4">
+        <legend className="flex items-center gap-2 px-1 text-[13px] font-medium">
+          <span className="flex -space-x-1.5" aria-hidden>
+            {["github", "app_store", "google_play"].map((s) => <PlatformMark key={s} source={s} size={22} className="bg-background" />)}
+          </span>
+          Listings &amp; code <span className="font-normal text-muted-foreground">(optional)</span>
+        </legend>
         <Field name="githubRepo" label="GitHub repository" optional defaultValue={v("github_repo")} state={state}
           placeholder="owner/repo or https://github.com/owner/repo" />
         <div className="grid gap-4 sm:grid-cols-2">
