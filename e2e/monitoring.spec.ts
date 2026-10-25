@@ -28,18 +28,17 @@ test.afterEach(async () => {
 
 const ranking = (page: import("@playwright/test").Page) => page.getByRole("table", { name: "Platform ranking" });
 
-/** Scheduling diagnostics live behind "Advanced details". */
+/** Scheduling diagnostics are part of the page ("How checking works"); scroll them into view. */
 async function openAdvanced(page: import("@playwright/test").Page) {
-  const adv = page.locator("details#advanced");
-  if (!(await adv.evaluate((d: HTMLDetailsElement) => d.open))) await adv.locator("summary").first().click();
+  await page.locator("#advanced").scrollIntoViewIfNeeded();
 }
 
 test("simple view: summary, keywords and platforms ranked by mention count, no technical settings up front", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Monitoring", level: 1, exact: true })).toBeVisible();
   for (const mode of ["Eco", "Balanced", "Priority"]) await expect(page.getByRole("radio", { name: new RegExp(mode) })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Save mode" })).toHaveCount(0);
-  // Formula-level detail is hidden until "Advanced details" is opened.
-  await expect(page.getByText("Checks avoided vs hourly", { exact: true })).toBeHidden();
+  // Scheduling detail is part of the page, under "How checking works".
+  await expect(page.getByRole("heading", { name: "How checking works" })).toBeVisible();
 
   const stat = (label: string) => page.locator("div", { has: page.getByText(label, { exact: true }) }).last();
   await expect(stat("Total mentions · last 30 days")).toContainText("13");

@@ -241,28 +241,43 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
           ) : <PlatformTable rows={k.platforms} now={now} stopped={Boolean(stoppedAt)} at={at} colorOf={colorOf} />}
         </section>
 
-        <details className="panel group rounded-[18px]" id="advanced">
-          <summary className="flex cursor-pointer items-center justify-between gap-2 p-5 text-[14px] font-medium [&::-webkit-details-marker]:hidden">
-            Advanced details
-            <ChevronDown className="size-4 transition-transform group-open:rotate-180" aria-hidden />
-          </summary>
-          <div className="grid gap-6 border-t border-foreground/[0.06] p-5">
-            <div className="grid gap-1 text-xs text-muted-foreground">
-              <p>
-                How checks are scheduled: SignalForge measures, for this product alone, how fast relevant mentions arrive on each keyword × platform
-                search and how fast each search fills one check&apos;s results. Busier searches are checked more often; quiet ones are still checked
-                at least once a day, so new mentions there are found too. Intervals shorten at once when activity rises and lengthen only gradually, never
-                while coverage is incomplete. Your {o.plan.name} plan checks each platform at most every {formatInterval(o.plan.minIntervalMinutes)} and
-                targets searching every keyword within {formatInterval(o.plan.keywordTargetMinutes)}.
-                {o.paid.includedInPlan ? " Paid sources are included in your plan." : ""}{paidNote ? ` ${paidNote}` : ""}
-              </p>
-              {o.plan.devFloorMinutes !== null && (
-                <p className="text-warning">
-                  Development entitlement active on this server: this workspace may be checked as often as every {formatInterval(o.plan.devFloorMinutes)}.
-                  API budgets, paid allowances and rate limits still apply. Not available in production.
-                </p>
-              )}
+        {/* How checking works: shown as part of the page, in three steps instead of a paragraph. */}
+        <section className="panel rise grid gap-6 rounded-[18px] p-5 sm:p-6" id="advanced" style={{ ["--d" as string]: "420ms" }}>
+          <div className="grid gap-4">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div className="grid gap-1">
+                <h2 className="text-[20px] font-medium tracking-[-0.02em]">How checking works</h2>
+                <p className="text-[12px] text-muted-foreground">Measured for this product alone, per keyword × platform search.</p>
+              </div>
+              <span className="panel flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[12px]">
+                <span className="size-1.5 rounded-full bg-foreground" aria-hidden />
+                Your {o.plan.name} plan checks each platform at most every {formatInterval(o.plan.minIntervalMinutes)}
+              </span>
             </div>
+            <ol className="grid gap-3 md:grid-cols-3">
+              {[
+                { n: "1", title: "Measure", text: "How fast relevant mentions arrive on each search, and how fast one check fills up." },
+                { n: "2", title: "Busy → more often", text: "Intervals shorten at once when activity rises; they lengthen only slowly, never while coverage is incomplete." },
+                { n: "3", title: "Quiet → still daily", text: "Quiet searches are checked at least once a day, so nothing new is missed." },
+              ].map((x) => (
+                <li key={x.n} className="grid content-start gap-1.5 rounded-2xl bg-foreground/[0.03] p-4">
+                  <span className="flex items-center gap-2 text-[13px] font-medium">
+                    <span className="flex size-6 items-center justify-center rounded-full bg-foreground text-[11px] font-semibold text-background">{x.n}</span>{x.title}
+                  </span>
+                  <span className="text-[12px] leading-relaxed text-muted-foreground">{x.text}</span>
+                </li>
+              ))}
+            </ol>
+            {(o.paid.includedInPlan || paidNote) && (
+              <p className="text-[12px] text-muted-foreground/80">{o.paid.includedInPlan ? "Paid sources are included in your plan." : ""}{paidNote ? ` ${paidNote}` : ""}</p>
+            )}
+            {o.plan.devFloorMinutes !== null && (
+              <p className="text-[12px] text-warning">
+                Development entitlement active on this server: this workspace may be checked as often as every {formatInterval(o.plan.devFloorMinutes)}.
+                API budgets, paid allowances and rate limits still apply. Not available in production.
+              </p>
+            )}
+          </div>
 
             <section aria-labelledby="diag-summary" className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <h3 id="diag-summary" className="sr-only">Scheduling, last 7 days</h3>
@@ -283,16 +298,15 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
             </section>
 
             <div className="grid gap-2">
-              <h3 className="text-[13px] font-medium">Platform diagnostics</h3>
-              <p className="text-xs text-muted-foreground">Rank here uses the last 4 weeks of relevant mentions. Open a platform for the reasons behind its interval.</p>
+              <h3 className="text-[15px] font-medium">Platforms, ranked</h3>
+              <p className="text-[12px] text-muted-foreground">Last 4 weeks of relevant mentions. Open a platform to see why it ranks and is checked as it is.</p>
               {rows.length === 0 ? <p className="text-[13px] text-muted-foreground">Nothing is monitored yet.</p> : <RankingTable rows={rows} productId={product.id} canEdit={canEdit} />}
             </div>
 
             <div className="grid gap-2">
-              <h3 className="text-[13px] font-medium">Keyword schedule</h3>
-              <p className="text-xs text-muted-foreground">
-                Where a platform can&apos;t run all its searches each check, keywords take turns and keep their own checkpoints, so each turn
-                re-searches everything since the last one. Your {o.plan.name} plan includes {o.plan.maxKeywords} active keyword{o.plan.maxKeywords === 1 ? "" : "s"} per workspace.
+              <h3 className="text-[15px] font-medium">Keyword schedule</h3>
+              <p className="text-[12px] text-muted-foreground">
+                How often each keyword is searched on each platform. When keywords take turns, each turn catches up from where it left off · {o.plan.name}: {o.plan.maxKeywords} keyword{o.plan.maxKeywords === 1 ? "" : "s"}.
               </p>
               {conflicts.length > 0 && (
                 <ul className="grid gap-1 rounded-md border border-warning/40 bg-warning/5 p-3 text-xs" aria-label="Keyword schedule conflicts">
@@ -316,8 +330,7 @@ export default async function MonitoringPage({ searchParams }: { searchParams: P
                 </ul>
               </div>
             )}
-          </div>
-        </details>
+        </section>
 
         {/* Historical search: offered once (skipped during onboarding); shown while it runs, gone after. */}
         {(historyForm && !backfill) || backfillActive ? (

@@ -147,8 +147,8 @@ test("historical search progress: real states per platform, provider limits, no 
   });
   await fetch(`${SB()}/rest/v1/backfill_runs?id=eq.${runId}`, { method: "PATCH", headers: adminHeaders(), body: JSON.stringify({ status: "partial" }) });
   await emit(ids.workspaceId, ids.productId, "backfill");
-  await expect(progress).toContainText("70 mentions collected", { timeout: 15_000 });
-  await expect(progress).toContainText("4 of 4 platforms finished");
+  // Historical search is a one-time step: once it has finished, it leaves the Monitoring page.
+  await expect(progress).toHaveCount(0, { timeout: 15_000 });
 });
 
 test("smart monitoring shows product-relative share and overflow risk", async ({ page }) => {
@@ -160,8 +160,6 @@ test("smart monitoring shows product-relative share and overflow risk", async ({
     model: "arrival_v2", mentions_7d: 25,
   });
   await page.goto(await signInPath(user!.email, "/monitoring"));
-  const adv = page.locator("details#advanced");
-  await adv.locator("summary").first().click();
   const hn = page.getByRole("table", { name: "Platform ranking" }).getByRole("row").filter({ hasText: "Hacker News" });
   await expect(hn).toContainText("64%");
   await hn.getByRole("button", { name: "Hacker News" }).click();

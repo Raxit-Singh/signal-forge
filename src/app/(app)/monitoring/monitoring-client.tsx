@@ -20,7 +20,7 @@ export function SourceToggle({ productId, platform, name, enabled, disabledReaso
       <input type="hidden" name="enabled" value={enabled ? "false" : "true"} />
       <SubmitButton
         size="sm"
-        variant={enabled ? "secondary" : "default"}
+        variant={enabled ? "secondary" : "ghost"}
         disabled={Boolean(disabledReason)}
         aria-label={`${enabled ? "Turn off" : "Turn on"} ${name}`}
         pendingLabel="Saving…"
@@ -94,7 +94,7 @@ function Score({ r }: { r: RankingRow }) {
       <span className="inline-flex items-center gap-2" title="Share of this product's relevant mentions over the last 4 weeks">
         <span className="tabular font-medium">{r.sharePct}%</span>
         <span className="hidden h-1.5 w-14 overflow-hidden rounded-full bg-muted sm:inline-block" aria-hidden>
-          <span className="block h-full rounded-full bg-primary" style={{ width: `${Math.min(100, r.sharePct)}%` }} />
+          <span className="block h-full rounded-full bg-foreground/70" style={{ width: `${Math.min(100, r.sharePct)}%` }} />
         </span>
       </span>
     );
@@ -110,84 +110,121 @@ function Coverage({ r }: { r: RankingRow }) {
   return <Badge tone={CONF_TONE[r.confidence]}>{CONF_LABEL[r.confidence]}</Badge>;
 }
 
+/** One signal as a diverging bar: what pushed this platform up (ink) or down (red); the detail is in the tooltip. */
+function SignalBars({ r }: { r: RankingRow }) {
+  const max = Math.max(1, ...r.components.filter((c) => c.measured).map((c) => Math.abs(c.points)));
+  return (
+    <ul className="grid gap-1.5" aria-label={`${r.name} measured signals`}>
+      {r.components.map((c) => {
+        const w = c.measured ? (Math.abs(c.points) / max) * 50 : 0;
+        return (
+          <li key={c.id} className="grid grid-cols-[9.5rem_minmax(0,1fr)_3.25rem] items-center gap-3 text-[12px]" title={c.detail}>
+            <span className={cn("truncate", !c.measured && "text-muted-foreground/70")}>{c.label}<span className="sr-only"> · {c.detail}</span></span>
+            <span className="relative h-2.5 rounded-full bg-foreground/[0.05]" aria-hidden>
+              <span className="absolute inset-y-[-2px] left-1/2 w-px bg-foreground/20" />
+              {c.measured && c.points !== 0 && (
+                <span className={cn("absolute inset-y-0 rounded-full", c.points > 0 ? "bg-foreground/70" : "bg-signal")}
+                  style={c.points > 0 ? { left: "50%", width: `${w}%` } : { right: "50%", width: `${w}%` }} />
+              )}
+            </span>
+            <span className={cn("text-right tabular-nums", c.measured ? (c.points < 0 ? "text-signal" : "") : "text-muted-foreground/70")}>
+              {c.measured ? (c.points < 0 ? `−${Math.abs(c.points)}` : `+${c.points}`) : "not measured"}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function MiniRing({ value }: { value: number }) {
+  const c = 2 * Math.PI * 16;
+  return (
+    <svg viewBox="0 0 40 40" className="size-10 shrink-0 -rotate-90" aria-hidden>
+      <circle cx="20" cy="20" r="16" fill="none" stroke="color-mix(in oklab, var(--foreground) 8%, transparent)" strokeWidth="5" />
+      {value > 0 && <circle cx="20" cy="20" r="16" fill="none" stroke={value < 50 ? "var(--signal)" : "var(--foreground)"} strokeWidth="5" strokeLinecap="round" strokeDasharray={`${(value / 100) * c} ${c}`} />}
+    </svg>
+  );
+}
+
 function Details({ r, productId, canEdit }: { r: RankingRow; productId: string; canEdit: boolean }) {
   const kw = r.keywords;
   return (
-    <div className="grid gap-4 text-[13px] md:grid-cols-2">
-      <div className="grid content-start gap-3">
-        <section className="grid gap-1">
-          <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Why this rank</h4>
+    <div className="grid gap-5 text-[13px] lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+      <div className="grid content-start gap-4">
+        <section className="grid gap-2">
+          <h4 className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">Why this rank</h4>
           <p>{r.rankText}</p>
-          {r.components.length > 0 && (
-            <p className="mt-1 text-xs font-medium text-muted-foreground">Measured signals (context; intervals come from arrival rates)</p>
-          )}
-          {r.components.length > 0 && (
-            <ul className="grid gap-0.5 text-xs" aria-label={`${r.name} measured signals`}>
-              {r.components.map((c) => (
-                <li key={c.id} className="flex justify-between gap-3">
-                  <span className={c.measured ? "" : "text-muted-foreground"} title={c.detail}>
-                    {c.label}<span className="text-muted-foreground"> · {c.detail}</span>
-                  </span>
-                  <span className="shrink-0 tabular text-muted-foreground">{c.measured ? (c.points < 0 ? `−${Math.abs(c.points)}` : `+${c.points}`) : "not measured"}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+          {r.components.length > 0 && <SignalBars r={r} />}
         </section>
-        <section className="grid gap-1">
-          <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Why this interval</h4>
+        <section className="grid gap-1.5">
+          <h4 className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">Why this interval</h4>
           {r.intervalText && <p>{r.intervalText}</p>}
-          {r.keywordInterval && <p>Each keyword is searched every {r.keywordInterval}: keywords take turns within the plan&apos;s searches per check.</p>}
-          {r.keywordConflict && <p className="text-warning">{r.keywordConflict}</p>}
-          {r.reasons.length > 0 && (
-            <ul className="list-disc pl-4 text-xs text-muted-foreground">
-              {r.reasons.map((x) => <li key={x}>{x}</li>)}
-            </ul>
+          {r.keywordInterval && <p className="text-[12px] text-muted-foreground">Each keyword is searched every {r.keywordInterval} (keywords take turns).</p>}
+          {r.keywordConflict && <p className="text-[12px] text-warning">{r.keywordConflict}</p>}
+          {(r.reasons.length > 0 || r.planNote) && (
+            <details className="text-[12px] text-muted-foreground">
+              <summary className="w-fit cursor-pointer hover:text-foreground">Why exactly</summary>
+              <ul className="mt-1.5 grid gap-1 pl-4 [list-style:disc]">
+                {r.reasons.map((x) => <li key={x}>{x}</li>)}
+                {r.planNote && <li>{r.planNote}</li>}
+              </ul>
+            </details>
           )}
-          {r.planNote && <p className="text-xs text-muted-foreground">{r.planNote}</p>}
         </section>
       </div>
-      <div className="grid content-start gap-3">
-        <section className="grid gap-1">
-          <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Coverage</h4>
-          <p className="flex flex-wrap items-center gap-1.5">
+      <div className="grid content-start gap-4">
+        <section className="grid gap-2.5">
+          <h4 className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">Coverage</h4>
+          <div className="flex flex-wrap items-center gap-1.5">
             <Badge tone={r.stateTone}>{r.stateLabel}</Badge>
             {r.paid && <Badge>Paid</Badge>}
             {r.saturated && <Badge tone="warning">Hit page limit recently</Badge>}
-            {r.risk && r.risk !== "none" && <Badge tone={r.risk === "watch" ? "info" : "warning"}>{RISK_LABEL[r.risk]}</Badge>}
+            {r.risk && r.risk !== "none" && <Badge tone={r.risk === "watch" ? "info" : "warning"} title={r.riskDetail ?? undefined}>{RISK_LABEL[r.risk]}</Badge>}
             {r.failures > 0 && <Badge tone="negative">{r.failures} failed check{r.failures === 1 ? "" : "s"}</Badge>}
-          </p>
-          {r.riskDetail && <p className="text-xs text-warning">{r.riskDetail}</p>}
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
+            <div className="flex items-center gap-2.5 rounded-xl bg-foreground/[0.03] p-2.5">
+              {r.completeSharePct !== null && <MiniRing value={r.completeSharePct} />}
+              <span className="grid">
+                <span className="text-[15px] font-semibold tabular-nums">{r.completeSharePct !== null ? `${r.completeSharePct}%` : "—"}</span>
+                <span className="text-[11px] text-muted-foreground">covered, 7 days</span>
+              </span>
+            </div>
+            <div className="grid rounded-xl bg-foreground/[0.03] p-2.5" title={r.lastAt ?? undefined}>
+              <span className="text-[15px] font-semibold">{r.last}</span><span className="text-[11px] text-muted-foreground">Last checked</span>
+            </div>
+            <div className="grid rounded-xl bg-foreground/[0.03] p-2.5" title={r.nextAt ?? undefined}>
+              <span className="text-[15px] font-semibold">{r.next}</span><span className="text-[11px] text-muted-foreground">Next check</span>
+            </div>
+            <div className="grid rounded-xl bg-foreground/[0.03] p-2.5" title={r.discovery ?? undefined}>
+              <span className="text-[15px] font-semibold">{r.arrivalPerDay !== null && !r.learning ? `~${r.arrivalPerDay >= 10 ? Math.round(r.arrivalPerDay) : r.arrivalPerDay}/day` : "—"}</span>
+              <span className="text-[11px] text-muted-foreground">Relevant mentions</span>
+            </div>
+          </div>
           {r.arrivalPerDay !== null && !r.learning && (
-            <p className="text-xs">About {r.arrivalPerDay >= 10 ? Math.round(r.arrivalPerDay) : r.arrivalPerDay} relevant mention{r.arrivalPerDay === 1 ? "" : "s"} a day here (estimated from recent checks).</p>
+            <p className="sr-only">About {r.arrivalPerDay >= 10 ? Math.round(r.arrivalPerDay) : r.arrivalPerDay} relevant mention{r.arrivalPerDay === 1 ? "" : "s"} a day here (estimated from recent checks).</p>
           )}
-          {r.completeSharePct !== null && (
-            <p className="text-xs">{r.completeSharePct}% of the last 7 days was covered by complete checks.</p>
-          )}
-          {r.incomplete && (
-            <p className="text-xs text-warning">Coverage is incomplete, so a low mention count here doesn&apos;t prove the platform is quiet.</p>
-          )}
-          {r.stateDetail && <p className="text-xs text-muted-foreground">{r.stateDetail}</p>}
-          <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-            <div><dt className="text-muted-foreground">Last checked</dt><dd title={r.lastAt ?? undefined}>{r.last}</dd></div>
-            <div><dt className="text-muted-foreground">Next check</dt><dd title={r.nextAt ?? undefined}>{r.next}</dd></div>
-            {r.discovery && <div className="col-span-2"><dt className="text-muted-foreground">Expected discovery</dt><dd>{r.discovery}</dd></div>}
-          </dl>
+          {r.riskDetail && <p className="text-[12px] text-warning">{r.riskDetail}</p>}
+          {r.incomplete && <p className="text-[12px] text-warning">Coverage is incomplete, so a low count here doesn&apos;t prove the platform is quiet.</p>}
+          {r.stateDetail && <p className="text-[12px] text-muted-foreground">{r.stateDetail}</p>}
+          {r.discovery && <p className="sr-only">Expected discovery: {r.discovery}</p>}
         </section>
-        <section className="grid gap-1">
-          <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Keywords on {r.name}</h4>
+        <section className="grid gap-1.5">
+          <h4 className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">Keywords on {r.name}</h4>
           {kw.productOnly ? (
-            <p className="text-xs">Collects reviews of your product&apos;s own page; keywords aren&apos;t used.</p>
+            <p className="text-[12px]">Collects reviews of your product&apos;s own page; keywords aren&apos;t used.</p>
           ) : (
             <>
-              <p className="text-xs">
-                {kw.searched.length > 0 ? <>Searched: {kw.searched.join(", ")}</> : "No keywords searched"}
+              <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
+                {kw.searched.length > 0
+                  ? <>Searched: {kw.searched.map((t) => <span key={t} className="rounded-full bg-foreground/[0.06] px-2 py-0.5">{t}</span>)}</>
+                  : "No keywords searched"}
                 <span className="text-muted-foreground">
-                  {" "}· {kw.searches} search{kw.searches === 1 ? "" : "es"}{kw.combined ? " (keywords combined)" : ""}
-                  {kw.rotating > 0 ? `; ${kw.rotating} keyword${kw.rotating === 1 ? "" : "s"} take turns (about ${kw.searchesPerCheck} searches per check)` : ""}
+                  · {kw.searches} search{kw.searches === 1 ? "" : "es"}{kw.combined ? " (combined)" : ""}{kw.rotating > 0 ? ` · ${kw.rotating} take turns` : ""}
                 </span>
-              </p>
-              {kw.skipped.map((s) => <p key={s.term} className="text-xs text-muted-foreground">“{s.term}”: {s.detail}</p>)}
+              </div>
+              {kw.skipped.map((x) => <p key={x.term} className="text-[12px] text-muted-foreground">“{x.term}”: {x.detail}</p>)}
             </>
           )}
         </section>
@@ -229,7 +266,7 @@ export function RankingTable({ rows, productId, canEdit }: { rows: RankingRow[];
                 {r.learning && (i === 0 || !ordered[i - 1]!.learning) && (
                   <tr><td colSpan={8} className="pb-1 pt-3 text-xs font-medium text-muted-foreground">New platforms (learning, not ranked yet)</td></tr>
                 )}
-                <tr className={cn("border-b align-middle", open === r.id && "border-b-0 bg-muted/40")}>
+                <tr className={cn("border-b border-foreground/[0.06] align-middle transition-colors hover:bg-foreground/[0.025]", open === r.id && "border-b-0 bg-foreground/[0.03]")}>
                   <td className="py-2 pr-2 tabular font-medium">{r.rank !== null ? `#${r.rank}` : <Badge tone="info">New</Badge>}</td>
                   <td className="py-2 pr-2">
                     <button
@@ -255,8 +292,8 @@ export function RankingTable({ rows, productId, canEdit }: { rows: RankingRow[];
                   <td className="py-2"><Coverage r={r} /></td>
                 </tr>
                 {open === r.id && (
-                  <tr id={`details-${r.id}`} className="border-b bg-muted/40">
-                    <td colSpan={8} className="px-3 pb-4 pt-1"><Details r={r} productId={productId} canEdit={canEdit} /></td>
+                  <tr id={`details-${r.id}`} className="border-b border-foreground/[0.06] bg-foreground/[0.03]">
+                    <td colSpan={8} className="px-4 pb-5 pt-2"><Details r={r} productId={productId} canEdit={canEdit} /></td>
                   </tr>
                 )}
               </Fragment>
