@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getActiveProduct, hasRole, requireWorkspace } from "@/lib/server/session";
 import { playPackage } from "@/lib/sources/google-play";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
+import { PlatformMark } from "@/components/brand-logo";
 import { Disconnect, GooglePlayConnect } from "./connections-client";
 
 export const metadata: Metadata = { title: "Connections" };
@@ -24,6 +25,7 @@ export default async function ConnectionsSettingsPage() {
     <Card data-testid="connected-sources">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
+          <PlatformMark source="google_play" size={30} />
           Google Play reviews
           {play ? <Badge tone="positive">Connected</Badge> : <Badge tone="neutral">Not connected</Badge>}
         </CardTitle>

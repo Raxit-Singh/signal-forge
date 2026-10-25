@@ -7,6 +7,7 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/primitives";
 import { FilterSelect } from "@/components/ui/filter-select";
+import { BrandLogo } from "@/components/brand-logo";
 import { RANGE_PRESETS } from "@/lib/domain/date-range";
 import { cn } from "@/lib/utils";
 
@@ -77,7 +78,7 @@ export function TrendGraph(p: Props) {
           }}
           options={[
             { value: "", label: `All activity (${p.platforms.length ? "every platform" : "product"})` },
-            ...p.platforms.map((x) => ({ value: `platform:${x.id}`, label: x.name, group: "Platform" })),
+            ...p.platforms.map((x) => ({ value: `platform:${x.id}`, label: x.name, group: "Platform", icon: <BrandLogo source={x.id} variant="brand" size={14} /> })),
             ...p.keywords.map((k) => ({ value: `keyword:${k}`, label: k, group: "Keyword" })),
           ]} />
         <div role="radiogroup" aria-label="Time range" className="panel flex rounded-full p-1 text-[13px]">

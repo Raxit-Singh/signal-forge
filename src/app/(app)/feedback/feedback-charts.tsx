@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { BrandLogo } from "@/components/brand-logo";
 
 export interface FeedbackDay {
   day: string;
@@ -225,7 +226,9 @@ export function PlatformMatrix({ rows, kinds, query }: { rows: PlatformRow[]; ki
                 return (
                   <tr key={r.id} className="group">
                     <th scope="row" className={cn("border-t border-foreground/[0.06] py-2 pr-3 text-left font-normal transition-colors",
-                      hover?.r === ri ? "text-foreground" : "text-foreground/85")}>{r.name}</th>
+                      hover?.r === ri ? "text-foreground" : "text-foreground/85")}>
+                      <span className="flex items-center gap-2"><BrandLogo source={r.id} variant="brand" size={15} />{r.name}</span>
+                    </th>
                     {kinds.map((k, c) => {
                       const n = r.counts[k.key] ?? 0;
                       const size = 22 + Math.sqrt(n / max) * 18;
@@ -270,7 +273,7 @@ export function PlatformMatrix({ rows, kinds, query }: { rows: PlatformRow[]; ki
                 <span className={cn("text-[12px] tabular-nums", i === 0 ? "font-semibold text-foreground" : "text-muted-foreground/70")}>{String(i + 1).padStart(2, "0")}</span>
                 <span className="grid gap-1.5">
                   <span className="flex items-baseline justify-between gap-2 text-[13px]">
-                    <span className="truncate group-hover:underline group-hover:underline-offset-2">{r.name}</span>
+                    <span className="flex min-w-0 items-center gap-2 self-center"><BrandLogo source={r.id} variant="brand" size={15} /><span className="truncate group-hover:underline group-hover:underline-offset-2">{r.name}</span></span>
                     <span className="text-[12px] tabular-nums text-muted-foreground">{Math.round((r.n / Math.max(1, kindTotal)) * 100)}%</span>
                   </span>
                   <span className="block h-2 overflow-hidden rounded-full bg-foreground/[0.06]" aria-hidden>

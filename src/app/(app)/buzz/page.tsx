@@ -13,6 +13,7 @@ import { formatCount } from "@/lib/format";
 import { EmptyState, PageHeader } from "@/components/page";
 import { Badge } from "@/components/ui/primitives";
 import { CountUp } from "@/components/motion";
+import { BrandLogo } from "@/components/brand-logo";
 import { cn } from "@/lib/utils";
 import { TrendGraph, type GraphPoint } from "./trend-graph";
 import { getCoverageSummary } from "@/lib/server/collection/status";
@@ -273,6 +274,7 @@ function PlatformDonut({ items, total, active, hrefFor }: { items: Array<{ id: s
               <Link href={hrefFor(it.id)} scroll={false} aria-current={on ? "true" : undefined}
                 className={cn("flex items-center gap-2.5 rounded-xl px-2 py-1.5 text-[13px] transition-colors hover:bg-foreground/[0.04]", on && "bg-foreground/[0.06]")}>
                 <span className="size-2.5 shrink-0 rounded-full" style={{ background: color }} aria-hidden />
+                <BrandLogo source={it.id} variant="brand" size={15} />
                 <span className="min-w-0 flex-1 truncate">{it.label}</span>
                 <span className="tabular-nums text-[12px] text-muted-foreground">{it.value} · {Math.round((it.value / sum) * 100)}%</span>
               </Link>

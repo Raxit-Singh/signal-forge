@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowDownRight, ArrowUpRight, Bug, ChevronRight, Clock, Download, Inbox, MessageSquare, Plus, Sparkles, TrendingUp, Waypoints } from "lucide-react";
 import { CountUp } from "@/components/motion";
 import { Periods } from "@/components/periods";
+import { PlatformMark } from "@/components/brand-logo";
 import { cn } from "@/lib/utils";
 
 // Overview in the Obsidian style: one signal red, used only for what needs attention (the worst
@@ -33,7 +34,7 @@ export interface OverviewData {
   openIssues: number;
   flow: { from: Array<{ id: string; name: string; v: number }>; to: Array<{ id: string; name: string; v: number }>; links: Array<[string, string, number]> };
   heat: number[][];
-  feed: Array<{ id: string; platform: string; author: string | null; text: string; url: string; at: string; sentiment: string | null }>;
+  feed: Array<{ id: string; source: string; platform: string; author: string | null; text: string; url: string; at: string; sentiment: string | null }>;
 }
 
 const fmt = (n: number) => n.toLocaleString("en-US");
@@ -211,7 +212,7 @@ function Platforms({ d }: { d: OverviewData }) {
         <div key={s.id} className="panel lift rise grid gap-4 rounded-[18px] p-4" style={vars({ "--d": `${180 + i * 70}ms` })}>
           <div className="flex items-center justify-between gap-2">
             <span className="flex min-w-0 items-center gap-2 text-[13px] text-muted-foreground">
-              <span className="flex size-7 shrink-0 items-center justify-center rounded-full border bg-foreground/[0.04] text-[11px] font-semibold text-foreground">{s.name.slice(0, 1)}</span>
+              <PlatformMark source={s.id} />
               <span className="truncate">{s.name}</span>
             </span>
             <Delta v={s.change} />
@@ -552,10 +553,7 @@ function Recent({ d }: { d: OverviewData }) {
           {d.feed.map((m, i) => (
             <li key={m.id} className="rise border-b border-foreground/[0.06] last:border-b-0" style={vars({ "--d": `${760 + i * 70}ms` })}>
               <a href={m.url} target="_blank" rel="noopener noreferrer nofollow ugc" className="group flex items-center gap-3 py-2.5">
-                <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold",
-                  m.sentiment === "negative" ? "border-signal/40 bg-signal-soft text-signal" : "bg-foreground/[0.04]")}>
-                  {m.platform.slice(0, 1)}
-                </span>
+                <PlatformMark source={m.source} size={36} negative={m.sentiment === "negative"} />
                 <span className="grid min-w-0 flex-1 gap-0.5">
                   <span className="line-clamp-2 text-[13px] leading-snug group-hover:underline group-hover:underline-offset-2">{m.text}</span>
                   <span className="truncate text-[11px] text-muted-foreground/80">{m.author ? `${m.author} · ` : ""}{m.platform}</span>

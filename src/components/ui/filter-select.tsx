@@ -1,10 +1,11 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { DropdownMenu as DM } from "radix-ui";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export interface FilterOption { value: string; label: string; group?: string }
+export interface FilterOption { value: string; label: string; group?: string; icon?: ReactNode }
 
 /**
  * A pill that opens a themed list (instead of the browser's native select popup).
@@ -20,7 +21,7 @@ export function FilterSelect({ label, value, options, onChange, className }: {
       <DM.Trigger aria-label={`${label}: ${current?.label}`}
         className={cn("press panel group flex h-9 max-w-full items-center gap-1.5 rounded-full pl-3.5 pr-2.5 text-[13px] outline-none transition-colors focus-visible:outline-2 focus-visible:outline-ring data-[state=open]:border-foreground/25",
           active ? "text-foreground" : "text-muted-foreground hover:text-foreground", className)}>
-        {active && <span className="size-1.5 shrink-0 rounded-full bg-foreground" aria-hidden />}
+        {active && (current?.icon ?? <span className="size-1.5 shrink-0 rounded-full bg-foreground" aria-hidden />)}
         <span className="truncate">{current?.label}</span>
         <ChevronDown className="size-3.5 shrink-0 opacity-60 transition-transform duration-200 group-data-[state=open]:rotate-180" aria-hidden />
       </DM.Trigger>
@@ -36,6 +37,7 @@ export function FilterSelect({ label, value, options, onChange, className }: {
               )}
               <DM.RadioItem value={o.value}
                 className="flex cursor-default select-none items-center gap-2 rounded-xl px-2.5 py-2 text-[13px] outline-none transition-colors data-[highlighted]:bg-foreground/[0.07] data-[state=checked]:text-foreground data-[state=unchecked]:text-foreground/80">
+                {o.icon}
                 <span className="flex-1 truncate">{o.label}</span>
                 <DM.ItemIndicator><Check className="size-3.5 text-signal" aria-hidden /></DM.ItemIndicator>
               </DM.RadioItem>

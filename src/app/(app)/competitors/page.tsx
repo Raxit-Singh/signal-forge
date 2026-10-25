@@ -11,6 +11,7 @@ import { formatCount, formatTime } from "@/lib/format";
 import { getTimeZone } from "@/lib/server/timezone";
 import { EmptyState, PageHeader } from "@/components/page";
 import { Badge } from "@/components/ui/primitives";
+import { BrandLogo } from "@/components/brand-logo";
 import { AddCompetitorForm, CompetitorControls, VolumeChart } from "./competitors-client";
 
 export const metadata: Metadata = { title: "Competitors" };
@@ -102,7 +103,9 @@ export default async function CompetitorsPage({ searchParams }: { searchParams: 
             <section className="rise grid content-end gap-4" style={{ ["--d" as string]: "120ms" }} data-testid="share-of-voice" aria-label="Share of voice">
               <div className="flex items-baseline justify-between gap-3 text-[13px] text-muted-foreground">
                 <span>Share of voice</span>
-                <span>{d.sources.common.map(sourceName).join(", ")}</span>
+                <span className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+                  {d.sources.common.map((x) => <span key={x} className="flex items-center gap-1.5"><BrandLogo source={x} variant="brand" size={13} />{sourceName(x)}</span>)}
+                </span>
               </div>
               {anyVoice && (
                 <div className="flex h-[96px] items-end gap-2" aria-hidden>

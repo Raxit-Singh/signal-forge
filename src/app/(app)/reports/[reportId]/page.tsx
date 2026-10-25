@@ -12,6 +12,7 @@ import { getTimeZone } from "@/lib/server/timezone";
 import { Badge } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
 import { nameOf, PRIORITY_TONE } from "@/components/feedback/issue-parts";
+import { BrandLogo } from "@/components/brand-logo";
 import { PrintButton } from "../print-button";
 
 export const metadata: Metadata = { title: "Report" };
@@ -157,7 +158,7 @@ export default async function ReportPage({ params }: { params: Promise<{ reportI
               <tbody>
                 {d.current.bySource.map((x, i) => (
                   <tr key={x.source}>
-                    <td className="w-[38%] py-1.5 pr-3">{nameOf(x.source)}</td>
+                    <td className="w-[38%] py-1.5 pr-3"><span className="flex items-center gap-2"><BrandLogo source={x.source} variant="brand" size={15} />{nameOf(x.source)}</span></td>
                     <td className="py-1.5 pr-3" aria-hidden>
                       <span className="block h-2 overflow-hidden rounded-full bg-foreground/[0.07]">
                         <span className={`block h-full rounded-full ${i === 0 ? "bg-foreground" : "bg-foreground/45"}`} style={{ width: `${d.current.mentions ? (x.mentions / d.current.mentions) * 100 : 0}%` }} />

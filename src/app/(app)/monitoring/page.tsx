@@ -16,6 +16,7 @@ import { getTimeZone } from "@/lib/server/timezone";
 import { EmptyState, PageHeader } from "@/components/page";
 import { Badge } from "@/components/ui/primitives";
 import { CountUp } from "@/components/motion";
+import { BrandLogo } from "@/components/brand-logo";
 import { getKeywordRankings, type KeywordRankings } from "@/lib/server/collection/keyword-rankings";
 import { parseRange } from "@/lib/domain/date-range";
 import type { KeywordPerformance } from "@/lib/analytics/keyword-ranking";
@@ -403,6 +404,7 @@ function PlatformDonut({ rows, total, colorOf }: { rows: KeywordRankings["platfo
         {items.slice(0, 7).map((it) => (
           <li key={it.id} className="flex min-w-0 items-center gap-2.5">
             <span className="size-2.5 shrink-0 rounded-full" style={{ background: colorOf.get(it.id) ?? GREY }} aria-hidden />
+            <BrandLogo source={it.id} variant="brand" size={15} />
             <span className="min-w-0 flex-1 truncate" title={it.name}>{it.name.replace(/ \/ Stack Exchange$/, "")}</span>
             <span className="shrink-0 whitespace-nowrap tabular-nums text-[12px] text-muted-foreground">{(it.mentions ?? 0).toLocaleString("en-US")} · {it.sharePct ?? 0}%</span>
           </li>
@@ -567,7 +569,7 @@ function PlatformTable({ rows, now, stopped, at, colorOf }: { rows: KeywordRanki
           {rows.map((r) => (
             <tr key={r.id} className="border-t border-foreground/[0.06] transition-colors hover:bg-foreground/[0.025]">
               <td className="py-2 tabular text-muted-foreground">{r.rank ?? "–"}</td>
-              <td className="font-medium"><span className="flex items-center gap-2"><span className="size-2 shrink-0 rounded-full" style={{ background: colorOf.get(r.id) ?? GREY }} aria-hidden />{r.name}</span></td>
+              <td className="font-medium"><span className="flex items-center gap-2"><span className="size-2 shrink-0 rounded-full" style={{ background: colorOf.get(r.id) ?? GREY }} aria-hidden /><BrandLogo source={r.id} variant="brand" size={15} />{r.name}</span></td>
               <td className="text-right tabular">{r.mentions === null ? "—" : r.mentions.toLocaleString("en-US")}</td>
               <td className="pl-4"><span className="flex items-center gap-2"><ShareBar pct={r.sharePct} color={colorOf.get(r.id)} /><span className="w-9 shrink-0 text-right text-xs tabular text-muted-foreground">{r.sharePct === null ? "" : `${r.sharePct}%`}</span></span></td>
               <td className="text-right"><Growth pct={r.growthPct} /></td>

@@ -8,6 +8,7 @@ import { FilterSelect } from "@/components/ui/filter-select";
 import { idle } from "@/lib/action-state";
 import { countNewMentionsAction, setMentionRelevanceAction } from "@/app/actions/mentions";
 import { useRealtime } from "@/components/realtime/realtime-provider";
+import { BrandLogo } from "@/components/brand-logo";
 import { cn } from "@/lib/utils";
 
 type Option = { id: string; name: string };
@@ -91,7 +92,7 @@ export function MentionFilters({ sources, types, sentiments, counts }: {
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <FilterSelect label="Platform" value={params.get("source") ?? ""} onChange={(v) => apply({ source: v || null })}
-          options={[{ value: "", label: "All platforms" }, ...sources.map((o) => ({ value: o.id, label: o.name }))]} />
+          options={[{ value: "", label: "All platforms" }, ...sources.map((o) => ({ value: o.id, label: o.name, icon: <BrandLogo source={o.id} variant="brand" size={14} /> }))]} />
         <FilterSelect label="Type" value={params.get("type") ?? ""} onChange={(v) => apply({ type: v || null })}
           options={[{ value: "", label: "All types" }, ...types.map((o) => ({ value: o.id, label: o.name }))]} />
         <FilterSelect label="Sentiment" value={sentiment} onChange={(v) => apply({ sentiment: v || null })}

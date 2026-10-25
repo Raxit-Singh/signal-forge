@@ -192,7 +192,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
     },
     heat,
     feed: ((feedRows ?? []) as Array<{ id: string; source: string; source_url: string; title: string | null; content: string | null; author_display: string | null; published_at: string; sentiment: string | null }>).map((m) => ({
-      id: m.id, platform: nameOf(m.source), author: m.author_display, text: (m.title || m.content || m.source_url).replace(/\s+/g, " ").slice(0, 200),
+      id: m.id, source: m.source, platform: nameOf(m.source), author: m.author_display, text: (m.title || m.content || m.source_url).replace(/\s+/g, " ").slice(0, 200),
       url: m.source_url, at: m.published_at, sentiment: m.sentiment,
     })),
   };

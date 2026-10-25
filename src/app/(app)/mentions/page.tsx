@@ -17,6 +17,7 @@ import { pageCount, pageHref, pageItems, pageRange, parsePage } from "@/lib/pagi
 import { EmptyState, PageHeader } from "@/components/page";
 import { Badge } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
+import { PlatformMark } from "@/components/brand-logo";
 import { cn } from "@/lib/utils";
 import { categoryLabel } from "@/lib/ai/cluster";
 import type { FeedbackCategory } from "@/lib/ai/types";
@@ -272,9 +273,9 @@ export default async function MentionsPage({ searchParams }: { searchParams: Pro
           {/* Platforms: where the conversation is; each card filters the list. */}
           {platforms.length > 0 && (
             <nav aria-label="Platforms" className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-              <PlatformCard i={0} name="All platforms" value={platformTotal} share={1} href={href({ source: undefined })} active={!source} />
+              <PlatformCard i={0} id={null} name="All platforms" value={platformTotal} share={1} href={href({ source: undefined })} active={!source} />
               {platforms.map((pl, i) => (
-                <PlatformCard key={pl.id} i={i + 1} name={pl.name} value={pl.value} share={pl.share} href={href({ source: pl.id })} active={source === pl.id} />
+                <PlatformCard key={pl.id} i={i + 1} id={pl.id} name={pl.name} value={pl.value} share={pl.share} href={href({ source: pl.id })} active={source === pl.id} />
               ))}
             </nav>
           )}
@@ -352,14 +353,16 @@ function DailyBars({ bars }: { bars: Array<{ label: string; all: number; negativ
   );
 }
 
-function PlatformCard({ i, name, value, share, href, active }: { i: number; name: string; value: number; share: number; href: string; active: boolean }) {
+function PlatformCard({ i, id, name, value, share, href, active }: { i: number; id: string | null; name: string; value: number; share: number; href: string; active: boolean }) {
   return (
     <Link href={href} scroll={false} aria-current={active ? "true" : undefined}
       className={cn("panel lift press rise grid gap-3 rounded-[18px] p-4", active && "border-foreground/30 shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--foreground)_14%,transparent)]")}
       style={{ ["--d" as string]: `${180 + i * 60}ms` }}>
       <span className="flex min-w-0 items-center gap-2 text-[13px] text-muted-foreground">
-        <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold",
-          active ? "border-transparent bg-foreground text-background" : "bg-foreground/[0.04] text-foreground")}>{i === 0 ? "∗" : name.slice(0, 1)}</span>
+        {id ? <PlatformMark source={id} /> : (
+          <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold",
+            active ? "border-transparent bg-foreground text-background" : "bg-foreground/[0.04] text-foreground")}>∗</span>
+        )}
         <span className="truncate">{name}</span>
       </span>
       <span className="flex items-baseline justify-between gap-2">
@@ -440,10 +443,7 @@ function MentionItem({ i, m, canEdit, at }: { i: number; m: MentionRow; canEdit:
       {neg && <span className="absolute inset-y-5 left-0 w-[3px] rounded-r-full bg-signal shadow-[var(--signal-glow)]" aria-hidden />}
 
       <div className="relative flex items-start gap-3">
-        <span className={cn("flex size-10 shrink-0 items-center justify-center rounded-full border text-[13px] font-semibold",
-          neg ? "border-signal/40 bg-signal-soft text-signal" : "bg-foreground/[0.04]")} aria-hidden>
-          {name.slice(0, 1).toUpperCase()}
-        </span>
+        <PlatformMark source={m.source} size={40} negative={neg} />
         <div className="grid min-w-0 flex-1 gap-0.5">
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]">
             <span className="font-medium">{name}</span>
