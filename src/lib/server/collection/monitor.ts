@@ -302,6 +302,7 @@ export async function runMonitorQuery(
     for (const s of (siblings ?? []) as QueryRow[]) {
       if (s.last_success_at && now.getTime() - new Date(s.last_success_at).getTime() < SHARED_FRESH_MS) continue;
       if (s.cursor?.gap) continue; // it has its own unread window to finish first
+      if (await scanStopped(admin, s.product_id)) continue; // Stop scan: nothing is collected for it, shared or not
       const sctx = await loadContext(admin, s.product_id, provider).catch(() => null);
       if (!sctx || sctx.archived) continue;
       if (paid && sctx.paid_allowance_usd <= 0) continue;
