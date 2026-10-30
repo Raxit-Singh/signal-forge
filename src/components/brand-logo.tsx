@@ -26,6 +26,12 @@ export function hasBrandLogo(source: string) {
   return source in MARKS;
 }
 
+/** Raw mark (24×24 SVG path, brand hex) for drawing outside the DOM, e.g. WebGL textures. */
+export function brandMark(source: string): { path: string; hex: string; dark: boolean } | null {
+  const m = MARKS[source];
+  return m ? { path: m.path, hex: `#${m.hex}`, dark: DARK_BRANDS.has(source) } : null;
+}
+
 /**
  * A platform's logo.
  * - mono: the mark in the current text colour (white in dark mode, black in light).
