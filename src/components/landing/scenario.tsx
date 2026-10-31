@@ -38,7 +38,7 @@ export function Scenario() {
         <MentionFlight />
       </div>
       {/* Over the network, once its wires have reached every platform (mention-flight.tsx fades it in). */}
-      <div data-network-title className="pointer-events-none absolute inset-x-0 top-0 z-10 px-[var(--margin)] pt-10 text-center opacity-0" aria-hidden>
+      <div data-network-title className="pointer-events-none absolute inset-x-0 top-0 z-10 px-[var(--margin)] pt-24 text-center opacity-0" aria-hidden>
         <p className="text-[clamp(24px,3.4vw,52px)] font-semibold leading-[1.05] tracking-[-0.035em]">Every mention, from 18 platforms.</p>
         <p className="mt-2 hidden text-[15px] text-[var(--muted)] sm:block">Reddit, X, YouTube, Hacker News, GitHub, Stack Overflow, the App Store, Google Play, Trustpilot, the news and more, in one feed.</p>
         <p className="mt-2 text-[14px] text-[var(--muted)] sm:hidden">Social, code, app stores, reviews and the news, in one feed.</p>

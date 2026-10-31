@@ -109,93 +109,94 @@ function Roll({ a, b, on, delay = 0, step = 14 }: { a: string; b: string; on: bo
   );
 }
 
-const HEADS = ["All your mentions, in one place.", "Then our AI sorts each one."] as const;
-const SUBS = [
-  "Posts, reviews and comments that name your product, gathered from each platform and checked so the feed is about you.",
-  "It reads every mention for sentiment, what kind of feedback it is and what it is about, and puts it with the issue it belongs to.",
-] as const;
-const GLYPHS = "ABCDEFGHKLMNPRSTUVXYZ0123456789#%&*/<>";
-const DECODE_MS = 1500;
+type Ember = { x: number; y: number; vx: number; vy: number; age: number; life: number; size: number; seed: number };
 
 /**
- * A line that is read and rewritten: when `on` flips, a scan runs along it and each letter, in turn, flickers through
- * random glyphs before it settles on the new line's letter. Without motion, it just swaps.
+ * Behind the mentions: red light glowing in from two corners, live (it breathes and flickers like a fire), fine grain
+ * over it, and tiny embers rising out of the light, cooling from yellow to red as they go. A blurred copy of the
+ * embers lights the dark round them. The embers run only while the page is up (`.px.is-up`).
  */
-function Decode({ a, b, on }: { a: string; b: string; on: boolean }) {
-  const [shown, setShown] = useState<{ c: string; hot: boolean }[]>(() => [...a].map((c) => ({ c, hot: false })));
-  const first = useRef(true);
+function Embers() {
+  const sharp = useRef<HTMLCanvasElement>(null);
+  const soft = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
-    const [from, to] = on ? [a, b] : [b, a];
-    if (first.current) {
-      first.current = false;
-      if (!on) return;
-    }
-    // Without motion it takes the last step at once.
-    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const len = Math.max(from.length, to.length);
-    const start = performance.now();
+    const a = sharp.current!;
+    const b = soft.current!;
+    const root = a.closest<HTMLElement>(".px")!;
+    const ctx = a.getContext("2d")!;
+    const glow = b.getContext("2d")!;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const embers: Ember[] = [];
     let frame = 0;
     let last = 0;
-    const tick = (now: number) => {
-      const t = still ? 1 : (now - start) / DECODE_MS;
-      if (now - last > 40 || t >= 1) {
-        // About 25 times a second: the glyphs flicker at a readable pace.
-        last = now;
-        const out: { c: string; hot: boolean }[] = [];
-        for (let i = 0; i < len; i++) {
-          const at = (i / len) * 0.7; // the scan reaches this letter
-          if (t >= at + 0.3) {
-            if (i < to.length) out.push({ c: to[i]!, hot: false });
-          } else if (t >= at) {
-            const want = to[i] ?? from[i] ?? " ";
-            out.push({ c: want === " " ? " " : GLYPHS[Math.floor(Math.random() * GLYPHS.length)]!, hot: true });
-          } else if (i < from.length) out.push({ c: from[i]!, hot: false });
-        }
-        setShown(out);
-      }
-      if (t < 1) frame = requestAnimationFrame(tick);
+    let w = 0, h = 0;
+    // Where each light is, as a share of the screen, and which way its embers drift (up and in).
+    const sources = [
+      { x: 0, y: 1, dx: 1, rate: 9 },
+      { x: 1, y: 0, dx: -1, rate: 4 },
+    ];
+    const spawn = (src: (typeof sources)[number]) => {
+      // Out of the light: near its corner, spread along both edges.
+      const along = Math.random();
+      const r = Math.pow(Math.random(), 1.6) * Math.min(w, h) * 0.45;
+      const angle = (along * Math.PI) / 2;
+      const x = src.x * w + src.dx * Math.cos(angle) * r;
+      const y = src.y * h + (src.y ? -1 : 1) * Math.sin(angle) * r;
+      embers.push({
+        x, y,
+        vx: src.dx * (2 + Math.random() * 7),
+        vy: -(5 + Math.random() * 12),
+        age: 0, life: 8 + Math.random() * 8, size: 0.7 + Math.random() * 1.5, seed: Math.random() * 100,
+      });
     };
-    frame = requestAnimationFrame(tick);
+    const draw = (now: number) => {
+      frame = requestAnimationFrame(draw);
+      const dt = last ? Math.min(0.05, (now - last) / 1000) : 0.016;
+      last = now;
+      if (!root.classList.contains("is-up")) return;
+      if (a.clientWidth !== w || a.clientHeight !== h) {
+        w = a.width = b.width = a.clientWidth;
+        h = a.height = b.height = a.clientHeight;
+      }
+      for (const src of sources) {
+        let n = src.rate * dt;
+        while (n > 1 || Math.random() < n) { spawn(src); n--; }
+      }
+      const t = now / 1000;
+      ctx.clearRect(0, 0, w, h);
+      for (let i = embers.length - 1; i >= 0; i--) {
+        const e = embers[i]!;
+        e.age += dt;
+        if (e.age > e.life || e.y < -20 || e.x < -20 || e.x > w + 20) { embers.splice(i, 1); continue; }
+        // Rising, swaying on the air, slowing as they cool.
+        e.vx += Math.sin(t * 0.6 + e.seed) * 4 * dt;
+        e.vy *= 1 - 0.05 * dt;
+        e.x += e.vx * dt;
+        e.y += e.vy * dt;
+        const k = e.age / e.life; // 0 new, 1 gone
+        const flicker = 0.7 + 0.3 * Math.sin(t * 3 + e.seed * 7);
+        const alpha = Math.min(1, k * 5) * (1 - k) * flicker;
+        // Yellow-orange when new, red as it cools.
+        const g = Math.round(200 * (1 - k) + 50 * k);
+        const bl = Math.round(80 * (1 - k) + 30 * k);
+        ctx.fillStyle = `rgba(255,${g},${bl},${alpha.toFixed(3)})`;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, e.size * (1 - k * 0.5), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      glow.clearRect(0, 0, w, h);
+      glow.drawImage(a, 0, 0);
+    };
+    frame = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(frame);
-  }, [a, b, on]);
+  }, []);
   return (
-    <span aria-hidden>
-      {shown.map(({ c, hot }, i) => (hot ? <span key={i} className="px-glyph">{c}</span> : c))}
-    </span>
-  );
-}
-
-/** A paragraph that comes in word by word, out of a blur, and goes out the same way. */
-function Words({ text, shown }: { text: string; shown: boolean }) {
-  return (
-    <p className={`px-sub${shown ? " is-shown" : ""}`} aria-hidden={!shown}>
-      {text.split(" ").map((w, i) => (
-        <span key={i} className="px-word" style={{ ["--w" as string]: i }}>{w} </span>
-      ))}
-    </p>
-  );
-}
-
-// Light running along the rows of the dotted floor towards the panel, like data flowing in: which row (of the 32px
-// grid), how long its trail, its pace and start. Fixed, so the server and the browser draw the same.
-const STREAMS = Array.from({ length: 16 }, (_, i) => {
-  const r = (n: number) => ((Math.sin((i + 1) * n) * 43758.5453) % 1 + 1) % 1;
-  return { row: 2 + Math.floor(r(12.9) * 26), length: Math.round(80 + r(4.1) * 220), dur: +(5 + r(78.2) * 7).toFixed(2), delay: +(-r(39.4) * 12).toFixed(2), bright: r(7.7) > 0.6 };
-});
-
-/** Behind the words and the panel: the dotted floor, light streaming along it, and a slow scan round the panel. */
-function Backdrop() {
-  return (
-    <div className="px-bg" aria-hidden>
-      <span className="px-dots" />
-      <span className="px-radar"><i /></span>
-      {STREAMS.map((d, i) => (
-        <span
-          key={i}
-          className={`px-stream${d.bright ? " is-bright" : ""}`}
-          style={{ top: d.row * 32 + 16, width: d.length, animationDuration: `${d.dur}s`, animationDelay: `${d.delay}s` }}
-        />
-      ))}
+    <div className="px-fire" aria-hidden>
+      <span className="px-flame is-low" />
+      <span className="px-flame is-high" />
+      <span className="px-grain" />
+      <canvas ref={soft} className="is-soft" />
+      <canvas ref={sharp} />
     </div>
   );
 }
@@ -368,16 +369,18 @@ export function Process() {
   return (
     <div ref={root} className="px" aria-hidden={phase === 0}>
       <div className="px-veil" />
-      <Backdrop />
+      <Embers />
       <div className="px-stage">
+        {/* The switch: the feed's heading grows, then goes off to the left as the AI's rises from below; the line under
+            it fades out and the next fades in. */}
         <div className={`px-words${sorted ? " is-sorted" : ""}`}>
-          <span className="px-sweep" key={sorted ? "on" : "off"} />
-          <h3 className="px-head" aria-label={sorted ? HEADS[1] : HEADS[0]}>
-            <Decode a={HEADS[0]} b={HEADS[1]} on={sorted} />
-          </h3>
+          <div className="px-heads">
+            <h3 className="px-head is-feed" aria-hidden={sorted}>All your mentions, in one place.</h3>
+            <h3 className="px-head is-ai" aria-hidden={!sorted}>Then our AI sorts each one.</h3>
+          </div>
           <div className="px-subs">
-            <Words text={SUBS[0]} shown={!sorted} />
-            <Words text={SUBS[1]} shown={sorted} />
+            <p className="px-sub is-feed" aria-hidden={sorted}>Posts, reviews and comments that name your product, gathered from each platform and checked so the feed is about you.</p>
+            <p className="px-sub is-ai" aria-hidden={!sorted}>It reads every mention for sentiment, what kind of feedback it is and what it is about, and puts it with the issue it belongs to.</p>
           </div>
         </div>
         <div className="px-slot"><Panel head={head} sorted={sorted} k={k} /></div>

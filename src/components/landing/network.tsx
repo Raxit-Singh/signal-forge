@@ -38,8 +38,8 @@ function seeded(seed: number) {
 
 const CYCLE = 26; // seconds, about, for one platform's post to reach Heardex and the next to start
 const CARD_H = 104; // the composer's height, about, so it has room above its logo (smaller on phones, landing.css)
-const TITLE_H = 120;
-const ARRIVE = 0.23; // how far into a platform's round its mention reaches Heardex (nx-run in landing.css) // the heading across the top of the screen
+const TITLE_H = 200; // the bar and the heading across the top of the screen
+const ARRIVE = 0.23; // how far into a platform's round its mention reaches Heardex (nx-run in landing.css)
 
 type Pt = { x: number; y: number };
 

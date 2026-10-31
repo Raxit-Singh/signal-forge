@@ -22,21 +22,24 @@ export function Landing({ signedIn }: { signedIn: boolean }) {
   return (
     <div className={`hx dark relative [color-scheme:dark] ${switzer.className}`}>
       <IntroLock />
-      {/* The first screen: the bar, the question and answer, and the eclipse behind them. */}
+      {/* The bar stays at the top on every screen. Its logo flies off into the story (mention-flight.tsx), and the name
+          closes up where it was. */}
+    <header className="hx-bar hx-frame fixed inset-x-0 top-0 z-50 flex h-20 items-center justify-between">
+      <Link href="/" className="hx-link flex items-center gap-2.5 text-[20px] font-semibold tracking-[-0.03em]" aria-label="Heardex home">
+        <span data-flight-source className="flex"><HeardexMark animated className="h-6 w-6" /></span><span className="hx-word">heardex</span>
+      </Link>
+      <nav aria-label="Main" className="flex items-center gap-2 text-[15px] font-medium">
+        {!signedIn && <Link href="/login" className="hx-nav">Sign in</Link>}
+        <Link href={start.href} className="hx-nav is-primary">{start.label}</Link>
+      </nav>
+    </header>
+      {/* The first screen: the question and answer, and the eclipse behind them. */}
       {/* Pinned while the logo comes out of the bar toward you (mention-flight.tsx), then it scrolls away. */}
       <div data-hero-track className="relative h-[200svh]">
       <div className="sticky top-0 flex h-[100svh] min-h-[560px] flex-col overflow-hidden">
         <HeroBackground className="hx-flow pointer-events-none absolute inset-0 h-full w-full" />
-        <header className="hx-bar hx-frame relative z-10 flex h-20 items-center justify-between">
-          <Link href="/" className="hx-link flex items-center gap-2.5 text-[20px] font-semibold tracking-[-0.03em]" aria-label="Heardex home">
-            <span data-flight-source className="flex"><HeardexMark animated className="h-6 w-6" /></span>heardex
-          </Link>
-          <nav aria-label="Main" className="flex items-center gap-2 text-[15px] font-medium">
-            {!signedIn && <Link href="/login" className="hx-nav">Sign in</Link>}
-            <Link href={start.href} className="hx-nav is-primary">{start.label}</Link>
-          </nav>
-        </header>
 
+        <div className="h-20 flex-none" />
         <section id="main" data-hero-copy className="hx-frame relative z-10 flex flex-1 items-center justify-center pb-20 text-center" aria-label="Heardex">
           {/* The question comes into focus, holds and fades; the answer then comes into focus in the same place. */}
           <h1 className="grid text-[clamp(48px,7.4vw,136px)] font-semibold leading-[0.95] tracking-[-0.05em]">
