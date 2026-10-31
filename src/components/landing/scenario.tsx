@@ -28,7 +28,7 @@ export function Scenario() {
   return (
     // A tall track: the section pins to the top while the logo comes down into the tray, the story plays, and the scene
     // turns to face you, and the wires grow out to every platform (mention-flight.tsx).
-    <div data-flight-track className="relative h-[1000svh]">
+    <div data-flight-track className="relative h-[1150svh]">
     <section ref={section} className="hx-s hx-frame sticky top-0 grid min-h-[100svh] content-center items-center gap-14 py-24 text-left lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-10" aria-labelledby="scenario">
       <div data-scenario-copy className="grid max-w-[21ch] gap-[0.5em] text-[clamp(28px,3.4vw,56px)] font-semibold leading-[1.05] tracking-[-0.035em]">
         <p className="hx-s1 text-[var(--muted)]"><Words text="Say someone mentions your app on Reddit." from="start" /></p>

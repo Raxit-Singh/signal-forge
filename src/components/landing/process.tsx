@@ -16,6 +16,7 @@ const DARK_TO = AT(VANISH[1]);
 const POP_FROM = AT(VANISH[1]) - 0.03;
 const POP_TO = AT(VANISH[1]) + 0.45;
 const SORT_AT = 7.1; // past here the panel turns over from the feed to the AI's sorting
+const RANK_AT = 8.6; // and past here, to the issues the sorted mentions make, ranked
 const FOLLOW_MS = 260; // as softly as the logo's flight (mention-flight.tsx)
 const FEED_MS = 2600; // a new mention in the feed, about this often
 const READ_MS = 9000;
@@ -55,6 +56,16 @@ const READS: { kind: string; topic: string; urgency: [string, Tone | ""]; issue:
   { kind: "Praise", topic: "Time saved", urgency: ["None", ""], issue: "Time saved", count: 11 },
 ];
 
+// The problems those mentions add up to, as the issues page ranks them: by how serious, then by how many raise them
+// (sample figures, the same issues as READS). `trend` is mentions a day over the last week.
+const ISSUES: { title: string; kind: string; priority: [string, Tone | ""]; count: number; sources: string[]; trend: number[] }[] = [
+  { title: "Notes lost after 1.8 sync", kind: "Bug", priority: ["Critical", "neg"], count: 9, sources: ["app_store", "reddit", "github"], trend: [0, 0, 1, 1, 2, 2, 3] },
+  { title: "PDF export crashes", kind: "Bug", priority: ["High", "neg"], count: 14, sources: ["reddit", "google_play", "x"], trend: [1, 2, 1, 2, 3, 2, 3] },
+  { title: "Sync stalls on large vaults", kind: "Bug", priority: ["High", "neg"], count: 7, sources: ["github", "hackernews"], trend: [0, 1, 1, 1, 1, 2, 1] },
+  { title: "Offline mode", kind: "Feature request", priority: ["Medium", "mid"], count: 23, sources: ["youtube", "reddit", "x"], trend: [3, 4, 3, 3, 4, 3, 3] },
+  { title: "Scripting exports", kind: "Question", priority: ["Low", ""], count: 5, sources: ["stackexchange", "github"], trend: [1, 0, 1, 1, 0, 1, 1] },
+];
+
 const wrap = (n: number) => ((n % FEED.length) + FEED.length) % FEED.length;
 const clamp = (v: number) => Math.min(1, Math.max(0, v));
 const smooth = (from: number, to: number, v: number) => {
@@ -72,24 +83,26 @@ function Logo({ source }: { source: string }) {
 }
 
 /**
- * Text that turns over from `a` to `b` when `on`, letter by letter: each old letter rolls up and away as the new one
- * rolls up into its place. `delay` is when it starts, `step` the gap between letters (ms).
+ * Text that turns over from one of `texts` to the next as `at` moves along them, letter by letter: each old letter
+ * rolls up and away as the new one rolls up into its place (and back, going the other way). `delay` is when it starts,
+ * `step` the gap between letters (ms).
  */
-function Roll({ a, b, on, delay = 0, step = 14 }: { a: string; b: string; on: boolean; delay?: number; step?: number }) {
+function Roll({ texts, at, delay = 0, step = 14 }: { texts: string[]; at: number; delay?: number; step?: number }) {
   // As wide as the words it shows, easing to the new width as they turn over (so a badge round it fits each in turn).
   const box = useRef<HTMLSpanElement>(null);
+  const same = texts.every((t) => t === texts[0]);
   useLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
-    const shown = el.children[on ? 1 : 0] as HTMLElement;
+    const shown = el.children[at] as HTMLElement;
     el.style.width = `${shown.offsetWidth}px`;
-  }, [a, b, on]);
-  if (a === b) return <>{a}</>;
-  const layer = (text: string, which: string) => {
+  }, [texts, at]);
+  if (same) return <>{texts[0]}</>;
+  const layer = (text: string, li: number) => {
     let i = 0;
     const words = text.split(" ");
     return (
-      <span className={`rl-l ${which}`}>
+      <span key={li} className={`rl-l${li < at ? " is-past" : li === at ? " is-now" : ""}`}>
         {words.map((w, wi) => (
           <span key={wi}>
             <span className="rl-w">
@@ -102,9 +115,8 @@ function Roll({ a, b, on, delay = 0, step = 14 }: { a: string; b: string; on: bo
     );
   };
   return (
-    <span ref={box} className={`rl${on ? " is-on" : ""}`} style={{ ["--d" as string]: `${delay}ms`, ["--s" as string]: `${step}ms` }}>
-      {layer(a, "is-a")}
-      {layer(b, "is-b")}
+    <span ref={box} className="rl" style={{ ["--d" as string]: `${delay}ms`, ["--s" as string]: `${step}ms` }}>
+      {texts.map(layer)}
     </span>
   );
 }
@@ -245,12 +257,58 @@ function Read({ at, first, n }: { at: number; first: boolean; n: number }) {
   );
 }
 
+/** A week of mentions a day, as a line. */
+function Trend({ days }: { days: number[] }) {
+  const top = Math.max(...days, 1);
+  const points = days.map((d, i) => `${(i / (days.length - 1)) * 64},${22 - (d / top) * 18}`).join(" ");
+  return (
+    <svg className="px-trend" viewBox="-2 0 68 24" aria-hidden>
+      <polyline points={points} />
+    </svg>
+  );
+}
+
+/**
+ * The issues the sorted mentions make, ranked. The one the last read mention joined (`joined`) lights up as its count
+ * goes up by one.
+ */
+function Issues({ joined, on }: { joined: string; on: boolean }) {
+  return (
+    <ol className="px-issues">
+      {ISSUES.map((issue, i) => {
+        const hit = issue.title === joined;
+        return (
+          <li key={issue.title} className={`px-is${hit ? " is-hit" : ""}`} style={{ ["--r" as string]: i }}>
+            <span className="px-rank">{i + 1}</span>
+            <div className="min-w-0 flex-1">
+              <p className="px-strong px-is-title">{issue.title}</p>
+              <div className="px-is-meta">
+                <span className="px-dim">{issue.kind}</span>
+                <span className="px-is-from">{issue.sources.map((s) => <Logo key={s} source={s} />)}</span>
+              </div>
+            </div>
+            <Trend days={issue.trend} />
+            <span className="px-is-count">
+              <Roll texts={[`${issue.count}`, `${issue.count + (hit ? 1 : 0)}`]} at={on && hit ? 1 : 0} delay={1900} step={60} />
+              <span className="px-dim"> mentions</span>
+            </span>
+            <span className={`px-chip ${issue.priority[1] ? `is-${issue.priority[1]}` : ""}`}>{issue.priority[0]}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 /**
  * The one panel: the feed of mentions, newest (`head`) at the top. When `sorted`, the bar's words turn over to the
  * AI's, the filters go up and away, the rest of the feed falls away and the top mention grows into place, to be read
- * and sorted; then the next, every READ_MS (`k`).
+ * and sorted; then the next, every READ_MS (`k`). At `step` 2 the bar turns over again, the read goes, and the issues
+ * come up in its place, ranked.
  */
-function Panel({ head, sorted, k }: { head: number; sorted: boolean; k: number }) {
+function Panel({ head, step, k }: { head: number; step: 0 | 1 | 2; k: number }) {
+  const sorted = step > 0;
+  const ranked = step === 2;
   const rows = AGES.map((age, i) => ({ age, at: wrap(head - i) }));
   // The top row grows to the size of the first read's card, which sits exactly where it ends up.
   const panel = useRef<HTMLDivElement>(null);
@@ -261,14 +319,14 @@ function Panel({ head, sorted, k }: { head: number; sorted: boolean; k: number }
     if (card) el.style.setProperty("--card-h", `${card.offsetHeight}px`);
     const read = el.querySelector<HTMLElement>(".px-read");
     if (read) el.style.setProperty("--read-h", `${read.scrollHeight}px`);
-  }, [sorted, head, k]);
+  }, [step, head, k]);
   return (
-    <div ref={panel} className={`px-panel${sorted ? " is-sorted" : ""}`}>
+    <div ref={panel} className={`px-panel${sorted ? " is-sorted" : ""}${ranked ? " is-ranked" : ""}`}>
       <div className="px-bar">
         <HeardexMark className="px-hx" />
-        <span className="px-strong"><Roll a="Mentions" b="Heardex AI" on={sorted} step={35} /></span>
-        <span className="px-live"><i /><Roll a={`${3 + head} new`} b="Classifying" on={sorted} delay={150} step={35} /></span>
-        <span className="px-dim ml-auto"><Roll a="Notewise" b={`${(1284 + k).toLocaleString("en-US")} sorted today`} on={sorted} delay={300} step={25} /></span>
+        <span className="px-strong"><Roll texts={["Mentions", "Heardex AI", "Issues"]} at={step} step={35} /></span>
+        <span className="px-live"><i /><Roll texts={[`${3 + head} new`, "Classifying", "Ranked"]} at={step} delay={150} step={35} /></span>
+        <span className="px-dim ml-auto"><Roll texts={["Notewise", `${(1284 + k).toLocaleString("en-US")} sorted today`, "This week"]} at={step} delay={300} step={25} /></span>
       </div>
       <div className="px-tabs-wrap">
         <div className="px-tabs">
@@ -299,10 +357,18 @@ function Panel({ head, sorted, k }: { head: number; sorted: boolean; k: number }
           })}
         </ul>
         {sorted && <Read at={wrap(head + k)} first={k === 0} n={k} />}
+        {sorted && <Issues joined={READS[wrap(head + k)]!.issue} on={ranked} />}
       </div>
     </div>
   );
 }
+
+// The words beside the panel at each step: the feed, the AI's sorting, the issues.
+const HEADS: [string, string][] = [
+  ["All your mentions, in one place.", "Posts, reviews and comments that name your product, gathered from each platform and checked so the feed is about you."],
+  ["Then our AI sorts each one.", "It reads every mention for sentiment, what kind of feedback it is and what it is about, and puts it with the issue it belongs to."],
+  ["Ranked into issues.", "Mentions of the same problem become one issue. The issues are ranked by how serious they are and how many people raise them, so you know what to fix first."],
+];
 
 /**
  * Over the network: the ground the flight fades onto, then the words and the panel. `--k` is the ground (0..1), `--p`
@@ -310,8 +376,9 @@ function Panel({ head, sorted, k }: { head: number; sorted: boolean; k: number }
  */
 export function Process() {
   const root = useRef<HTMLDivElement>(null);
-  // 0 hidden, 1 the feed running, 2 sorted (the feed holds still while it turns over).
-  const [phase, setPhase] = useState<0 | 1 | 2>(0);
+  // 0 hidden, 1 the feed running, 2 sorted (the feed holds still while it turns over), 3 ranked into issues.
+  const [phase, setPhase] = useState<0 | 1 | 2 | 3>(0);
+  const live = useRef(phase); // the phase as the scroll last set it, for the effects' clean-ups
   const [head, setHead] = useState(0);
   const [k, setK] = useState(0);
 
@@ -320,17 +387,19 @@ export function Process() {
     const id = setInterval(() => setHead((h) => h + 1), FEED_MS);
     return () => clearInterval(id);
   }, [phase]);
+  const reading = phase === 2;
   useEffect(() => {
-    if (phase !== 2) return;
+    if (!reading) return;
     // The first read waits for the mention to grow into place.
     let id = 0;
     const first = window.setTimeout(() => { id = window.setInterval(() => setK((v) => v + 1), READ_MS); }, GROWN);
     return () => {
       clearTimeout(first);
       clearInterval(id);
-      setK(0);
+      // On to the issues, the last read stays as it was (its issue is the one lit up); back to the feed, it starts over.
+      if (live.current < 2) setK(0);
     };
-  }, [phase]);
+  }, [reading]);
 
   useEffect(() => {
     const el = root.current!;
@@ -350,7 +419,8 @@ export function Process() {
       el.style.setProperty("--k", k.toFixed(4));
       el.style.setProperty("--p", p.toFixed(4));
       el.classList.toggle("is-up", k > 0);
-      setPhase(v > SORT_AT ? 2 : p > 0.5 ? 1 : 0);
+      live.current = v > RANK_AT ? 3 : v > SORT_AT ? 2 : p > 0.5 ? 1 : 0;
+      setPhase(live.current);
       if (at !== scrollY) queued = requestAnimationFrame(place);
       else last = 0;
     };
@@ -365,25 +435,25 @@ export function Process() {
     };
   }, []);
 
-  const sorted = phase === 2;
+  const step = phase < 2 ? 0 : ((phase - 1) as 1 | 2);
+  // Each heading and line under it is gone (past), showing (now), or still to come.
+  const at = (i: number) => (i < step ? " is-past" : i === step ? " is-now" : "");
   return (
     <div ref={root} className="px" aria-hidden={phase === 0}>
       <div className="px-veil" />
       <Embers />
       <div className="px-stage">
-        {/* The switch: the feed's heading grows, then goes off to the left as the AI's rises from below; the line under
-            it fades out and the next fades in. */}
-        <div className={`px-words${sorted ? " is-sorted" : ""}`}>
+        {/* Each switch: the heading grows, then goes off to the left as the next rises from below; the line under it
+            fades out and the next fades in. */}
+        <div className="px-words">
           <div className="px-heads">
-            <h3 className="px-head is-feed" aria-hidden={sorted}>All your mentions, in one place.</h3>
-            <h3 className="px-head is-ai" aria-hidden={!sorted}>Then our AI sorts each one.</h3>
+            {HEADS.map(([h], i) => <h3 key={i} className={`px-head${at(i)}`} aria-hidden={i !== step}>{h}</h3>)}
           </div>
           <div className="px-subs">
-            <p className="px-sub is-feed" aria-hidden={sorted}>Posts, reviews and comments that name your product, gathered from each platform and checked so the feed is about you.</p>
-            <p className="px-sub is-ai" aria-hidden={!sorted}>It reads every mention for sentiment, what kind of feedback it is and what it is about, and puts it with the issue it belongs to.</p>
+            {HEADS.map(([, sub], i) => <p key={i} className={`px-sub${at(i)}`} aria-hidden={i !== step}>{sub}</p>)}
           </div>
         </div>
-        <div className="px-slot"><Panel head={head} sorted={sorted} k={k} /></div>
+        <div className="px-slot"><Panel head={head} step={step} k={k} /></div>
       </div>
     </div>
   );

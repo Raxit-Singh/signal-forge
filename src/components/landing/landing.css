@@ -454,6 +454,7 @@
 /* The process, over the network (process.tsx): --k the ground, --p the panel coming up. */
 .px {
   --row: 90px; /* a feed row */
+  --issue: 80px; /* an issue's row */
   /* One curve and one tempo for everything in the panel, so each step reads as part of the same motion (process.tsx
      keeps its delays in step). */
   --ease: cubic-bezier(0.22, 1, 0.36, 1); --move: 900ms;
@@ -506,18 +507,20 @@
 .px-heads, .px-subs { display: grid; }
 .px-heads > *, .px-subs > * { grid-area: 1 / 1; }
 .px-head { transform-origin: 0 50%; will-change: transform, opacity, filter; }
-.px-head.is-feed { transition: scale 900ms var(--glide), translate 1100ms var(--glide) 250ms, opacity 800ms var(--glide) 450ms, filter 800ms var(--glide) 450ms; }
-.px-words.is-sorted .px-head.is-feed { scale: 1.08; translate: -32vw 0; opacity: 0; filter: blur(6px); }
-.px-head.is-ai { translate: 0 48px; opacity: 0; filter: blur(8px); transition: translate 700ms var(--glide), opacity 500ms var(--glide), filter 500ms var(--glide); }
-.px-words.is-sorted .px-head.is-ai {
+/* Still to come: below, out of focus. */
+.px-head { translate: 0 48px; opacity: 0; filter: blur(8px); transition: translate 700ms var(--glide), opacity 500ms var(--glide), filter 500ms var(--glide); }
+.px-head.is-now {
   translate: 0 0; opacity: 1; filter: blur(0);
   transition: translate 1100ms cubic-bezier(0.22, 1, 0.36, 1) 700ms, opacity 900ms var(--glide) 700ms, filter 900ms var(--glide) 700ms;
 }
+.px-head.is-past {
+  scale: 1.08; translate: -32vw 0; opacity: 0; filter: blur(6px);
+  transition: scale 900ms var(--glide), translate 1100ms var(--glide) 250ms, opacity 800ms var(--glide) 450ms, filter 800ms var(--glide) 450ms;
+}
 /* The line under it: the old lifts away into a blur; the new rises a little and comes into focus. */
-.px-sub { transition: opacity 600ms var(--glide), translate 600ms var(--glide), filter 600ms var(--glide); }
-.px-sub.is-ai { opacity: 0; translate: 0 10px; filter: blur(4px); }
-.px-words.is-sorted .px-sub.is-feed { opacity: 0; translate: 0 -8px; filter: blur(4px); }
-.px-words.is-sorted .px-sub.is-ai {
+.px-sub { opacity: 0; translate: 0 10px; filter: blur(4px); transition: opacity 600ms var(--glide), translate 600ms var(--glide), filter 600ms var(--glide); }
+.px-sub.is-past { translate: 0 -8px; }
+.px-sub.is-now {
   opacity: 1; translate: 0 0; filter: blur(0);
   transition: opacity 900ms var(--glide) 1200ms, translate 1000ms cubic-bezier(0.22, 1, 0.36, 1) 1200ms, filter 900ms var(--glide) 1200ms;
 }
@@ -537,9 +540,9 @@
   transition: transform 700ms var(--ease, ease), opacity 500ms var(--ease, ease);
   transition-delay: calc(var(--d) + var(--i) * var(--s));
 }
-.rl-l.is-b .rl-c { transform: translateY(0.6em) rotateX(-90deg); opacity: 0; }
-.rl.is-on .rl-l.is-a .rl-c { transform: translateY(-0.6em) rotateX(90deg); opacity: 0; }
-.rl.is-on .rl-l.is-b .rl-c { transform: none; opacity: 1; }
+.rl-l .rl-c { transform: translateY(0.6em) rotateX(-90deg); opacity: 0; } /* still to come, below */
+.rl-l.is-past .rl-c { transform: translateY(-0.6em) rotateX(90deg); opacity: 0; } /* gone, up and away */
+.rl-l.is-now .rl-c { transform: none; opacity: 1; }
 
 .px-panel {
   width: min(780px, 100%); border-radius: 20px; overflow: hidden;
@@ -567,7 +570,7 @@
 .px-body.is-next { transition-delay: 0ms; } /* later reads resize as they come in */ /* the read's own height (process.tsx) */
 .px-body > * { grid-area: 1 / 1; }
 .px-body > .px-read { align-self: start; } /* its own height, so the body can fit it */
-.px-rows { animation: px-feed var(--move) var(--ease) both; }
+.px-rows { animation: px-feed var(--move) var(--ease) backwards; }
 @keyframes px-feed { from { translate: 0 calc(-1 * var(--row)); } }
 .px-row { display: flex; align-items: flex-start; gap: 14px; height: var(--row); padding: 18px 22px; border-bottom: 1px solid var(--line); }
 .px-row:first-child { animation: px-new 1600ms var(--ease) backwards; }
@@ -592,9 +595,34 @@
 .px-rows.is-done { visibility: hidden; } /* past the first read the cards take over */
 .px-read.is-first .px-source { visibility: hidden; }
 
+/* On to the issues: the read lifts away, the body takes the list's height, and the issues come up one by one, ranked;
+   the one the last mention joined lights up as its count goes up. */
+.px-rows, .px-read { transition: opacity 500ms var(--ease), translate 600ms var(--ease), filter 500ms var(--ease); }
+.is-ranked .px-rows, .is-ranked .px-read { opacity: 0; translate: 0 -16px; filter: blur(4px); }
+.is-ranked .px-body { height: calc(5 * var(--issue)); transition-delay: 250ms; }
+.px-issues { align-self: start; visibility: hidden; }
+.is-ranked .px-issues { visibility: visible; }
+.px-is { display: flex; align-items: center; gap: 16px; height: var(--issue); padding: 0 22px; border-bottom: 1px solid var(--line); opacity: 0; translate: 0 22px; transition: opacity 500ms var(--ease), translate var(--move) var(--ease); }
+.px-is:last-child { border-bottom: 0; }
+.is-ranked .px-is { opacity: 1; translate: 0 0; transition-delay: calc(500ms + var(--r) * 110ms); }
+.is-ranked .px-is.is-hit { animation: px-hit 2600ms var(--ease) 1500ms both; }
+@keyframes px-hit { 0% { background: transparent; } 25%, 60% { background: rgb(255 59 47 / 0.12); } 100% { background: rgb(255 59 47 / 0.05); } }
+.px-rank { flex: none; width: 24px; color: var(--muted); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.px-is-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.px-is-meta { display: flex; align-items: center; gap: 10px; margin-top: 4px; font-size: 13.5px; }
+.px-is-from { display: flex; gap: 4px; }
+.px-is-from .px-logo { width: 20px; height: 20px; border-radius: 6px; }
+.px-is-from .px-logo svg { width: 12px; height: 12px; }
+.px-is-from .px-logo b { font-size: 10px; }
+.px-trend { flex: none; width: 68px; height: 24px; fill: none; stroke: #8a8a93; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.px-is.is-hit .px-trend { stroke: var(--red); }
+.px-is-count { flex: none; width: 112px; text-align: right; color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.px-is-count .px-dim { font-weight: 400; }
+.px-is .px-chip { width: 72px; text-align: center; }
+
 /* The AI's read: the mention, grown from its row into place, is scanned; its labels come in one by one, then its issue. */
 .px-read { display: grid; align-content: start; gap: 18px; padding: 18px; }
-.px-read:not(.is-first) { animation: px-in var(--move) var(--ease) both; }
+.px-read:not(.is-first) { animation: px-in var(--move) var(--ease) backwards; }
 @keyframes px-in { from { opacity: 0; translate: 0 10px; } }
 .px-source { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: 12px; background: var(--field-2); border: 1px solid var(--line); }
 .px-quote { position: relative; margin-top: 8px; font-size: 21px; line-height: 1.4; color: var(--ink); }
@@ -636,6 +664,12 @@
   .px-chip { font-size: 11px; padding: 2px 8px; }
   .px-row .px-chip { display: none; }
   .px-bar .ml-auto { display: none; }
+  .px { --issue: 66px; }
+  .px-is { gap: 10px; padding: 0 14px; }
+  .px-rank { width: 16px; font-size: 13px; }
+  .px-trend, .px-is-count .px-dim { display: none; }
+  .px-is-count { width: auto; }
+  .px-is .px-chip { width: auto; }
 }
 @media (prefers-reduced-motion: reduce) {
   .px * { animation: none !important; }
