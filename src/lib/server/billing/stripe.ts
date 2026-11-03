@@ -13,7 +13,7 @@ let client: Stripe | null = null;
 export function stripe(): Stripe {
   const key = serverEnv().STRIPE_SECRET_KEY;
   if (!key) throw new Error("STRIPE_SECRET_KEY is not set");
-  client ??= new Stripe(key, { maxNetworkRetries: 2, timeout: 20_000, appInfo: { name: "SignalForge" } });
+  client ??= new Stripe(key, { maxNetworkRetries: 2, timeout: 20_000, appInfo: { name: "Heardex" } });
   return client;
 }
 

@@ -1,4 +1,4 @@
-// OAuth 2.1 authorization server rules for the SignalForge remote MCP server (pure).
+// OAuth 2.1 authorization server rules for the Heardex remote MCP server (pure).
 //
 // Implements what Claude's connector client documents (claude.com/docs/connectors/
 // building/authentication): RFC 9728 protected-resource metadata, RFC 8414
@@ -78,7 +78,7 @@ export function protectedResourceMetadata(site: string) {
     authorization_servers: [site],
     scopes_supported: [...ALL_SCOPES],
     bearer_methods_supported: ["header"],
-    resource_name: "SignalForge",
+    resource_name: "Heardex",
   };
 }
 
@@ -127,7 +127,7 @@ export function validateRegistration(body: unknown): { ok: true; name: string; r
     return { ok: false, err: { error: "invalid_client_metadata", error_description: "Only the code response type is supported." } };
   }
   const bad = d.redirect_uris.find((u) => !isAllowedRedirect(u));
-  if (bad) return { ok: false, err: { error: "invalid_redirect_uri", error_description: "SignalForge's MCP server only accepts Claude's callback URLs." } };
+  if (bad) return { ok: false, err: { error: "invalid_redirect_uri", error_description: "Heardex's MCP server only accepts Claude's callback URLs." } };
   return { ok: true, name: d.client_name ?? "MCP client", redirectUris: [...new Set(d.redirect_uris)] };
 }
 

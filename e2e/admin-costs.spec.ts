@@ -32,7 +32,7 @@ test("customers get a 404; staff see spend against the limits", async ({ page, b
   await sp.goto(await signInPath(STAFF, "/admin/costs"));
   const main = sp.locator("#main");
   await expect(main.getByRole("heading", { name: "Costs" })).toBeVisible();
-  await expect(main.getByText("SignalForge Intelligence (Gemini)")).toBeVisible();
+  await expect(main.getByText("Heardex Intelligence (Gemini)")).toBeVisible();
   await expect(main.getByText("Paid data (API Direct)")).toBeVisible();
   await expect(main.getByTestId("spend-meter")).toHaveCount(2);
   await expect(main.getByRole("heading", { name: "Workspaces" })).toBeVisible();

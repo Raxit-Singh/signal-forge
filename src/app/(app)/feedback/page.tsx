@@ -188,7 +188,7 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
           <div className="panel flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl px-4 py-3 text-[13px]" data-testid="classification-status">
             <span className="flex items-center gap-2">
               <span className={`size-2 rounded-full ${ai.ok ? (ai.kind === "test" ? "bg-warning" : "bg-positive") : "bg-muted-foreground"}`} aria-hidden />
-              {ai.ok ? (ai.kind === "test" ? "Test classifier (not AI)" : "SignalForge Intelligence on") : "SignalForge Intelligence off"}
+              {ai.ok ? (ai.kind === "test" ? "Test classifier (not AI)" : "Heardex Intelligence on") : "Heardex Intelligence off"}
             </span>
             <span className="text-muted-foreground"><span className="font-medium text-foreground tabular">{formatCount(classifiedTotal)}</span> classified</span>
             <span className="text-muted-foreground"><span className="font-medium text-foreground tabular">{formatCount(waitingRes.count ?? 0)}</span> waiting</span>
@@ -362,7 +362,7 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
           <EmptyState icon={BarChart3} title="No grouped issues yet">
             {ai.ok
               ? "Issues appear once at least two people report the same thing. New mentions are classified every few minutes."
-              : "Issues are built from classified mentions, which need SignalForge Intelligence."}
+              : "Issues are built from classified mentions, which need Heardex Intelligence."}
           </EmptyState>
         ) : (
           <ul className="grid gap-3" aria-label="Issues">

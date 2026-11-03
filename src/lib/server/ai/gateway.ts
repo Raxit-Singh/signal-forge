@@ -7,7 +7,7 @@ import { geminiClient } from "@/lib/ai/providers";
 import { costMicroUsd, estimateInputTokens, reservation } from "@/lib/ai/pricing";
 import { AiError, type AiCall, type AiProviderClient, type AiResult, type EmbedResult } from "@/lib/ai/types";
 
-// SignalForge Intelligence gateway (SYSTEM A). Every model call goes through
+// Heardex Intelligence gateway (SYSTEM A). Every model call goes through
 // here: reserve the upper bound against the plan's AI allowance and the
 // operator's global monthly limit, call, settle actual usage. Customer AI keys
 // and the customer's Claude connection are never used for this.
@@ -43,7 +43,7 @@ export async function workspaceAvailability(admin: SupabaseClient, workspaceId: 
   return intelligenceAvailability(intelEnv(), await testClassifierSelected(admin, workspaceId));
 }
 
-/** The client SignalForge Intelligence runs on for a workspace, or why it can't run. */
+/** The client Heardex Intelligence runs on for a workspace, or why it can't run. */
 export async function resolveAi(admin: SupabaseClient, workspaceId: string): Promise<ResolvedAi | Extract<Availability, { ok: false }>> {
   const a = await workspaceAvailability(admin, workspaceId);
   if (!a.ok) return a;
@@ -54,8 +54,8 @@ export async function resolveAi(admin: SupabaseClient, workspaceId: string): Pro
 
 const BUDGET_MESSAGES: Record<string, string> = {
   plan_budget: "This workspace has used its plan's AI allowance for the billing period (or its plan has none).",
-  global_budget: "SignalForge Intelligence has reached this month's spending limit.",
-  global_budget_missing: "SignalForge Intelligence has no monthly spending limit set yet, so nothing is spent.",
+  global_budget: "Heardex Intelligence has reached this month's spending limit.",
+  global_budget_missing: "Heardex Intelligence has no monthly spending limit set yet, so nothing is spent.",
   unknown_price: "This model's price isn't known, so it can't be used.",
 };
 
@@ -84,7 +84,7 @@ async function onFailure(admin: SupabaseClient, id: number, model: string, e: un
   const err = e instanceof AiError ? e : new AiError("unavailable", e instanceof Error ? e.message : "Unknown error");
   if (err.usage) await settle(admin, id, model, err.usage, false, err.kind, null);
   else await admin.rpc("svc_ai_release", { p_id: id, p_error: err.kind });
-  if (err.kind === "auth") console.error(`[ai] SignalForge's Gemini key was rejected: ${err.message}`);
+  if (err.kind === "auth") console.error(`[ai] Heardex's Gemini key was rejected: ${err.message}`);
   if (err.kind === "budget") console.error(`[ai] Gemini refused the call for billing: ${err.message}`);
   throw err;
 }

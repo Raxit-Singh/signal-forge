@@ -1,5 +1,5 @@
-// SignalForge Intelligence model provider: Gemini through the official Google
-// Gen AI SDK (@google/genai). The API key is SignalForge's own, passed in by
+// Heardex Intelligence model provider: Gemini through the official Google
+// Gen AI SDK (@google/genai). The API key is Heardex's own, passed in by
 // server code (never read from the environment here) so the adapter can be
 // tested with a fake fetch. This module must only be imported from server code.
 //
@@ -33,9 +33,9 @@ export const EMBEDDING_DIMENSIONS = 256;
 function mapError(e: unknown, usage: AiUsage | null = null): AiError {
   if (e instanceof AiError) return e;
   if (e instanceof ApiError) {
-    if (e.status === 401 || e.status === 403) return new AiError("auth", `Gemini rejected SignalForge's API key (${e.status}).`);
+    if (e.status === 401 || e.status === 403) return new AiError("auth", `Gemini rejected Heardex's API key (${e.status}).`);
     // Prepaid Gemini billing with no credit left: nothing runs until credits are added, so don't retry.
-    if (e.status === 402) return new AiError("budget", "SignalForge's Gemini account is out of prepaid credit, so nothing is being classified.");
+    if (e.status === 402) return new AiError("budget", "Heardex's Gemini account is out of prepaid credit, so nothing is being classified.");
     if (e.status === 429) return new AiError("rate_limited", "Gemini is rate limiting requests.", 60, usage);
     if (e.status === 400 || e.status === 404) return new AiError("bad_request", e.message.slice(0, 300), null, usage);
     return new AiError("unavailable", `Gemini error ${e.status}.`, null, usage);

@@ -15,7 +15,7 @@ export default async function SourcesStep({ params }: { params: Promise<{ produc
   return (
     <>
       <StepHeader step={3} title="Where we listen"
-        description={<>SignalForge checks these {sources.length} platforms for {product.name} around the clock. Nothing to connect or configure.</>} />
+        description={<>Heardex checks these {sources.length} platforms for {product.name} around the clock. Nothing to connect or configure.</>} />
       <div className="grid gap-6">
         <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3" aria-label="Platforms">
           {sources.map((s, i) => (

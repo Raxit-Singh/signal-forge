@@ -62,7 +62,7 @@ export function buildIssueBody(d: DraftInput, evidence: DraftEvidence[], facts: 
   if (cited.length) {
     lines.push("### Sources", ...cited.map(({ n, e }) => `${n}. [${plain(e!.title || "Post").slice(0, 120)}](${e!.url.replace(/[()\s]/g, encodeURIComponent)}) — ${sourceName(e!.source)}, ${e!.published_at.slice(0, 10)}`), "");
   }
-  lines.push("_Drafted with SignalForge from public posts. Statements are limited to what the cited posts say; review before filing._");
+  lines.push("_Drafted with Heardex from public posts. Statements are limited to what the cited posts say; review before filing._");
   return lines.join("\n");
 }
 
@@ -73,7 +73,7 @@ function plain(s: string): string {
 
 /**
  * GitHub's "new issue" page prefilled with the draft. The user reviews and submits it
- * on GitHub themselves: SignalForge never creates issues. Long bodies are cut at a line
+ * on GitHub themselves: Heardex never creates issues. Long bodies are cut at a line
  * boundary with a note, so the URL stays within browser limits.
  */
 export function newIssueUrl(repo: string, title: string, body: string): string {
@@ -81,7 +81,7 @@ export function newIssueUrl(repo: string, title: string, body: string): string {
   let b = body;
   if (b.length > MAX_BODY_FOR_URL) {
     const cut = b.lastIndexOf("\n", MAX_BODY_FOR_URL - 80);
-    b = `${b.slice(0, cut > 0 ? cut : MAX_BODY_FOR_URL - 80)}\n\n_(Shortened — copy the full draft from SignalForge.)_`;
+    b = `${b.slice(0, cut > 0 ? cut : MAX_BODY_FOR_URL - 80)}\n\n_(Shortened — copy the full draft from Heardex.)_`;
   }
   const q = new URLSearchParams({ title: title.slice(0, 200), body: b });
   return `https://github.com/${repo}/issues/new?${q.toString()}`;

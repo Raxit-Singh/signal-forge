@@ -5,7 +5,7 @@ import { validateAccessToken } from "@/lib/server/agent/oauth-store";
 import { buildMcpServer } from "@/lib/server/agent/mcp";
 import { site } from "@/lib/server/agent/http";
 
-// SignalForge remote MCP server (Streamable HTTP, stateless: a fresh server per
+// Heardex remote MCP server (Streamable HTTP, stateless: a fresh server per
 // request, scoped to the workspace of the bearer token). Unauthenticated requests
 // get 401 with a resource_metadata pointer, which starts Claude's OAuth flow.
 
@@ -18,7 +18,7 @@ async function handle(req: Request) {
   const admin = createAdminClient();
   const who = token ? await validateAccessToken(admin, token) : null;
   if (!who) {
-    return new Response(JSON.stringify({ error: "invalid_token", error_description: "Sign in to SignalForge to use this connector." }), {
+    return new Response(JSON.stringify({ error: "invalid_token", error_description: "Sign in to Heardex to use this connector." }), {
       status: 401,
       headers: { "content-type": "application/json", "www-authenticate": wwwAuthenticate(site(), token ? "invalid_token" : undefined) },
     });

@@ -15,7 +15,7 @@ export function GooglePlayConnect({ workspaceId }: { workspaceId: string }) {
         placeholder='{"type": "service_account", "client_email": "…@….iam.gserviceaccount.com", …}' />
       <p className="text-xs text-muted-foreground">
         In Google Cloud, create a service account and a JSON key; in Play Console → Users and permissions, invite its email with
-        “View app information”. SignalForge checks the key works, stores it encrypted and never shows it again.
+        “View app information”. Heardex checks the key works, stores it encrypted and never shows it again.
       </p>
       <div className="flex flex-wrap items-center gap-2"><SubmitButton size="sm" pendingLabel="Checking…">Connect Google Play</SubmitButton></div>
       <FormMessage state={state} />

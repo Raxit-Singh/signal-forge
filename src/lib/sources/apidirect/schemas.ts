@@ -1,5 +1,5 @@
 // Response shapes from API Direct's endpoint docs (read 2026-10-15). Only the
-// fields SignalForge uses are declared; unknown fields pass through. Numbers
+// fields Heardex uses are declared; unknown fields pass through. Numbers
 // the docs mark as nullable are nullable here.
 
 import { z } from "zod";

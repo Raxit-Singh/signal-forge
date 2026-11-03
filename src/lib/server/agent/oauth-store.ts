@@ -104,7 +104,7 @@ export async function revokeToken(admin: SupabaseClient, token: string) {
 export async function revokeGrantForWorkspace(admin: SupabaseClient, grantId: string, workspaceId: string) {
   const { data } = await admin.from("oauth_grants").select("id").eq("id", grantId).eq("workspace_id", workspaceId).maybeSingle();
   if (!data) return false;
-  await revokeGrant(admin, grantId, "revoked in SignalForge");
+  await revokeGrant(admin, grantId, "revoked in Heardex");
   return true;
 }
 

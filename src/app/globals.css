@@ -3,7 +3,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
- * SignalForge design tokens.
+ * Heardex design tokens.
  * Graphite neutrals + a single "ember" accent. Semantic colours are reserved
  * for meaning (sentiment, health), never decoration.
  */

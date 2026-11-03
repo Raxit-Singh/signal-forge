@@ -14,7 +14,7 @@ function layout(title: string, body: string, footer: string): string {
 <body style="margin:0;background:#f6f6f4;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1a1a19">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border:1px solid #e6e6e2;border-radius:8px">
-<tr><td style="padding:24px 24px 8px;font-size:13px;color:#6b6b66">SignalForge</td></tr>
+<tr><td style="padding:24px 24px 8px;font-size:13px;color:#6b6b66">Heardex</td></tr>
 <tr><td style="padding:0 24px 24px;font-size:14px;line-height:1.55">${body}</td></tr>
 </table>
 <p style="max-width:560px;font-size:12px;color:#6b6b66;line-height:1.5;margin:12px auto 0">${footer}</p>
@@ -30,14 +30,14 @@ export function invitationEmail(i: { workspace: string; inviter: string | null; 
   const who = i.inviter ? `${i.inviter} invited you` : "You've been invited";
   const until = i.expires.toUTCString().slice(5, 16);
   return {
-    subject: line(`Join ${i.workspace} on SignalForge`),
+    subject: line(`Join ${i.workspace} on Heardex`),
     html: layout(`Join ${i.workspace}`, `
 <h1 style="font-size:18px;margin:0 0 12px">Join ${esc(i.workspace)}</h1>
-<p>${esc(who)} to join <strong>${esc(i.workspace)}</strong> on SignalForge as ${esc(ROLE[i.role] ?? i.role)}.</p>
+<p>${esc(who)} to join <strong>${esc(i.workspace)}</strong> on Heardex as ${esc(ROLE[i.role] ?? i.role)}.</p>
 <p style="margin:20px 0">${button(i.link, "Accept invitation")}</p>
 <p style="font-size:12px;color:#6b6b66">The link works once, for this email address, until ${esc(until)}. If you weren't expecting it, ignore this email.</p>`,
-    `You received this because someone entered your address in SignalForge.`),
-    text: `${who} to join ${i.workspace} on SignalForge as ${ROLE[i.role] ?? i.role}.\n\nAccept: ${i.link}\n\nThe link works once, for this email address, until ${until}. If you weren't expecting it, ignore this email.`,
+    `You received this because someone entered your address in Heardex.`),
+    text: `${who} to join ${i.workspace} on Heardex as ${ROLE[i.role] ?? i.role}.\n\nAccept: ${i.link}\n\nThe link works once, for this email address, until ${until}. If you weren't expecting it, ignore this email.`,
   };
 }
 

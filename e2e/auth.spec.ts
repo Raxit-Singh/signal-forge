@@ -26,7 +26,7 @@ async function signIn(page: Page, email: string, password: string, path = "/logi
 test("login page: social buttons only for providers switched on, then the email form", async ({ page }) => {
   const enabled = await authProviders();
   await page.goto("/login");
-  await expect(page.getByRole("heading", { name: "Sign in to SignalForge" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in to Heardex" })).toBeVisible();
   for (const [p, label] of [["google", "Google"], ["github", "GitHub"], ["x", "X"]] as const) {
     const button = page.getByRole("button", { name: `Continue with ${label}` });
     if (enabled[p]) await expect(button).toBeVisible();

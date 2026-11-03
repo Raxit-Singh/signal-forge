@@ -13,7 +13,7 @@ export interface AiProviderInfo {
 }
 
 export const AI_PROVIDERS: readonly AiProviderInfo[] = [
-  { provider: "signalforge", name: "SignalForge AI credits" },
+  { provider: "signalforge", name: "Heardex AI credits" },
   {
     provider: "anthropic",
     name: "Anthropic (Claude)",

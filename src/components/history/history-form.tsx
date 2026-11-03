@@ -27,7 +27,7 @@ export interface HistoryFormProps {
   submitLabel?: string;
 }
 
-/** "How far back should SignalForge search for mentions?" with exact dates and warnings. */
+/** "How far back should Heardex search for mentions?" with exact dates and warnings. */
 export function HistoryForm(p: HistoryFormProps) {
   const [state, action] = useFormAction(startHistoricalSearchAction, idle);
   const tz = useTimeZone();
@@ -51,7 +51,7 @@ export function HistoryForm(p: HistoryFormProps) {
       <input type="hidden" name="productId" value={p.productId} />
       <FormMessage state={state} />
       <fieldset className="grid gap-2">
-        <legend className="mb-2 text-[14px] font-medium">How far back should SignalForge search for mentions?</legend>
+        <legend className="mb-2 text-[14px] font-medium">How far back should Heardex search for mentions?</legend>
         <div className="grid gap-2 sm:grid-cols-2">
           {HISTORY_OPTIONS.map((o) => {
             const tooFar = o.days !== undefined && o.days > p.planHistoryDays;

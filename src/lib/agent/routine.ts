@@ -2,10 +2,10 @@
 //
 // Documented at platform.claude.com/docs/en/api/claude-code/routines-fire
 // (experimental). The customer creates a routine at claude.ai/code/routines with
-// their repository and the SignalForge connector, adds an API trigger, and gives
-// SignalForge the URL and per-routine token. Runs bill to the customer's Claude
+// their repository and the Heardex connector, adds an API trigger, and gives
+// Heardex the URL and per-routine token. Runs bill to the customer's Claude
 // subscription. The endpoint only starts a session: there is no API to read its
-// status or result, so results come back through SignalForge's MCP tools.
+// status or result, so results come back through Heardex's MCP tools.
 // There is no idempotency key: each successful fire starts a new session.
 
 type FetchLike = typeof fetch;

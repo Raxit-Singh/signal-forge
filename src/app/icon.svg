@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>.l{fill:#0b0b0c}@media (prefers-color-scheme:dark){.l{fill:#f4f4f5}}</style>
+  <svg width="32" height="32" viewBox="629 375 600 1330">
+    <g transform="rotate(90 929 1040)">
+      <path fill="#ff3b2f" d="M274 1040l78-43h1153l79 43-79 44H352z"/>
+      <g class="l">
+        <path d="M554 750h88v580h-88z"/>
+        <path d="M554 997h247v87H554z"/>
+        <path d="M554 750h411l493 492h82v88h-122L927 838H554z"/>
+        <path d="M554 1330h411l493-492h82v-88h-122L927 1242H554z"/>
+      </g>
+    </g>
+  </svg>
+</svg>

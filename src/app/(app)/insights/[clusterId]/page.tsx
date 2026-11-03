@@ -199,7 +199,7 @@ export default async function IssueInsightPage({ params }: { params: Promise<{ c
             <Card>
               <CardHeader>
                 <CardTitle>Fix it with Claude</CardTitle>
-                <CardDescription>Opens Claude ready to find the cause in your code and suggest a fix. Needs SignalForge connected to Claude (one time).</CardDescription>
+                <CardDescription>Opens Claude ready to find the cause in your code and suggest a fix. Needs Heardex connected to Claude (one time).</CardDescription>
               </CardHeader>
               <CardContent><AgentIssueControls workspaceId={workspace.id} clusterId={c.id} /></CardContent>
             </Card>

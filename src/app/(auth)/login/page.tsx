@@ -15,7 +15,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   return (
     <div className="grid gap-6">
       <div className="grid gap-1">
-        <h1 className="text-xl font-semibold tracking-tight">Sign in to SignalForge</h1>
+        <h1 className="text-xl font-semibold tracking-tight">Sign in to Heardex</h1>
         <p className="text-muted-foreground">Welcome back.</p>
       </div>
       <AuthNoticeBanner code={sp.error ?? sp.notice} provider={sp.provider} next={next} />

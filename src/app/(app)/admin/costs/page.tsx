@@ -85,12 +85,12 @@ export default async function CostsPage() {
 
   return (
     <>
-      <PageHeader title="Costs" description={<>What SignalForge itself pays this month ({s.month.slice(0, 7)}, UTC). Staff only · read-only · refreshed on every load.</>} />
+      <PageHeader title="Costs" description={<>What Heardex itself pays this month ({s.month.slice(0, 7)}, UTC). Staff only · read-only · refreshed on every load.</>} />
       <div className="grid gap-4">
         <div className="grid gap-4 md:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>SignalForge Intelligence (Gemini)</CardTitle>
+              <CardTitle>Heardex Intelligence (Gemini)</CardTitle>
               <CardDescription>
                 {env.SIGNALFORGE_AI_ENABLED === "true" ? <>On · {env.SIGNALFORGE_AI_MODEL ?? "no model set"}</> : "Switched off on this server"} ·
                 {" "}{formatCount(s.ai.requests)} calls, {formatCount(s.ai.failed)} failed{s.ai.reserved_open ? `, ${s.ai.reserved_open} in flight` : ""}

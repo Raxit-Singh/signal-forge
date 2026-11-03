@@ -44,7 +44,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
       <>
         <PageHeader title="Overview" />
         <EmptyState icon={PackagePlus} title="Add your first product" action={{ href: "/onboarding/product", label: "Add product" }}>
-          SignalForge listens for conversations about a product you choose. Add one to get started.
+          Heardex listens for conversations about a product you choose. Add one to get started.
         </EmptyState>
       </>
     );

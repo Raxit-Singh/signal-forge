@@ -20,3 +20,6 @@ blob-report/
 # TikHub live-probe output (raw third-party responses)
 .tikhub-live/
 .verify/
+
+# taste-skill working files (direction sheet, inspector screenshots)
+.taste-skill/

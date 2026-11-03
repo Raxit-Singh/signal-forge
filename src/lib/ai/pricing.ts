@@ -1,9 +1,9 @@
-// SignalForge Intelligence model prices (pure).
+// Heardex Intelligence model prices (pure).
 //
 // Gemini API paid tier, Standard, USD per million tokens, from
 // ai.google.dev/gemini-api/docs/pricing (page dated 2026-10-16). Models are
 // chosen by configuration (SIGNALFORGE_AI_MODEL etc.), never assumed in code:
-// a model without a known price can't be billed to SignalForge, so its calls
+// a model without a known price can't be billed to Heardex, so its calls
 // are refused before they are made.
 
 export interface ModelPrice {

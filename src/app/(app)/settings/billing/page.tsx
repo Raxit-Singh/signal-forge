@@ -208,7 +208,7 @@ export default async function BillingSettings({ searchParams }: { searchParams: 
           ? "Online payment isn't set up on this server yet, so plans can't be purchased or changed in the app. "
           : !isOwner ? "Only the workspace owner can change the plan. "
           : stripeMode() === "test" ? "Payments are in Stripe test mode: use a test card (4242 4242 4242 4242); nothing is charged. " : ""}
-        Payments are handled by Stripe; SignalForge never sees card details. Prices are in USD, billed monthly; no annual
+        Payments are handled by Stripe; Heardex never sees card details. Prices are in USD, billed monthly; no annual
         plans for now.
       </p>
     </>

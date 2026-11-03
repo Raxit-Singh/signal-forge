@@ -10,7 +10,7 @@ export type ConnectedSourceId = "google_play";
 /** Platforms collected through API Direct (paid, pay-as-you-go). */
 export type PaidSourceId =
   | "reddit" | "x" | "linkedin" | "tiktok" | "instagram" | "facebook" | "substack" | "web" | "news" | "trustpilot";
-/** Every keyword-searchable source SignalForge can run. Values match the `integration_provider` enum. */
+/** Every keyword-searchable source Heardex can run. Values match the `integration_provider` enum. */
 export type PublicSourceId = OfficialSourceId | PaidSourceId;
 
 export type MentionType = "post" | "comment" | "reply" | "quote" | "video" | "review" | "article" | "note" | "community_message";
@@ -52,7 +52,7 @@ export interface SearchRequest {
   };
 }
 
-/** A source item in SignalForge's shape, before relevance filtering. */
+/** A source item in Heardex's shape, before relevance filtering. */
 export interface CandidateMention {
   externalId: string;
   sourceUrl: string;

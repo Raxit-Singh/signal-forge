@@ -1,6 +1,6 @@
 // Historical search preference (pure; shared by the onboarding form and the server).
 //
-// The customer chooses how far back SignalForge searches when a product is
+// The customer chooses how far back Heardex searches when a product is
 // added. The range ends when the search starts; ongoing monitoring covers
 // everything after. The plan's history window (Free 30 days, Pro 365, Scale 730)
 // bounds how far back a search may start; sources that can't reach that far are

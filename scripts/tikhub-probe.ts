@@ -2,7 +2,7 @@
 //
 //   node scripts/tikhub-probe.ts [--keyword "toing"]
 //
-// Calls each search endpoint SignalForge would use once, prints status, item
+// Calls each search endpoint Heardex would use once, prints status, item
 // counts and timing, and saves the raw JSON to .tikhub-live/ (git-ignored) so
 // response shapes can be read before normalizers are written. Reads
 // TIKHUB_API_KEY from .env.local; never prints it.

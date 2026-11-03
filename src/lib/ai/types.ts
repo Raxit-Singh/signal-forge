@@ -1,5 +1,5 @@
-// SignalForge Intelligence types (pure). This is SYSTEM A: AI paid for and run
-// by SignalForge (Gemini) to analyse collected mentions. The customer-connected
+// Heardex Intelligence types (pure). This is SYSTEM A: AI paid for and run
+// by Heardex (Gemini) to analyse collected mentions. The customer-connected
 // Claude developer agent (SYSTEM B) lives in src/lib/agent and never uses this.
 
 import type { z } from "zod";
@@ -21,7 +21,7 @@ export const FEEDBACK_CATEGORIES = [
 ] as const;
 export type FeedbackCategory = (typeof FEEDBACK_CATEGORIES)[number];
 
-/** The taxonomy SignalForge Intelligence answers with. */
+/** The taxonomy Heardex Intelligence answers with. */
 export const INTEL_CATEGORIES = [
   "bug", "feature_request", "complaint", "praise", "question", "competitor_comparison", "general_discussion", "other",
 ] as const;

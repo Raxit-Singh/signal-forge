@@ -15,9 +15,9 @@ function page(title: string, body: string, status = 200) {
 
 export async function GET(req: NextRequest) {
   const t = req.nextUrl.searchParams.get("t") ?? "";
-  if (!verifyUnsubscribe(unsubscribeSecret(), t)) return page("Link not valid", "<h1 style=\"font-size:20px\">This unsubscribe link isn't valid</h1><p>You can turn emails off in SignalForge under Settings → Account.</p>", 400);
+  if (!verifyUnsubscribe(unsubscribeSecret(), t)) return page("Link not valid", "<h1 style=\"font-size:20px\">This unsubscribe link isn't valid</h1><p>You can turn emails off in Heardex under Settings → Account.</p>", 400);
   const action = `/api/email/unsubscribe?t=${encodeURIComponent(t)}`;
-  return page("Unsubscribe", `<h1 style="font-size:20px">Stop weekly report emails?</h1><p>You'll stop receiving weekly report emails for this workspace. Reports stay available in SignalForge.</p>
+  return page("Unsubscribe", `<h1 style="font-size:20px">Stop weekly report emails?</h1><p>You'll stop receiving weekly report emails for this workspace. Reports stay available in Heardex.</p>
 <form method="post" action="${action}"><button type="submit" style="background:#e0571a;color:#fff;border:0;border-radius:6px;padding:10px 16px;font-weight:600;cursor:pointer">Unsubscribe</button></form>`);
 }
 
@@ -36,5 +36,5 @@ export async function POST(req: NextRequest) {
       return page("Something went wrong", "<h1 style=\"font-size:20px\">Couldn't unsubscribe</h1><p>Try again, or turn emails off in Settings → Account.</p>", 500);
     }
   }
-  return page("Unsubscribed", "<h1 style=\"font-size:20px\">You're unsubscribed</h1><p>No more weekly report emails for this workspace. You can turn them back on in SignalForge under Settings → Account.</p>");
+  return page("Unsubscribed", "<h1 style=\"font-size:20px\">You're unsubscribed</h1><p>No more weekly report emails for this workspace. You can turn them back on in Heardex under Settings → Account.</p>");
 }

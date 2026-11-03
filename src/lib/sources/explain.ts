@@ -25,7 +25,7 @@ const mentions = (n: number) => `${n} relevant mention${n === 1 ? "" : "s"}`;
 export function explainRank(i: ExplainInput): string {
   const a = i.assessment;
   if (a.phase === "discovery" || i.rank === null) {
-    return `${i.name} is new for this product, so it isn't ranked yet. SignalForge is measuring its normal activity first (${discoveryProgress(a.discovery)}).`;
+    return `${i.name} is new for this product, so it isn't ranked yet. Heardex is measuring its normal activity first (${discoveryProgress(a.discovery)}).`;
   }
   const growth = a.growthPct !== null && Math.abs(a.growthPct) >= 15
     ? `activity ${a.growthPct > 0 ? "increased" : "decreased"} ${Math.abs(a.growthPct)}% compared with its previous baseline`
@@ -49,7 +49,7 @@ export function explainInterval(i: ExplainInput): string {
   const every = `${i.name} is checked every ${formatInterval(i.interval)}`;
   let why: string;
   if (i.boosted) why = "a Launch Boost is active";
-  else if (a.phase === "discovery") why = "SignalForge is still learning how active it is";
+  else if (a.phase === "discovery") why = "Heardex is still learning how active it is";
   else if (a.spikeRecent) why = "activity spiked recently";
   else if (a.saturatedRecently) why = "recent checks returned more results than one check could read";
   else if (a.confidence === "low") why = "coverage is incomplete, so low activity can't be confirmed and it isn't slowed down";

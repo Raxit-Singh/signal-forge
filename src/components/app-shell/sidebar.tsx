@@ -7,6 +7,7 @@ import { motion } from "motion/react";
 import { Check, ChevronsUpDown, Plus, Zap } from "lucide-react";
 import { NAV, NAV_GROUPS } from "./nav";
 import { GLIDE } from "@/components/motion";
+import { HeardexMark } from "@/components/brand";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/overlays";
@@ -24,15 +25,12 @@ export interface ShellPlan { name: string; used: number; allowance: number; upgr
 
 const isActive = (pathname: string, href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
-/** The Obsidian mark: a signal line on red, with a soft breathing glow. */
+/** The Heardex mark in the app shell: the upright sword with a soft red glow behind the blade. */
 export function Mark({ className }: { className?: string }) {
   return (
-    <span className={cn("relative flex size-7 shrink-0 items-center justify-center", className)} aria-hidden>
-      <span className="breathe absolute inset-0 rounded-full bg-signal blur-md" />
-      <svg viewBox="0 0 24 24" className="relative size-7">
-        <circle cx="12" cy="12" r="11" fill="var(--signal)" />
-        <path d="M6 13.5h3.2l1.6-4.5 2.2 7 1.5-4.2H18" stroke="#fff" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
+    <span className={cn("relative flex h-8 w-5 shrink-0 items-center justify-center", className)} aria-hidden>
+      <span className="breathe absolute inset-x-1 inset-y-0 rounded-full bg-signal/50 blur-md" />
+      <HeardexMark className="relative h-8" />
     </span>
   );
 }
@@ -179,9 +177,9 @@ export function Sidebar({ current, workspaces, products, activeProductId, counts
   const onSettings = isActive(pathname, "/settings");
   return (
     <aside className="sticky top-0 hidden h-dvh w-[232px] shrink-0 flex-col gap-5 overflow-y-auto border-r bg-gradient-to-b from-foreground/[0.03] to-transparent px-3 py-5 md:flex print:hidden">
-      <Link href="/overview" className="flex items-center gap-2.5 px-2" aria-label="SignalForge home">
+      <Link href="/overview" className="flex items-center gap-2.5 px-2" aria-label="Heardex home">
         <Mark />
-        <span className="text-[16px] font-semibold tracking-[-0.02em]">SignalForge</span>
+        <span className="text-[17px] font-semibold tracking-[-0.03em]">heardex</span>
       </Link>
       <ProductCard products={products} activeId={activeProductId} />
       <SidebarNav counts={counts} />

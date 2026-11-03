@@ -3,7 +3,7 @@ import {
   adminSelect, adminUpdate, createUser, createWorkspaceWithProduct, deleteUser, seedMentions, signInPath, type FixtureMention, type TestUser,
 } from "./support";
 
-// SignalForge Intelligence in the browser with the development-only test
+// Heardex Intelligence in the browser with the development-only test
 // classifier: a keyword heuristic (and hashed-word "embeddings" that treat a few
 // synonyms alike) behind the real pipeline — budget reservation, cache, storage,
 // semantic grouping, priority, evidence validation. No model is ever called and
@@ -86,7 +86,7 @@ test("classification → semantic issue with priority evidence → analytics →
   expect(labels.every((l) => l.relevance_status === "relevant"), "the AI never changes a decided mention").toBe(true);
 
   const usage = await adminSelect<Array<{ billed_to: string; status: string; purpose: string }>>(`ai_usage_records?workspace_id=eq.${ids.workspaceId}&select=billed_to,status,purpose`);
-  expect(usage.every((u) => u.status === "settled" && u.billed_to === "test"), "every call reserved and settled; test calls never touch SignalForge budgets").toBe(true);
+  expect(usage.every((u) => u.status === "settled" && u.billed_to === "test"), "every call reserved and settled; test calls never touch Heardex budgets").toBe(true);
   expect(new Set(usage.map((u) => u.purpose))).toEqual(new Set(["classify", "embed"]));
 
   await page.goto("/mentions");

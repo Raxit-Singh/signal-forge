@@ -1,4 +1,4 @@
-// Runs the SignalForge channel against a fake SignalForge on localhost and checks
+// Runs the Heardex channel against a fake Heardex on localhost and checks
 // that queued tasks arrive as channel notifications (once each), that expired
 // tokens are refreshed, and that tool calls are proxied to /api/mcp.
 // No network beyond 127.0.0.1, no real account.
@@ -77,7 +77,7 @@ assert.deepEqual(got[0].meta, { task_id: queue[0].task_id, stage: "investigation
 assert.equal(refreshes, 1, "expired token refreshed once");
 
 const tools = await client.listTools();
-assert.deepEqual(tools.tools.map((t) => t.name), ["get_agent_task"], "SignalForge's tools are proxied");
+assert.deepEqual(tools.tools.map((t) => t.name), ["get_agent_task"], "Heardex's tools are proxied");
 const r = await client.callTool({ name: "get_agent_task", arguments: { task_id: queue[0].task_id } });
 assert.equal(r.content[0].text, `task ${queue[0].task_id}`);
 assert.deepEqual(calls, [queue[0].task_id]);

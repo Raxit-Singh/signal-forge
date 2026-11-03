@@ -120,7 +120,7 @@ export default async function InsightsPage() {
           </div>
           <div className={`panel flex w-fit flex-wrap items-center gap-2 rounded-full px-4 py-2 text-[13px] ${ai.ok ? "" : "text-muted-foreground"}`}>
             <span className={`size-2 rounded-full ${ai.ok ? "bg-positive" : "bg-muted-foreground"}`} aria-hidden />
-            {ai.ok ? "SignalForge Intelligence on" : <>{ai.message} <Link href="/settings/ai" className="underline underline-offset-2">Details</Link></>}
+            {ai.ok ? "Heardex Intelligence on" : <>{ai.message} <Link href="/settings/ai" className="underline underline-offset-2">Details</Link></>}
           </div>
         </div>
         <section className="panel rise grid content-start gap-4 self-end rounded-[18px] p-5" style={{ ["--d" as string]: "120ms" }} aria-label="From feedback to fix">
@@ -149,7 +149,7 @@ export default async function InsightsPage() {
       </section>
 
       {!ai.ok && (
-        <p className="px-1 text-[12px] text-muted-foreground">Analyses need SignalForge Intelligence; GitHub checks and the developer agent work without it.</p>
+        <p className="px-1 text-[12px] text-muted-foreground">Analyses need Heardex Intelligence; GitHub checks and the developer agent work without it.</p>
       )}
 
       <section className="grid gap-3" aria-labelledby="insight-issues-h">

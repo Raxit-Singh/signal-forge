@@ -5,7 +5,7 @@ import { validateAccessToken } from "@/lib/server/agent/oauth-store";
 import { agentQueue } from "@/lib/server/agent/tasks";
 import { json, site } from "@/lib/server/agent/http";
 
-// Tasks waiting for the user's own Claude Code session. Polled by the SignalForge
+// Tasks waiting for the user's own Claude Code session. Polled by the Heardex
 // channel (channel/signalforge-channel.mjs) with the same OAuth tokens as the MCP
 // server; scoped to the token's workspace. Read-only: the task starts when Claude
 // calls get_agent_task.

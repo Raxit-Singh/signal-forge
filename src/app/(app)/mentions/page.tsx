@@ -290,7 +290,7 @@ export default async function MentionsPage({ searchParams }: { searchParams: Pro
             {feedback && (
               <p className="flex flex-wrap items-center gap-2 text-[13px]" data-testid="feedback-filter">
                 <Badge tone="info">{FEEDBACK_FILTERS[feedback].label}</Badge>
-                <span className="text-muted-foreground">as classified by SignalForge Intelligence (from Issues)</span>
+                <span className="text-muted-foreground">as classified by Heardex Intelligence (from Issues)</span>
                 <Link href="/mentions" className="underline underline-offset-4">Show all mentions</Link>
               </p>
             )}

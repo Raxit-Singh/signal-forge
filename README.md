@@ -1,4 +1,4 @@
-# SignalForge
+# Heardex
 
 Social listening, buzz analytics and product intelligence for software teams: where people talk about your product, how often, what they like and dislike, which bugs and feature requests come up, and what to look at next — with every number traceable to stored data.
 
@@ -55,7 +55,7 @@ src/
     (app)/           authenticated shell: overview, mentions, buzz, feedback,
                      competitors, insights, integrations, reports, settings
     actions/         server actions (workspace, product, scans, mentions, AI, developer agent, account, notifications)
-    api/mcp          SignalForge remote MCP server (Claude connector); api/oauth + .well-known: its OAuth 2.1 server
+    api/mcp          Heardex remote MCP server (Claude connector); api/oauth + .well-known: its OAuth 2.1 server
     api/jobs/tick/   scheduler endpoint (secret-protected)
   components/        ui primitives, app shell, product form, keyword editor, history form/progress, realtime provider, …
   lib/
@@ -82,5 +82,5 @@ scripts/simulate-plan-costs.ts  read-only paid cost / freshness / backfill simul
 
 ## Two AI systems
 
-- **SignalForge Intelligence** (paid by SignalForge, Gemini): classifies collected mentions (relevance in shadow mode, product-targeted sentiment, categories, severity), groups feedback into prioritised issues by meaning, and explains spikes with cited posts. Customers connect nothing. Off until the operator configures it (ENVIRONMENT_SETUP.md §3c).
-- **Developer agent** (the customer's own Claude): customers add SignalForge as a custom connector in Claude (OAuth), link their GitHub repository, and optionally a Claude Code routine. "Investigate with Claude" → report → explicit, single-use approval of that exact plan → implementation and a pull request for human review. Runs on the customer's Claude subscription; SignalForge never merges or deploys. Limits: API_LIMITATIONS.md → "Developer agent".
+- **Heardex Intelligence** (paid by Heardex, Gemini): classifies collected mentions (relevance in shadow mode, product-targeted sentiment, categories, severity), groups feedback into prioritised issues by meaning, and explains spikes with cited posts. Customers connect nothing. Off until the operator configures it (ENVIRONMENT_SETUP.md §3c).
+- **Developer agent** (the customer's own Claude): customers add Heardex as a custom connector in Claude (OAuth), link their GitHub repository, and optionally a Claude Code routine. "Investigate with Claude" → report → explicit, single-use approval of that exact plan → implementation and a pull request for human review. Runs on the customer's Claude subscription; Heardex never merges or deploys. Limits: API_LIMITATIONS.md → "Developer agent".

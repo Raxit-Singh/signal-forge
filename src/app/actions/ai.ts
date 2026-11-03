@@ -13,8 +13,8 @@ import { requestInvestigation, spikeSubject } from "@/lib/server/ai/investigate"
 import { runWorker } from "@/lib/server/collection/worker";
 import { workspaceAvailability } from "@/lib/server/ai/gateway";
 
-// SignalForge Intelligence (SYSTEM A) actions. Customers don't connect an AI
-// provider; these control what runs on SignalForge's own AI for their workspace.
+// Heardex Intelligence (SYSTEM A) actions. Customers don't connect an AI
+// provider; these control what runs on Heardex's own AI for their workspace.
 
 const settingsPayload = z.object({
   workspaceId: z.uuid(),
@@ -57,7 +57,7 @@ export async function toggleTestClassifierAction(_: ActionState, formData: FormD
   const admin = createAdminClient();
   const { data: row } = await admin.from("ai_provider_connections").select("id").eq("workspace_id", workspaceId.data).eq("provider", "signalforge").maybeSingle();
   if (on) {
-    // Stored on the workspace's SignalForge row (no customer key involved).
+    // Stored on the workspace's Heardex row (no customer key involved).
     const { count: defaults } = await admin.from("ai_provider_connections").select("id", { count: "exact", head: true }).eq("workspace_id", workspaceId.data).eq("is_default", true);
     const { error } = row
       ? await admin.from("ai_provider_connections").update({ default_model: TEST_CLASSIFIER }).eq("id", row.id)
@@ -144,7 +144,7 @@ export async function summarizeClusterAction(_: ActionState, formData: FormData)
 
 /**
  * Removes a customer API key saved by the earlier version of AI settings. Those keys
- * are no longer used: SignalForge Intelligence runs on SignalForge's own AI.
+ * are no longer used: Heardex Intelligence runs on Heardex's own AI.
  */
 export async function deleteAiKeyAction(_: ActionState, formData: FormData): Promise<ActionState> {
   const workspaceId = uuidSchema.safeParse(formData.get("workspaceId"));
@@ -172,7 +172,7 @@ export async function deleteAiKeyAction(_: ActionState, formData: FormData): Pro
     await admin.from("credential_secrets").delete().eq("id", conn.secret_id).eq("workspace_id", workspaceId.data);
   }
   revalidatePath("/settings/ai");
-  return { status: "success", message: "Key deleted. SignalForge no longer holds it." };
+  return { status: "success", message: "Key deleted. Heardex no longer holds it." };
 }
 
 const classifyPayload = z.object({ workspaceId: z.uuid(), productId: z.uuid() });

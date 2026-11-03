@@ -72,7 +72,7 @@ export async function openBillingPortalAction(_: ActionState, formData: FormData
   if (!sub?.provider_customer_id) return failure("There's no billing account yet: choose a plan first.");
   let url: string;
   try {
-    // The configuration scripts/stripe-setup.ts created (plan switching between SignalForge prices); else the account default.
+    // The configuration scripts/stripe-setup.ts created (plan switching between Heardex prices); else the account default.
     const configs = await stripe().billingPortal.configurations.list({ active: true, limit: 20 });
     const configuration = configs.data.filter((c) => c.metadata?.app === "signalforge").sort((a, b) => b.created - a.created)[0]?.id;
     url = (await stripe().billingPortal.sessions.create({

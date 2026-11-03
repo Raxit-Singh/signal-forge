@@ -58,7 +58,7 @@ test("registration → verification → workspace → product → keywords → s
   await expect(page).toHaveURL(/\/scan$/);
 
   // Historical search: the user chooses how far back; nothing runs or is estimated before they start it.
-  await expect(page.getByText("How far back should SignalForge search for mentions?")).toBeVisible();
+  await expect(page.getByText("How far back should Heardex search for mentions?")).toBeVisible();
   await expect(page.getByRole("radio", { name: "Last 30 days" })).toBeChecked();
   await expect(page.getByTestId("history-range")).toContainText(/Searches from \w{3} \d{1,2}, \d{4}, \d{1,2}:\d{2} [AP]M GMT\+5:30 to \w{3} \d{1,2}, \d{4}, \d{1,2}:\d{2} [AP]M GMT\+5:30 \(30 days\)/);
   // Free plan: 30 days of history; longer presets are offered but disabled with the reason.

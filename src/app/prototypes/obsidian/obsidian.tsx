@@ -472,7 +472,7 @@ export function Obsidian() {
               <span className="ob-breathe absolute inset-0 rounded-full bg-[var(--ob-red)] blur-md" />
               <svg viewBox="0 0 24 24" className="relative size-7" aria-hidden><circle cx="12" cy="12" r="11" fill="var(--ob-red)" /><path d="M6 13.5h3.2l1.6-4.5 2.2 7 1.5-4.2H18" stroke="#fff" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </span>
-            <span className="text-[17px] font-semibold tracking-[-0.02em]">SignalForge</span>
+            <span className="text-[17px] font-semibold tracking-[-0.02em]">Heardex</span>
           </div>
           <button className="ob-pill mx-1 mt-6 flex items-center gap-2 px-3 py-2 text-left">
             <span className="flex size-6 items-center justify-center rounded-md bg-white text-[11px] font-bold text-black">G</span>

@@ -13,7 +13,7 @@ import { TEST_CLASSIFIER } from "@/lib/ai/availability";
 import { evaluateRelevance, MIN_COMPARISONS, type EvalRow } from "@/lib/ai/evaluation";
 import { formatCount } from "@/lib/format";
 
-export const metadata: Metadata = { title: "SignalForge Intelligence" };
+export const metadata: Metadata = { title: "Heardex Intelligence" };
 
 const PURPOSE: Record<string, string> = {
   classify: "Classification", embed: "Embeddings (issue grouping)", merge_check: "Issue merge checks",
@@ -74,9 +74,9 @@ export default async function IntelligenceSettings() {
     <div className="grid gap-4">
       <Card>
         <CardHeader>
-          <CardTitle>SignalForge Intelligence</CardTitle>
+          <CardTitle>Heardex Intelligence</CardTitle>
           <CardDescription>
-            SignalForge&apos;s own AI analyses collected mentions: whether each is about your product, sentiment toward it,
+            Heardex&apos;s own AI analyses collected mentions: whether each is about your product, sentiment toward it,
             bugs, feature requests, complaints and other feedback, grouped into prioritised issues. It is included in
             your plan — you don&apos;t connect or pay for an AI provider. (Claude for your codebase is separate: see{" "}
             <Link href="/settings/agent" className="underline underline-offset-2">Claude</Link>.)
@@ -157,7 +157,7 @@ export default async function IntelligenceSettings() {
             <p data-testid="ai-allowance">
               {allowance > 0
                 ? <><span className="font-medium tabular">{formatCount(usage?.billedTokens ?? 0)}</span> of {formatCount(allowance)} tokens used this billing period.</>
-                : "Your plan doesn't include SignalForge Intelligence."}
+                : "Your plan doesn't include Heardex Intelligence."}
             </p>
             {usage && usage.rows.length > 0 && (
               <table className="w-full" data-testid="ai-usage">
@@ -184,7 +184,7 @@ export default async function IntelligenceSettings() {
           <CardHeader>
             <CardTitle>Saved API keys (no longer used)</CardTitle>
             <CardDescription>
-              An earlier version let you add your own AI keys. SignalForge Intelligence no longer uses them; they stay
+              An earlier version let you add your own AI keys. Heardex Intelligence no longer uses them; they stay
               encrypted until you remove them.
             </CardDescription>
           </CardHeader>

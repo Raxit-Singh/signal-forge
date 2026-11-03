@@ -8,7 +8,7 @@ import { Disconnect, GooglePlayConnect } from "./connections-client";
 
 export const metadata: Metadata = { title: "Connections" };
 
-/** Accounts the customer owns that SignalForge reads (read-only): Google Play reviews. */
+/** Accounts the customer owns that Heardex reads (read-only): Google Play reviews. */
 export default async function ConnectionsSettingsPage() {
   const { workspace } = await requireWorkspace();
   const product = await getActiveProduct(workspace.id);
@@ -30,7 +30,7 @@ export default async function ConnectionsSettingsPage() {
           {play ? <Badge tone="positive">Connected</Badge> : <Badge tone="neutral">Not connected</Badge>}
         </CardTitle>
         <CardDescription>
-          Collect reviews of your Android app from your own Play Console. SignalForge only reads, and you can disconnect at any time.
+          Collect reviews of your Android app from your own Play Console. Heardex only reads, and you can disconnect at any time.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3">

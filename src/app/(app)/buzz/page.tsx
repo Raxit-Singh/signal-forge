@@ -224,7 +224,7 @@ export default async function BuzzPage({ searchParams }: { searchParams: Promise
           </div>
 
           <p className="px-1 text-[12px] text-muted-foreground/80">
-            Counts come only from mentions SignalForge stored: duplicates and reposts are excluded, publication time is used (not discovery time),
+            Counts come only from mentions Heardex stored: duplicates and reposts are excluded, publication time is used (not discovery time),
             and late-arriving mentions update past periods. Monitoring freshness per platform is on{" "}
             <Link href="/monitoring" className="underline underline-offset-2">Monitoring</Link>.
           </p>

@@ -58,7 +58,7 @@ export default async function AccountSettings() {
       )}
       {staff && (
         <Card>
-          <CardHeader><CardTitle>SignalForge staff</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Heardex staff</CardTitle></CardHeader>
           <CardContent className="text-[13px]"><Link href="/admin/costs" className="underline underline-offset-2">Costs dashboard</Link></CardContent>
         </Card>
       )}

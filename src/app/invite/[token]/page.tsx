@@ -31,7 +31,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
 
   return (
     <div className="flex min-h-dvh flex-col bg-surface-2">
-      <header className="px-6 py-5"><Link href="/" aria-label="SignalForge home"><Logo /></Link></header>
+      <header className="px-6 py-5"><Link href="/" aria-label="Heardex home"><Logo /></Link></header>
       <main id="main" className="flex flex-1 items-start justify-center px-4 pb-16 pt-6 sm:pt-16">
         <Card className="w-full max-w-md" data-testid="invitation">
           {!inv ? (
@@ -58,7 +58,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
                   </>
                 )}
                 {inv.state === "expired" && <p>This invitation expired on {inv.expires_at.slice(0, 10)}. Ask for a new one.</p>}
-                {inv.state === "accepted" && <p>This invitation was already used. <Link href="/overview" className="underline underline-offset-2">Go to SignalForge</Link></p>}
+                {inv.state === "accepted" && <p>This invitation was already used. <Link href="/overview" className="underline underline-offset-2">Go to Heardex</Link></p>}
                 {inv.state === "revoked" && <p>This invitation was withdrawn. Ask for a new one if you still need access.</p>}
               </CardContent>
             </>

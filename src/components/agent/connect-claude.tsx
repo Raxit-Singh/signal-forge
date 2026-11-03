@@ -11,10 +11,10 @@ import type { ClaudeState } from "@/lib/agent/connection-state";
 export const CLAUDE_CONNECTORS_URL = "https://claude.ai/customize/connectors";
 
 /**
- * Connect Claude: the user adds SignalForge as a connector in Claude and
- * approves access in SignalForge. While the dialog is open (or a connection is
+ * Connect Claude: the user adds Heardex as a connector in Claude and
+ * approves access in Heardex. While the dialog is open (or a connection is
  * pending) the page re-checks the real state; it says Connected only once
- * Claude has actually called SignalForge.
+ * Claude has actually called Heardex.
  */
 export function ConnectClaude({ address, state, label = "Connect Claude" }: { address: string; state: ClaudeState; label?: string }) {
   const router = useRouter();
@@ -41,12 +41,12 @@ export function ConnectClaude({ address, state, label = "Connect Claude" }: { ad
       <DialogTrigger asChild>
         <Button size="sm">{label}</Button>
       </DialogTrigger>
-      <DialogContent title="Connect Claude" description="Add SignalForge in Claude, then approve. SignalForge never asks for your Claude password.">
+      <DialogContent title="Connect Claude" description="Add Heardex in Claude, then approve. Heardex never asks for your Claude password.">
         <ol className="grid gap-4 text-[13px]">
           <li className="grid gap-1.5">
-            <span className="font-medium">1. Copy SignalForge&apos;s address</span>
+            <span className="font-medium">1. Copy Heardex&apos;s address</span>
             <div className="flex gap-2">
-              <input readOnly value={address} aria-label="SignalForge address for Claude" onFocus={(e) => e.currentTarget.select()}
+              <input readOnly value={address} aria-label="Heardex address for Claude" onFocus={(e) => e.currentTarget.select()}
                 className="h-8 min-w-0 flex-1 rounded-md border bg-muted/40 px-2 font-mono text-xs" />
               <Button type="button" size="sm" variant="secondary" onClick={copy}>
                 {copied ? <Check aria-hidden /> : <Copy aria-hidden />}{copied ? "Copied" : "Copy"}
@@ -55,14 +55,14 @@ export function ConnectClaude({ address, state, label = "Connect Claude" }: { ad
           </li>
           <li className="grid gap-1.5">
             <span className="font-medium">2. Add it in Claude</span>
-            <span className="text-muted-foreground">Choose <strong className="font-medium text-foreground">Add → Custom connector</strong>, name it SignalForge, paste the address and select Add.</span>
+            <span className="text-muted-foreground">Choose <strong className="font-medium text-foreground">Add → Custom connector</strong>, name it Heardex, paste the address and select Add.</span>
             <Button asChild size="sm" variant="secondary" className="w-fit">
               <a href={CLAUDE_CONNECTORS_URL} target="_blank" rel="noreferrer noopener">Open Claude <ExternalLink aria-hidden /></a>
             </Button>
           </li>
           <li className="grid gap-1">
             <span className="font-medium">3. Approve access</span>
-            <span className="text-muted-foreground">Claude opens SignalForge: sign in if asked, choose this workspace and approve. Then come back here.</span>
+            <span className="text-muted-foreground">Claude opens Heardex: sign in if asked, choose this workspace and approve. Then come back here.</span>
           </li>
         </ol>
         <div className="mt-4 flex items-center justify-between gap-2 border-t pt-3 text-[13px]" role="status" aria-live="polite">

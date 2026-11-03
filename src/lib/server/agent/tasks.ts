@@ -14,10 +14,10 @@ import { publicEnv } from "@/lib/env";
 import { decryptKey } from "@/lib/server/ai/secrets";
 import { audit, type McpPrincipal } from "./oauth-store";
 
-// Developer agent workflow (SYSTEM B). SignalForge never runs a model here and
+// Developer agent workflow (SYSTEM B). Heardex never runs a model here and
 // never pays for the customer's coding agent: work runs in the customer's Claude
 // (their routine, or Claude Code they run themselves) and reports back through
-// the SignalForge MCP tools. This module enforces stages, approvals and scope.
+// the Heardex MCP tools. This module enforces stages, approvals and scope.
 
 /** Tasks without a report after this long are marked failed (the routine has no status API). */
 export const TASK_TIMEOUT_HOURS = 6;
@@ -278,7 +278,7 @@ export async function agentGetTask(admin: SupabaseClient, who: McpPrincipal, tas
   if (!task) throw new AgentError("No such task in this workspace.");
   if (isTerminal(task.status)) throw new AgentError(`This task is ${task.status}; do nothing further.`);
   const repo = await taskRepository(admin, task);
-  if (!repo) throw new AgentError("No repository is authorized for this task yet. Ask the user to connect one in SignalForge.");
+  if (!repo) throw new AgentError("No repository is authorized for this task yet. Ask the user to connect one in Heardex.");
   const product = (task.context as { product?: { name?: string } }).product?.name;
   const repository = repo.local ? "the repository open in this Claude Code session" : repo.fullName;
   if (task.stage === "investigation") {
@@ -326,7 +326,7 @@ export async function agentSubmitReport(admin: SupabaseClient, who: McpPrincipal
     completed_at: new Date().toISOString(), warnings,
   }).eq("id", task.id).in("status", ["investigating", "not_started"]);
   await event(admin, task.workspace_id, task.id, "report_submitted", "agent", { plan_hash: hash, recommendation: parsed.data.recommendation, warnings });
-  return { accepted: true, plan_hash: hash, next: "The user will review the plan in SignalForge. Do not implement anything until a new implementation task is created." };
+  return { accepted: true, plan_hash: hash, next: "The user will review the plan in Heardex. Do not implement anything until a new implementation task is created." };
 }
 
 export async function agentReportImplementation(admin: SupabaseClient, who: McpPrincipal, taskId: string, update: unknown) {
@@ -365,7 +365,7 @@ export async function agentReportImplementation(admin: SupabaseClient, who: McpP
 }
 
 /**
- * Whether Claude is connected to the workspace through the SignalForge connector: an
+ * Whether Claude is connected to the workspace through the Heardex connector: an
  * approved, unrevoked grant from Claude (the Claude Code channel's sign-in doesn't count).
  */
 export async function claudeConnected(admin: SupabaseClient, workspaceId: string): Promise<boolean> {
@@ -376,7 +376,7 @@ export async function claudeConnected(admin: SupabaseClient, workspaceId: string
   return (count ?? 0) > 0;
 }
 
-/** Whether a SignalForge channel is signed in for the workspace, and listening right now (polled recently). */
+/** Whether a Heardex channel is signed in for the workspace, and listening right now (polled recently). */
 export async function channelStatus(admin: SupabaseClient, workspaceId: string): Promise<{ signedIn: boolean; listening: boolean; lastUsedAt: string | null }> {
   const { data: grants } = await admin.from("oauth_grants").select("client_id, last_used_at").eq("workspace_id", workspaceId).is("revoked_at", null);
   const ids = [...new Set((grants ?? []).map((g) => g.client_id as string))];
@@ -388,7 +388,7 @@ export async function channelStatus(admin: SupabaseClient, workspaceId: string):
 }
 
 /**
- * Tasks waiting for the user's own Claude Code session (the SignalForge channel polls
+ * Tasks waiting for the user's own Claude Code session (the Heardex channel polls
  * this): manual tasks not started yet (including ones queued before Claude was connected),
  * oldest first, from the last day only.
  */

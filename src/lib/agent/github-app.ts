@@ -3,7 +3,7 @@
 // Separate from the public-monitoring GITHUB_TOKEN, which is never used for customer
 // repositories. The App asks only for read permissions (metadata, contents, pull
 // requests): Claude does its own repository work through the customer's Claude
-// GitHub connection; SignalForge only maps a product to a repository and checks the
+// GitHub connection; Heardex only maps a product to a repository and checks the
 // pull request an agent reports.
 //
 // Installation ownership is verified with the user-to-server token GitHub returns
@@ -15,7 +15,7 @@ import { createSign } from "node:crypto";
 
 type FetchLike = typeof fetch;
 const API = "https://api.github.com";
-const HEADERS = { accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", "user-agent": "SignalForge" };
+const HEADERS = { accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", "user-agent": "Heardex" };
 
 export interface AppCredentials {
   appId: string;

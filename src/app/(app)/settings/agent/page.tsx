@@ -16,7 +16,7 @@ import { disconnectClaudeAction, revokeClaudeAccessAction } from "@/app/actions/
 import { formatTime } from "@/lib/format";
 import { getTimeZone } from "@/lib/server/timezone";
 
-export const metadata: Metadata = { title: "SignalForge for Claude" };
+export const metadata: Metadata = { title: "Heardex for Claude" };
 
 const TONE: Record<ClaudeState, "positive" | "warning" | "negative" | "neutral" | "info"> = {
   not_connected: "neutral", connecting: "info", connected: "positive", needs_attention: "warning", unavailable: "neutral",
@@ -60,18 +60,18 @@ export default async function AgentSettings() {
       <Card data-testid="claude-card">
         <CardHeader>
           <CardTitle className="flex flex-wrap items-center gap-2">
-            SignalForge for Claude
+            Heardex for Claude
             <Badge tone={TONE[state]} data-testid="claude-state">{CLAUDE_STATE_LABEL[state]}</Badge>
           </CardTitle>
           <CardDescription>
-            Connect Claude to SignalForge and Claude can read {name}&apos;s feedback and issues, and investigate issues in your code. Works in
+            Connect Claude to Heardex and Claude can read {name}&apos;s feedback and issues, and investigate issues in your code. Works in
             Claude on the web, the desktop app and Claude Code, on your own Claude plan. Needed for “Investigate with Claude”.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 text-[13px]">
           {state === "unavailable" && (
             <p className="text-muted-foreground">
-              Claude can&apos;t reach this SignalForge server yet: it needs a public HTTPS address. Claude Code on this computer can still connect — see below.
+              Claude can&apos;t reach this Heardex server yet: it needs a public HTTPS address. Claude Code on this computer can still connect — see below.
             </p>
           )}
           {!publicSite && state !== "unavailable" && !claudeOn && (
@@ -86,7 +86,7 @@ export default async function AgentSettings() {
                 <a href="https://claude.ai/new" target="_blank" rel="noreferrer noopener">Open Claude <ExternalLink aria-hidden /></a>
               </Button>
             )}
-            {claudeOn && r.mcp.lastUsedAt && <span className="text-xs text-muted-foreground">Claude last read SignalForge {at(r.mcp.lastUsedAt)}.</span>}
+            {claudeOn && r.mcp.lastUsedAt && <span className="text-xs text-muted-foreground">Claude last read Heardex {at(r.mcp.lastUsedAt)}.</span>}
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -94,7 +94,7 @@ export default async function AgentSettings() {
               <h3 className="font-medium">Investigate issues in your code</h3>
               <p className="text-muted-foreground">
                 “Investigate with Claude” on a bug, complaint or feature request opens Claude ready to go: it reads the issue and every report
-                through SignalForge, finds the cause in your code and suggests a fix. It asks before changing anything.
+                through Heardex, finds the cause in your code and suggests a fix. It asks before changing anything.
               </p>
             </section>
             <section className="grid content-start gap-1.5 rounded-md border p-3" data-testid="claude-examples">
@@ -106,7 +106,7 @@ export default async function AgentSettings() {
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Read-only: Claude sees only this workspace and can&apos;t change anything in SignalForge. Disconnect any time; access stops at once.
+            Read-only: Claude sees only this workspace and can&apos;t change anything in Heardex. Disconnect any time; access stops at once.
           </p>
 
           {(claudeOn || state === "connecting") && isAdmin && (
@@ -124,8 +124,8 @@ export default async function AgentSettings() {
                 <li>In Claude: <a className="underline underline-offset-2" href={CLAUDE_CONNECTORS_URL} target="_blank" rel="noreferrer noopener">Customize → Connectors</a> → Add → Custom connector, paste the URL. Leave the advanced OAuth settings empty.</li>
                 <li>Team and Enterprise plans: an owner first adds the connector for the organization; then each member connects it.</li>
                 <li>Free Claude plans can add one custom connector.</li>
-                <li>Claude Code: <code className="font-mono">claude mcp add --transport http signalforge {mcp}</code>, then run <code className="font-mono">/mcp</code> to sign in.</li>
-                <li>Claude apps connect from Anthropic&apos;s cloud, so SignalForge must be at a public HTTPS address{publicSite ? " (it is)" : " (this server isn't)"}.</li>
+                <li>Claude Code: <code className="font-mono">claude mcp add --transport http heardex {mcp}</code>, then run <code className="font-mono">/mcp</code> to sign in.</li>
+                <li>Claude apps connect from Anthropic&apos;s cloud, so Heardex must be at a public HTTPS address{publicSite ? " (it is)" : " (this server isn't)"}.</li>
               </ul>
             </div>
           </details>

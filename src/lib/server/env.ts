@@ -21,7 +21,7 @@ const serverSchema = z.object({
   // Serper (paid, per query): Web and News search instead of API Direct when set.
   SERPER_API_KEY: z.string().optional(),
   PAID_SOURCES_ENABLED: z.enum(["true", "false"]).default("false"),
-  // SignalForge Intelligence (SYSTEM A; paid by SignalForge). SERVER ONLY. Also needs an
+  // Heardex Intelligence (SYSTEM A; paid by Heardex). SERVER ONLY. Also needs an
   // operator-set row in ai_global_budget. Customers never supply AI keys for this.
   SIGNALFORGE_AI_ENABLED: z.enum(["true", "false"]).default("false"),
   SIGNALFORGE_AI_PROVIDER: z.string().optional(),
@@ -35,13 +35,13 @@ const serverSchema = z.object({
   GITHUB_APP_CLIENT_ID: z.string().optional(),
   GITHUB_APP_CLIENT_SECRET: z.string().optional(),
   GITHUB_APP_PRIVATE_KEY: z.string().optional(),
-  // Email (Resend). EMAIL_FROM must be on a domain verified in Resend, e.g. "SignalForge <reports@mail.example.com>".
+  // Email (Resend). EMAIL_FROM must be on a domain verified in Resend, e.g. "Heardex <reports@mail.example.com>".
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().optional(),
   // Stripe (subscriptions). Test keys (sk_test_…) until launch. The webhook secret is per endpoint (whsec_…).
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
-  // SignalForge staff (comma-separated verified emails): the internal cost dashboard at /admin/costs.
+  // Heardex staff (comma-separated verified emails): the internal cost dashboard at /admin/costs.
   SIGNALFORGE_STAFF_EMAILS: z.string().default(""),
 });
 

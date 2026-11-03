@@ -10,7 +10,7 @@ const sans = Geist({ subsets: ["latin"], variable: "--font-geist-sans", display:
 const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono", display: "swap" });
 
 export const metadata: Metadata = {
-  title: { default: "SignalForge", template: "%s · SignalForge" },
+  title: { default: "Heardex", template: "%s · Heardex" },
   description: "Social listening and product intelligence for software teams.",
   robots: { index: false, follow: false },
 };

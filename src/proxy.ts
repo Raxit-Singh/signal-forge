@@ -13,7 +13,7 @@ const PUBLIC_PREFIXES = ["/login", "/signup", "/forgot-password", "/auth", "/leg
 /**
  * Content Security Policy with a fresh nonce per request: only Next's own scripts
  * (which carry the nonce) run. Inline style attributes are allowed (charts use
- * them); forms may only lead to SignalForge and the sign-in / payment
+ * them); forms may only lead to Heardex and the sign-in / payment
  * pages it redirects to.
  */
 function contentSecurityPolicy(nonce: string): string {

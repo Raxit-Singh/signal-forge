@@ -1,4 +1,4 @@
-// SignalForge Intelligence (pure): prompt hardening, structured-output validation,
+// Heardex Intelligence (pure): prompt hardening, structured-output validation,
 // classification fixtures, semantic grouping, priority, shadow evaluation, pricing,
 // availability and the test classifier. No network, no database, no paid calls.
 import { test } from "node:test";

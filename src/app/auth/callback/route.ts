@@ -8,7 +8,7 @@ import { isOAuthProvider, noticeForAuthError } from "@/lib/auth/flow";
 // the callback to the browser that initiated it (state/CSRF protection is
 // handled by Supabase Auth). Supabase links a provider to an existing account
 // only when both email addresses are verified; otherwise it is a separate
-// account. SignalForge never merges accounts itself.
+// account. Heardex never merges accounts itself.
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
   const code = searchParams.get("code");

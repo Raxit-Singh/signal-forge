@@ -99,7 +99,7 @@ test("ambiguity detection flags common and short names", () => {
   assert.equal(isAmbiguousTerm("Arc"), true);
   assert.equal(isAmbiguousTerm("Focus Flow"), true);
   assert.equal(isAmbiguousTerm("FocusFlow"), false);
-  assert.equal(isAmbiguousTerm("SignalForge"), false);
+  assert.equal(isAmbiguousTerm("Heardex"), false);
   assert.equal(isAmbiguousTerm("focusflow.app"), false);
 });
 

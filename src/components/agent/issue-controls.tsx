@@ -5,7 +5,7 @@ import { InvestigateWithClaude } from "./investigate-with-claude";
 
 /**
  * "Investigate with Claude" on a feedback issue: a new Claude chat asking Claude to read
- * this issue through the SignalForge connector. Read-only on our side.
+ * this issue through the Heardex connector. Read-only on our side.
  */
 export async function AgentIssueControls({ workspaceId, clusterId, primary = false }: { workspaceId: string; clusterId: string; primary?: boolean }) {
   const admin = createAdminClient();

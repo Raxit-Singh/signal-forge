@@ -45,7 +45,7 @@ export const INTEGRATIONS: readonly IntegrationInfo[] = [
     readOnly: true,
     dataAccessed: "Public stories and comments that match your keywords, with points and comment counts.",
     permissions: "None — uses the public HN search API.",
-    limits: "Public API; SignalForge rate-limits itself to stay well inside fair use.",
+    limits: "Public API; Heardex rate-limits itself to stay well inside fair use.",
   },
   {
     provider: "github",
@@ -69,9 +69,9 @@ export const INTEGRATIONS: readonly IntegrationInfo[] = [
     requiresAuthorization: false,
     readOnly: true,
     dataAccessed: "Public videos matching your keywords, their statistics, and public comments on those videos.",
-    permissions: "None — uses the YouTube Data API with SignalForge's own key.",
+    permissions: "None — uses the YouTube Data API with Heardex's own key.",
     limits:
-      "YouTube allows 100 keyword searches per day for all SignalForge customers combined, so each product is searched at most once a day (newest 50 videos). Stored YouTube data is kept for 30 days.",
+      "YouTube allows 100 keyword searches per day for all Heardex customers combined, so each product is searched at most once a day (newest 50 videos). Stored YouTube data is kept for 30 days.",
   },
   {
     provider: "stackexchange",
@@ -163,7 +163,7 @@ export const INTEGRATIONS: readonly IntegrationInfo[] = [
     requiresAuthorization: false,
     readOnly: true,
     dataAccessed,
-    permissions: "None from you — collected through API Direct, SignalForge's paid data provider.",
+    permissions: "None from you — collected through API Direct, Heardex's paid data provider.",
     limits: `${limits} Paid source: runs only when your plan includes paid sources and a spending limit is set.`,
   })),
   {
@@ -192,7 +192,7 @@ export const INTEGRATIONS: readonly IntegrationInfo[] = [
       blockedReason:
         provider === "slack"
           ? "Planned as a notification channel; reading workspaces you don't administer is not possible."
-          : "Commercial API access or partner approval is required. SignalForge will not scrape this platform.",
+          : "Commercial API access or partner approval is required. Heardex will not scrape this platform.",
     }),
   ),
 ];

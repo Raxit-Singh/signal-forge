@@ -8,7 +8,7 @@ import { newIssueUrl } from "@/lib/insights/insights";
 
 /**
  * Editable GitHub issue draft. "Open on GitHub" opens GitHub's own new-issue page
- * prefilled with the edited text; the user submits it there. SignalForge never
+ * prefilled with the edited text; the user submits it there. Heardex never
  * creates issues or writes to the repository.
  */
 export function DraftEditor({ title, body, repo }: { title: string; body: string; repo: string | null }) {
@@ -53,7 +53,7 @@ export function DraftEditor({ title, body, repo }: { title: string; body: string
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
-        GitHub opens with this draft filled in; nothing is filed until you submit it there. SignalForge never creates issues in your repository.
+        GitHub opens with this draft filled in; nothing is filed until you submit it there. Heardex never creates issues in your repository.
       </p>
     </div>
   );

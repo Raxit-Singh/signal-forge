@@ -106,7 +106,7 @@ export default async function ReportPage({ params }: { params: Promise<{ reportI
         <div className="grid gap-1.5">
           <p className="text-[13px] text-muted-foreground">{row.kind === "weekly" ? "Weekly report" : "Report: last 7 days"} · {d.period.label}</p>
           <h1 className="text-[34px] font-medium leading-[1.05] tracking-[-0.035em] sm:text-[44px]">{d.product.name}</h1>
-          <p className="text-[12px] text-muted-foreground/80">Computed {at(d.generatedAt)} · SignalForge</p>
+          <p className="text-[12px] text-muted-foreground/80">Computed {at(d.generatedAt)} · Heardex</p>
         </div>
         <div className="flex flex-wrap gap-2 print:hidden">
           <PrintButton />

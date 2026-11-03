@@ -57,7 +57,7 @@ interface Row {
 }
 
 /**
- * SignalForge Intelligence classification of a product's unclassified mentions:
+ * Heardex Intelligence classification of a product's unclassified mentions:
  * whether it is about the product, product-targeted sentiment, category,
  * feedback signals, severity, affected area and confidence. Mentions the keyword
  * rules left for review ("pending") are decided by a confident answer

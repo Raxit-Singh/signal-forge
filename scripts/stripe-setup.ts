@@ -46,7 +46,7 @@ for (const p of plans) {
   console.log(`  ${p.name}: ${existing ? "price changed → new price" : "create"} ${p.price_cents_monthly / 100} ${p.currency}/month (lookup ${lookup})`);
   if (!apply) continue;
   const product = (await stripe.products.search({ query: `metadata['plan_id']:'${p.id}'` })).data[0]
-    ?? await stripe.products.create({ name: `SignalForge ${p.name}`, metadata: { plan_id: p.id } });
+    ?? await stripe.products.create({ name: `Heardex ${p.name}`, metadata: { plan_id: p.id } });
   const price = await stripe.prices.create({
     product: product.id, currency: p.currency.toLowerCase(), unit_amount: p.price_cents_monthly, recurring: { interval: "month" },
     lookup_key: lookup, transfer_lookup_key: true, metadata: { plan_id: p.id },
@@ -64,7 +64,7 @@ if (apply && prices.length) {
     byProduct.set(prod, [...(byProduct.get(prod) ?? []), id]);
   }
   const cfg = await stripe.billingPortal.configurations.create({
-    business_profile: { headline: "SignalForge billing" },
+    business_profile: { headline: "Heardex billing" },
     features: {
       customer_update: { enabled: true, allowed_updates: ["email", "address", "tax_id"] },
       invoice_history: { enabled: true },

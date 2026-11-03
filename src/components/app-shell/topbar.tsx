@@ -36,7 +36,7 @@ function MobileNav({ current, workspaces, products, activeProductId, counts }: {
         <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open navigation"><Menu /></Button>
       </SheetTrigger>
       <SheetContent title="Navigation" className="gap-4 px-3 py-4">
-        <div className="flex items-center gap-2.5 px-2"><Mark /><span className="text-[16px] font-semibold tracking-[-0.02em]">SignalForge</span></div>
+        <div className="flex items-center gap-2.5 px-2"><Mark /><span className="text-[17px] font-semibold tracking-[-0.03em]">heardex</span></div>
         <ProductCard products={products} activeId={activeProductId} />
         <SidebarNav counts={counts} onNavigate={() => setOpen(false)} />
         <div className="mt-auto grid gap-1">

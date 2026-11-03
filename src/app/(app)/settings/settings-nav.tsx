@@ -19,7 +19,7 @@ const GROUPS: Array<{ label: string; items: Array<{ href: string; label: string;
   {
     label: "Intelligence",
     items: [
-      { href: "/settings/ai", label: "SignalForge Intelligence", hint: "AI classification", icon: Sparkles },
+      { href: "/settings/ai", label: "Heardex Intelligence", hint: "AI classification", icon: Sparkles },
       { href: "/settings/agent", label: "Claude", hint: "Connector for your Claude", icon: Bot },
     ],
   },

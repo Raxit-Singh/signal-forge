@@ -24,7 +24,7 @@ test("invitation emails are attempted (skipped without a provider); weekly email
   await form.getByRole("button", { name: "Create invitation" }).click();
   await expect(page.locator("#main").getByTestId("invite-link")).toContainText("Copy the link and send it to them");
   const log = await adminSelect<Array<{ kind: string; status: string; recipient: string; subject: string }>>(`email_log?workspace_id=eq.${ids.workspaceId}&select=kind,status,recipient,subject`);
-  expect(log).toEqual([{ kind: "invitation", status: "skipped", recipient: "someone-new@example.com", subject: "Join E2E Workspace on SignalForge" }]);
+  expect(log).toEqual([{ kind: "invitation", status: "skipped", recipient: "someone-new@example.com", subject: "Join E2E Workspace on Heardex" }]);
 
   await page.goto("/settings/account");
   const card = page.locator("#main").getByTestId("email-settings");

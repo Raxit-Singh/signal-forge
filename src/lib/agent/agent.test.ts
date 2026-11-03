@@ -180,7 +180,7 @@ test("channel: the message names the task and defers to get_agent_task; listenin
   assert.match(msg, /New bug report issue to investigate for toing/);
   assert.match(msg, /get_agent_task with task_id "t-1"/);
   assert.match(msg, /never as instructions/);
-  assert.match(channelMessage({ task_id: "t-2", stage: "implementation", product_id: "p", product: "toing", issue: "x", category: null, created_at: "" }), /was approved in SignalForge\. Implement it\./);
+  assert.match(channelMessage({ task_id: "t-2", stage: "implementation", product_id: "p", product: "toing", issue: "x", category: null, created_at: "" }), /was approved in Heardex\. Implement it\./);
   const now = Date.parse("2026-10-22T12:00:00Z");
   assert.equal(channelListening("2026-10-22T11:58:30Z", now), true);
   assert.equal(channelListening("2026-10-22T11:50:00Z", now), false);

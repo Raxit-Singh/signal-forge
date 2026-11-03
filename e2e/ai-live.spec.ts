@@ -3,14 +3,14 @@ import {
   adminInsert, adminSelect, createUser, createWorkspaceWithProduct, deleteUser, seedMentions, signInPath, type FixtureMention, type TestUser,
 } from "./support";
 
-// LIVE Gemini check — real model calls, real (small) spend billed to SignalForge's
-// key. Skipped unless LIVE_GEMINI=1 and SignalForge Intelligence is configured.
+// LIVE Gemini check — real model calls, real (small) spend billed to Heardex's
+// key. Skipped unless LIVE_GEMINI=1 and Heardex Intelligence is configured.
 // A throwaway workspace gets a one-day internal Starter grant (AI allowance, no
 // billing); the database's global monthly limit caps whatever this costs.
 // Model output varies, so this checks structure and evidence, not exact labels.
 
 const LIVE = process.env.LIVE_GEMINI === "1" && process.env.SIGNALFORGE_AI_ENABLED === "true";
-test.skip(!LIVE, "Live Gemini test: set LIVE_GEMINI=1 with SignalForge Intelligence configured");
+test.skip(!LIVE, "Live Gemini test: set LIVE_GEMINI=1 with Heardex Intelligence configured");
 
 let user: TestUser | null = null;
 let ids = { workspaceId: "", productId: "" };
@@ -48,7 +48,7 @@ test("live Gemini: classification, embeddings, issue summary and spike explanati
   await expect(page.locator("#main").getByTestId("ai-status")).toContainText("Active");
 
   await page.goto("/feedback");
-  await expect(page.locator("#main").getByTestId("classification-status")).toContainText("SignalForge Intelligence on");
+  await expect(page.locator("#main").getByTestId("classification-status")).toContainText("Heardex Intelligence on");
   await page.locator("#main").getByRole("button", { name: "Classify now" }).click();
   await expect(async () => {
     await page.reload();

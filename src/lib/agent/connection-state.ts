@@ -14,7 +14,7 @@ export const CLAUDE_STATE_LABEL: Record<ClaudeState, string> = {
 
 /**
  * Claude's web and desktop apps reach custom connectors from Anthropic's cloud,
- * so SignalForge must be served at a public HTTPS address.
+ * so Heardex must be served at a public HTTPS address.
  */
 export function publiclyReachable(siteUrl: string): boolean {
   let u: URL;
@@ -31,9 +31,9 @@ export function publiclyReachable(siteUrl: string): boolean {
 }
 
 export interface ConnectionFacts {
-  /** An unrevoked OAuth grant exists (the user approved access in SignalForge). */
+  /** An unrevoked OAuth grant exists (the user approved access in Heardex). */
   authorized: boolean;
-  /** Claude has actually called SignalForge with that grant (a real MCP connection). */
+  /** Claude has actually called Heardex with that grant (a real MCP connection). */
   used: boolean;
   routineError: string | null;
   reachable: boolean;

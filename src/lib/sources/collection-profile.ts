@@ -1,7 +1,7 @@
 // What each search stream can retrieve, and how (pagination audit, 2026-10-16).
 //
 // PROVIDER limits are the API's own (page sizes, page caps, date filters, search
-// depth). APPLICATION limits are SignalForge's per-job safety bounds: they keep
+// depth). APPLICATION limits are Heardex's per-job safety bounds: they keep
 // one job short and its spend predictable, but they are NOT coverage limits —
 // a window that overflows a job is continued by later jobs wherever the provider
 // can resume (date ranges or page offsets). Where it can't, the run is recorded

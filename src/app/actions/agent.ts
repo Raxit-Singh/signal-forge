@@ -15,7 +15,7 @@ import {
 } from "@/lib/server/agent/tasks";
 
 // Developer agent (SYSTEM B) actions. Connecting Claude happens in Claude (custom
-// connector + OAuth); these manage what SignalForge stores and the task workflow.
+// connector + OAuth); these manage what Heardex stores and the task workflow.
 
 async function role(workspaceId: string, min: "member" | "admin") {
   try {
@@ -36,7 +36,7 @@ export async function disconnectClaudeAction(_: ActionState, formData: FormData)
   let n = 0;
   for (const g of grants ?? []) if (await revokeGrantForWorkspace(admin, g.id as string, workspaceId.data)) n++;
   revalidatePath("/settings/agent");
-  return n ? { status: "success", message: "Claude disconnected. It can no longer read this workspace. You can also remove the SignalForge connector in Claude." }
+  return n ? { status: "success", message: "Claude disconnected. It can no longer read this workspace. You can also remove the Heardex connector in Claude." }
     : failure("Claude isn't connected to this workspace.");
 }
 
@@ -82,7 +82,7 @@ export async function removeRoutineAction(_: ActionState, formData: FormData): P
   if (conn?.secret_id) await admin.from("credential_secrets").delete().eq("id", conn.secret_id).eq("workspace_id", workspaceId.data);
   await audit(admin, workspaceId.data, r.userId!, "agent.routine_removed", workspaceId.data, {});
   revalidatePath("/settings/agent");
-  return { status: "success", message: "Routine removed. SignalForge no longer holds its token." };
+  return { status: "success", message: "Routine removed. Heardex no longer holds its token." };
 }
 
 export async function revokeClaudeAccessAction(_: ActionState, formData: FormData): Promise<ActionState> {
@@ -113,7 +113,7 @@ export async function selectRepositoryAction(_: ActionState, formData: FormData)
   const token = await installationToken(app, p.data.installationId);
   const repos = token ? await listInstallationRepos(token) : null;
   const repo = repos?.find((x) => x.id === p.data.repoId);
-  if (!repo) return failure("SignalForge's GitHub App can't access that repository.");
+  if (!repo) return failure("Heardex's GitHub App can't access that repository.");
   const { error } = await admin.from("agent_repositories").upsert({
     workspace_id: p.data.workspaceId, product_id: p.data.productId, installation_id: p.data.installationId, repo_id: repo.id,
     full_name: repo.fullName, default_branch: repo.defaultBranch, private: repo.private, created_by: r.userId,

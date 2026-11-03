@@ -1,4 +1,4 @@
-// YouTube Data API v3. Needs SignalForge's own API key (Google Cloud).
+// YouTube Data API v3. Needs Heardex's own API key (Google Cloud).
 // Quotas per Google Cloud project, shared by ALL customers (checked 2026-10-14,
 // developers.google.com/youtube/v3/determine_quota_cost):
 //   search.list         own bucket: 100 calls/day (one combined OR query per product per run)

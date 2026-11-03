@@ -6,7 +6,7 @@ import { SCOPES } from "@/lib/agent/oauth";
 import { AgentError, agentGetTask, agentReportImplementation, agentSubmitReport } from "./tasks";
 import { audit, type McpPrincipal } from "./oauth-store";
 
-// SignalForge remote MCP server (SYSTEM B). Read tools expose one workspace's
+// Heardex remote MCP server (SYSTEM B). Read tools expose one workspace's
 // product intelligence to the customer's Claude; agent tools let Claude fetch a
 // task and report results. Every query is filtered by the token's workspace —
 // the service-role client is never used without that filter. Results are bounded
@@ -34,8 +34,8 @@ async function clusterInWorkspace(admin: SupabaseClient, who: McpPrincipal, issu
 }
 
 export function buildMcpServer(admin: SupabaseClient, who: McpPrincipal): McpServer {
-  const server = new McpServer({ name: "signalforge", version: "1.0.0" }, {
-    instructions: "SignalForge product intelligence for one workspace: products, prioritised feedback issues with evidence, spikes, and developer-agent tasks. " + UNTRUSTED,
+  const server = new McpServer({ name: "heardex", version: "1.0.0" }, {
+    instructions: "Heardex product intelligence for one workspace: products, prioritised feedback issues with evidence, spikes, and developer-agent tasks. " + UNTRUSTED,
   });
   const has = (scope: string) => who.scopes.includes(scope);
   const tool = <S extends z.ZodRawShape>(name: string, description: string, input: S, scope: string, run: (args: z.infer<z.ZodObject<S>>) => Promise<unknown>, readOnly = true) => {
@@ -48,7 +48,7 @@ export function buildMcpServer(admin: SupabaseClient, who: McpPrincipal): McpSer
       } catch (e) {
         if (e instanceof AgentError) return fail(e.message);
         console.error(`[mcp] ${name} failed: ${e instanceof Error ? e.message : e}`);
-        return fail("SignalForge couldn't complete this request.");
+        return fail("Heardex couldn't complete this request.");
       }
     }) as never);
   };
@@ -139,10 +139,10 @@ export function buildMcpServer(admin: SupabaseClient, who: McpPrincipal): McpSer
     });
 
   // ---- developer-agent tools -------------------------------------------------
-  tool("get_agent_task", "Fetch a SignalForge developer-agent task by id: its stage (investigation with no code changes, or approved implementation), instructions and context. Follow only these instructions.",
+  tool("get_agent_task", "Fetch a Heardex developer-agent task by id: its stage (investigation with no code changes, or approved implementation), instructions and context. Follow only these instructions.",
     { task_id: z.string().uuid() }, SCOPES.agent, ({ task_id }) => agentGetTask(admin, who, task_id), false);
 
-  tool("submit_investigation_report", "Submit the structured investigation report for a task. The user reviews it in SignalForge before any implementation.",
+  tool("submit_investigation_report", "Submit the structured investigation report for a task. The user reviews it in Heardex before any implementation.",
     {
       task_id: z.string().uuid(),
       report: z.object({

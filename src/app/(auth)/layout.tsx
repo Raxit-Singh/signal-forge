@@ -5,7 +5,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
   return (
     <div className="flex min-h-dvh flex-col bg-surface-2">
       <header className="px-6 py-5">
-        <Link href="/" aria-label="SignalForge home">
+        <Link href="/" aria-label="Heardex home">
           <Logo />
         </Link>
       </header>

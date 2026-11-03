@@ -1,4 +1,4 @@
-// Stripe subscription → SignalForge subscription row (pure). Plans are matched by
+// Stripe subscription → Heardex subscription row (pure). Plans are matched by
 // the Stripe Price ids stored on plans.stripe_price_id; anything else is ignored.
 
 export type SubscriptionStatus = "active" | "trialing" | "past_due" | "canceled" | "incomplete" | "unpaid" | "paused";
@@ -8,7 +8,7 @@ const STATUS: Record<string, SubscriptionStatus> = {
   incomplete: "incomplete", incomplete_expired: "canceled", unpaid: "unpaid", paused: "paused",
 };
 
-/** The fields of a Stripe Subscription object that SignalForge reads. */
+/** The fields of a Stripe Subscription object that Heardex reads. */
 export interface StripeSubscriptionLike {
   id: string;
   status: string;
@@ -57,7 +57,7 @@ export function mapSubscription(sub: StripeSubscriptionLike, planByPrice: Readon
   };
 }
 
-/** Webhook events SignalForge acts on; everything else is acknowledged and ignored. */
+/** Webhook events Heardex acts on; everything else is acknowledged and ignored. */
 export const HANDLED_EVENTS = new Set([
   "checkout.session.completed",
   "customer.subscription.created",

@@ -78,7 +78,7 @@ async function connectClaude(page: Page) {
     state, scope: "signalforge:read signalforge:agent", resource: `${BASE}/api/mcp`,
   });
   await page.goto(`/oauth/authorize?${q}`);
-  await expect(page.getByRole("heading", { name: "Connect Claude (e2e) to SignalForge" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Connect Claude (e2e) to Heardex" })).toBeVisible();
   await expect(page.getByText("This returns to a program on your own computer")).toBeVisible();
   await expect(page.getByText(/start code changes on its own/)).toBeVisible();
   await page.getByRole("button", { name: "Approve" }).click();
@@ -120,12 +120,12 @@ test("Claude connection, read-only MCP with workspace isolation, Investigate wit
   await expect(main.getByText("claude mcp add", { exact: false })).toBeHidden();
   await main.getByRole("button", { name: "Connect Claude" }).click();
   const dialog = page.getByRole("dialog", { name: "Connect Claude" });
-  await expect(dialog.getByLabel("SignalForge address for Claude")).toHaveValue(`${BASE}/api/mcp`);
+  await expect(dialog.getByLabel("Heardex address for Claude")).toHaveValue(`${BASE}/api/mcp`);
   await expect(dialog.getByRole("link", { name: "Open Claude" })).toHaveAttribute("href", "https://claude.ai/customize/connectors");
   await expect(dialog.getByRole("status")).toContainText("Waiting for Claude");
   await dialog.getByRole("button", { name: "Close" }).click();
   await main.getByTestId("claude-fallback").locator("summary").click();
-  await expect(main.getByTestId("claude-fallback")).toContainText("claude mcp add --transport http signalforge");
+  await expect(main.getByTestId("claude-fallback")).toContainText("claude mcp add --transport http heardex");
   await classify(page);
 
   // --- Connect Claude (OAuth 2.1 + PKCE), then the MCP server.
@@ -142,7 +142,7 @@ test("Claude connection, read-only MCP with workspace isolation, Investigate wit
   const code2 = await getFreshCode();
   const t2 = await form("/api/oauth/token", { grant_type: "authorization_code", code: code2, client_id: client.client_id, redirect_uri: CALLBACK, code_verifier: verifier });
   let access = t2.json.access_token!;
-  // Approved, but Claude hasn't called SignalForge yet: "Connecting", never "Connected".
+  // Approved, but Claude hasn't called Heardex yet: "Connecting", never "Connected".
   await page.goto("/settings/agent");
   await expect(main.getByTestId("claude-state")).toHaveText("Connecting");
   expect((await mcp(tok.json.access_token!, "tools/list")).status, "the reused code's tokens were revoked").toBe(401);
@@ -178,13 +178,13 @@ test("Claude connection, read-only MCP with workspace isolation, Investigate wit
   await expect(main.getByRole("button", { name: "Connect Claude" })).toHaveCount(0);
   await expect(main.getByTestId("agent-readiness")).toContainText("Claude has connected");
 
-  // --- Investigate with Claude: a handoff to the user's own Claude; nothing is created or sent by SignalForge.
+  // --- Investigate with Claude: a handoff to the user's own Claude; nothing is created or sent by Heardex.
   await page.goto("/feedback");
   const bugCard = main.getByTestId("feedback-issue").filter({ hasText: "Bug reports" });
   const popup = page.waitForEvent("popup");
   await bugCard.getByTestId("investigate-claude").click();
   const chatUrl = (await popup).url();
-  expect(chatUrl).toMatch(/^https:\/\/claude\.ai\/new\?q=Investigate%20SignalForge%20issue/);
+  expect(chatUrl).toMatch(/^https:\/\/claude\.ai\/new\?q=Investigate%20Heardex%20issue/);
   const typed = decodeURIComponent(new URL(chatUrl).searchParams.get("q") ?? "");
   expect(typed).toContain(`issue_id "${bug.id}"`);
   expect(typed).toContain("Ask me before changing any code.");
@@ -204,7 +204,7 @@ test("Claude connection, read-only MCP with workspace isolation, Investigate wit
   await connections.first().getByRole("button", { name: "Revoke" }).click();
   await expect(connections).toHaveCount(before - 1);
   const after = await mcp(access, "get_product_context");
-  expect(after.status, "revoked in SignalForge → Claude loses access at once").toBe(401);
+  expect(after.status, "revoked in Heardex → Claude loses access at once").toBe(401);
   const reuse = await form("/api/oauth/token", { grant_type: "refresh_token", refresh_token: rotated.json.refresh_token!, client_id: client.client_id });
   expect(reuse.json.error).toBe("invalid_grant");
 

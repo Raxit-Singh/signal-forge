@@ -49,7 +49,7 @@ export async function checkGithubDuplicates(
   const query = issueSearchQuery(repo, words);
 
   const token = serverEnv().GITHUB_TOKEN;
-  const headers: Record<string, string> = { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "SignalForge" };
+  const headers: Record<string, string> = { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "Heardex" };
   if (token && !repo.startsWith("e2e-fixture/")) headers.Authorization = `Bearer ${token}`;
   let res: Response;
   try {

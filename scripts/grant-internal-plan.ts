@@ -1,4 +1,4 @@
-// Internal plan entitlement for SignalForge-owned test workspaces (service role).
+// Internal plan entitlement for Heardex-owned test workspaces (service role).
 // Not a subscription: nothing is billed and `subscriptions` is never touched.
 //
 //   node scripts/grant-internal-plan.ts --workspace <uuid> --plan pro [--days 90] [--note "..."]     # dry run

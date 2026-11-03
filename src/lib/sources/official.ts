@@ -17,7 +17,7 @@ import { CAPS } from "./capabilities.ts";
 import { canonicalLink, excerpt, htmlToText, sum } from "./text.ts";
 import type { CandidateMention, ExpansionParent, SearchRequest, SearchResult, SourceAdapter, SourceContext } from "./types.ts";
 
-const UA = { "User-Agent": "SignalForge/0.1 (social listening; contact via site)", Accept: "application/json" };
+const UA = { "User-Agent": "Heardex/0.1 (social listening; contact via site)", Accept: "application/json" };
 
 // ------------------------------------------------------------------ Bluesky
 

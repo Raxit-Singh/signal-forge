@@ -12,11 +12,11 @@ import { site } from "@/lib/server/agent/http";
 import { getUser, getWorkspaces, hasRole } from "@/lib/server/session";
 import { decideAuthorizationAction } from "./actions";
 
-export const metadata: Metadata = { title: "Connect Claude to SignalForge" };
+export const metadata: Metadata = { title: "Connect Claude to Heardex" };
 
 const SCOPE_TEXT: Record<string, string> = {
   [SCOPES.read]: "Read this workspace's products, prioritised feedback issues, their evidence and spike analyses",
-  [SCOPES.agent]: "Receive developer-agent tasks you start in SignalForge and report investigation results and pull requests back",
+  [SCOPES.agent]: "Receive developer-agent tasks you start in Heardex and report investigation results and pull requests back",
 };
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -33,7 +33,7 @@ function Problem({ text }: { text: string }) {
     <Shell>
       <Card>
         <CardHeader><CardTitle>Can&apos;t connect</CardTitle><CardDescription>{text}</CardDescription></CardHeader>
-        <CardContent><Link href="/overview" className="text-[13px] underline underline-offset-2">Back to SignalForge</Link></CardContent>
+        <CardContent><Link href="/overview" className="text-[13px] underline underline-offset-2">Back to Heardex</Link></CardContent>
       </Card>
     </Shell>
   );
@@ -63,7 +63,7 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
     <Shell>
       <Card>
         <CardHeader>
-          <CardTitle>Connect {client.client_name} to SignalForge</CardTitle>
+          <CardTitle>Connect {client.client_name} to Heardex</CardTitle>
           <CardDescription>
             Signed in as {user!.email}. After you approve, you&apos;ll be sent back to <span className="font-medium text-foreground">{host}</span>.
           </CardDescription>
@@ -90,7 +90,7 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
               <div className="grid gap-1">
                 <span className="font-medium">Claude will be able to</span>
                 <ul className="list-disc pl-5 text-muted-foreground">{scopes!.map((s) => <li key={s}>{SCOPE_TEXT[s]}</li>)}</ul>
-                <span className="text-xs text-muted-foreground">It can&apos;t change your settings, see other workspaces, see API keys, or start code changes on its own: implementation always needs your approval in SignalForge.</span>
+                <span className="text-xs text-muted-foreground">It can&apos;t change your settings, see other workspaces, see API keys, or start code changes on its own: implementation always needs your approval in Heardex.</span>
               </div>
               <div className="flex justify-end gap-2">
                 <SubmitButton name="decision" value="deny" variant="ghost">Deny</SubmitButton>

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 
 /**
  * "Investigate with Claude": opens a new Claude chat with a short request; Claude reads the
- * issue through the SignalForge connector. Without the connector it leads to connecting it.
+ * issue through the Heardex connector. Without the connector it leads to connecting it.
  * The request is also copied, because the prefilled link isn't a documented Claude feature.
  */
 export function InvestigateWithClaude({ connected, message, chatUrl, primary = false }: { connected: boolean; message: string; chatUrl: string; primary?: boolean }) {

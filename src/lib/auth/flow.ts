@@ -28,7 +28,7 @@ export function providersFromSettings(settings: unknown): ProviderAvailability {
  * Where the provider sends the browser back to. No custom scopes are requested:
  * Supabase's defaults are the minimum for sign-in (Google: openid email profile;
  * GitHub: user:email; X: users.read tweet.read users.email). GitHub sign-in never
- * asks for repository access — that is the separate SignalForge GitHub App.
+ * asks for repository access — that is the separate Heardex GitHub App.
  */
 export function oauthRedirectTo(site: string, provider: OAuthProvider, next: string): string {
   const params = new URLSearchParams({ provider, next });
@@ -57,13 +57,13 @@ export function authNotice(key: string | null | undefined, provider?: string | n
     case "oauth_restart": return { tone: "error", text: `${via} timed out or was finished in a different browser. Start again from this page.` };
     case "oauth_unavailable": return { tone: "error", text: `${via} isn't available right now. Use email instead.` };
     case "missing_code": return { tone: "error", text: "That sign-in link was incomplete. Start again from this page." };
-    case "invalid_link": return { tone: "error", text: "That link is incomplete or damaged. Open the newest email from SignalForge, or request a new link.", offerResend: true };
+    case "invalid_link": return { tone: "error", text: "That link is incomplete or damaged. Open the newest email from Heardex, or request a new link.", offerResend: true };
     case "link_expired": return { tone: "error", text: "That link has expired or was already used. If your email is already confirmed, just sign in. Otherwise request a new link.", offerResend: true, offerReset: true };
     case "confirmed_elsewhere": return { tone: "info", text: "The link was opened in a different browser from the one you signed up in, so you aren't signed in here. Sign in to continue. If it says your email isn't confirmed, request a new link.", offerResend: true };
     case "reset_expired": return { tone: "error", text: "That reset link has expired or was already used. Request a new one below." };
     case "recovery_elsewhere": return { tone: "error", text: "Open the password reset link in the same browser you requested it from, or request a new one below." };
     case "provider_email_unverified": return { tone: "error", text: `${p ?? "The provider"} hasn't verified your email address yet. We've sent a confirmation link to it. Open it, then sign in again.` };
-    case "identity_in_use": return { tone: "error", text: `That ${p ?? "provider"} account already belongs to another SignalForge account. Sign in with that account instead.` };
+    case "identity_in_use": return { tone: "error", text: `That ${p ?? "provider"} account already belongs to another Heardex account. Sign in with that account instead.` };
     case "account_blocked": return { tone: "error", text: "This account can't sign in right now. Contact support." };
     case "signup_disabled": return { tone: "error", text: "New sign-ups are closed right now. If you already have an account, sign in with the method you used before." };
     case "account_deleted": return { tone: "info", text: "Your account and its data have been deleted." };
