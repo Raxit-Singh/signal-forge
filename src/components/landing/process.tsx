@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { brandMark } from "@/components/brand-logo";
 import { HeardexMark } from "./hero";
 import { poseDiveOut, VANISH } from "./dive";
@@ -18,10 +18,12 @@ const POP_TO = AT(VANISH[1]) + 0.45;
 const SORT_AT = 7.1; // past here the panel turns over from the feed to the AI's sorting
 const RANK_AT = 8.6; // and past here, to the issues the sorted mentions make, ranked
 const MCP_AT = 10.1; // and past here, Heardex connected to Claude
+const WORDS_OUT = 11.1; // and past here the words go up the line and off (the line follows them up after),
+const ANSWERED_MS = 10500; // but not before Claude's answer is in and has had a moment to be read (.cl timings in landing.css)
 // Then the way in, run backwards: Claude fades and the camera flies back out of Heardex's gap and up, until it looks
 // down on the mark from overhead, as it did before the dive. Then the mark flies up into the bar, where it was at the
 // start, and the page goes on to the pricing.
-const OUT_FROM = 11.3;
+const OUT_FROM = 11.8;
 const OUT_TO = OUT_FROM + (DIVE_TO - DIVE_FROM); // as long as the way in
 const BACK_FROM = OUT_TO;
 const BACK_TO = BACK_FROM + 1.1;
@@ -434,6 +436,126 @@ const HEADS: [string, string][] = [
   ["Your feedback, inside Claude.", "Connect Heardex to Claude once with our MCP connector. Your issues, the reports behind them and your product's context are there whenever you ask Claude about them."],
 ];
 
+/** The words, a screen apart down the line; `--s` moves it a screen per step (landing.css). */
+function Strand({ step, at }: { step: number; at: (i: number) => string }) {
+  return (
+    <div className="px-strand" style={{ ["--s" as string]: step }}>
+      {HEADS.map(([h, sub], i) => (
+        <div key={i} className={`px-leg${at(i)}`} aria-hidden={i !== step}>
+          <div className="px-item">
+            <h3 className="px-head">{h}</h3>
+            <div className="px-subs"><p className="px-sub">{sub}</p></div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The red line the words hang on, top to bottom of the screen, broken round each of them wherever they are (it reads
+ * their places every frame, so the gaps travel with them). Like the first screen's rim, it glows brighter where the
+ * pointer is: a hot spot at the pointer's height, the nearer the pointer the brighter, easing after it.
+ */
+function Line({ step }: { step: number }) {
+  const svg = useRef<SVGSVGElement>(null);
+  const id = `px-hot${useId().replace(/[^\w-]/g, "")}`; // usable in url(#…)
+  const kick = useRef<() => void>(null);
+  // A switch can start without a scroll (the words wait for Claude's answer): follow the words while they move.
+  useEffect(() => kick.current?.(), [step]);
+  useEffect(() => {
+    const el = svg.current!;
+    const [base, halo, hot] = [...el.querySelectorAll("path")] as [SVGPathElement, SVGPathElement, SVGPathElement];
+    const stops = el.querySelectorAll("stop");
+    const words = el.closest<HTMLElement>(".px-words")!;
+    const layer = el.closest<HTMLElement>(".px")!;
+    const REACH = 260; // how near the pointer has to be (px either side) for the line to light up
+    const SPOT = 150; // the hot spot's half-height
+    let mx = -1e4, my = -1e4, ly = -1, glow = 0, raf = 0;
+    let busy = 0; // until when the words may still be moving (a switch takes about 2 s after the scroll that starts it)
+    const frame = () => {
+      raf = 0;
+      if (!layer.classList.contains("is-up")) return; // the scroll wakes it again
+      const box = words.getBoundingClientRect();
+      const x = box.width / 2;
+      const h = innerHeight;
+      const dx = Math.abs(mx - (box.left + x));
+      const target = my > 0 && my < h ? Math.max(0, 1 - dx / REACH) ** 1.5 : 0;
+      glow += (target - glow) * 0.1;
+      const cy = my - box.top;
+      ly = ly < 0 ? cy : ly + (cy - ly) * 0.18;
+      // Where the line shows: the screen, less a gap round each heading and the line under it.
+      const gaps = [...words.querySelectorAll(".px-strand .px-item")]
+        .map((it) => it.getBoundingClientRect())
+        .map((r) => [r.top - box.top - 56, r.bottom - box.top + 28] as const)
+        .filter(([a, b]) => b > 0 && a < h)
+        .sort((p, q) => p[0] - q[0]);
+      let d = "";
+      let from = -box.top;
+      const run = (a: number, b: number) => { if (b - a >= 1) d += `M${x} ${a.toFixed(1)}V${b.toFixed(1)}`; };
+      for (const [a, b] of gaps) {
+        run(from, Math.min(a, h - box.top));
+        from = Math.max(from, b);
+      }
+      run(from, h - box.top);
+      base.setAttribute("d", d);
+      halo.setAttribute("d", d);
+      hot.setAttribute("d", d);
+      const top = -box.top, span = h;
+      const at = (y: number) => `${Math.min(1, Math.max(0, (y - top) / span))}`;
+      stops[0]!.setAttribute("offset", at(ly - SPOT));
+      stops[1]!.setAttribute("offset", at(ly));
+      stops[1]!.setAttribute("stop-opacity", glow.toFixed(3));
+      stops[2]!.setAttribute("offset", at(ly + SPOT));
+      const grad = stops[0]!.parentElement!;
+      grad.setAttribute("y1", `${top}`);
+      grad.setAttribute("y2", `${top + span}`);
+      el.style.setProperty("--hot", glow.toFixed(3));
+      // Keep going while the glow is easing or the words may be moving; then the next pointer move or scroll wakes it.
+      if (Math.abs(target - glow) > 0.002 || Math.abs(cy - ly) > 0.5 || performance.now() < busy) raf = requestAnimationFrame(frame);
+    };
+    const wake = () => { raf ||= requestAnimationFrame(frame); };
+    const scrolled = () => {
+      busy = performance.now() + 2400;
+      wake();
+    };
+    const move = (e: PointerEvent) => {
+      mx = e.clientX;
+      my = e.clientY;
+      wake();
+    };
+    const leave = () => {
+      mx = my = -1e4;
+      wake();
+    };
+    kick.current = scrolled;
+    scrolled();
+    addEventListener("pointermove", move, { passive: true });
+    document.documentElement.addEventListener("pointerleave", leave);
+    addEventListener("scroll", scrolled, { passive: true });
+    return () => {
+      cancelAnimationFrame(raf);
+      removeEventListener("pointermove", move);
+      document.documentElement.removeEventListener("pointerleave", leave);
+      removeEventListener("scroll", scrolled);
+    };
+  }, []);
+  return (
+    <svg ref={svg} className="px-line">
+      <defs>
+        <linearGradient id={id} gradientUnits="userSpaceOnUse" x1="0" x2="0">
+          <stop stopColor="#ffd9d4" stopOpacity="0" />
+          <stop stopColor="#ffd9d4" stopOpacity="0" />
+          <stop stopColor="#ffd9d4" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path />
+      <path className="is-halo" style={{ stroke: `url(#${id})` }} />
+      <path className="is-hot" style={{ stroke: `url(#${id})` }} />
+    </svg>
+  );
+}
+
 /**
  * Over the network: the ground the flight fades onto, then the words and the panel. `--k` is the ground (0..1), `--p`
  * the panel coming up (0..1). Past SORT_AT the panel and the words turn over to what the AI does.
@@ -441,7 +563,7 @@ const HEADS: [string, string][] = [
 export function Process() {
   const root = useRef<HTMLDivElement>(null);
   // 0 hidden, 1 the feed running, 2 sorted (the feed holds still while it turns over), 3 ranked into issues.
-  const [phase, setPhase] = useState<0 | 1 | 2 | 3 | 4>(0);
+  const [phase, setPhase] = useState<0 | 1 | 2 | 3 | 4 | 5>(0);
   const live = useRef(phase); // the phase as the scroll last set it, for the effects' clean-ups
   const [head, setHead] = useState(0);
   const [k, setK] = useState(0);
@@ -478,7 +600,7 @@ export function Process() {
     // The way out, 0..1: Claude and the fire go first, then the ground under them clears as the flight comes back up
     // in reverse (the same window it went dark in on the way in).
     const leave = (o: number, v: number) => {
-      const gone = smooth(OUT_FROM - 0.35, OUT_FROM + 0.1, v);
+      const gone = smooth(OUT_FROM - 0.1, OUT_FROM + 0.2, v);
       stage.style.opacity = gone ? `${1 - gone}` : "";
       stage.style.filter = gone ? `blur(${gone * 10}px)` : "";
       if (fire) fire.style.opacity = gone ? `${1 - gone}` : "";
@@ -516,6 +638,8 @@ export function Process() {
     let at = -1;
     let last = 0;
     let queued = 0;
+    let asked = 0; // when the Claude step came up
+    let wait = 0;
     const place = (now: number) => {
       queued = 0;
       const dt = last ? Math.min(64, now - last) : 16;
@@ -528,7 +652,20 @@ export function Process() {
       el.style.setProperty("--k", k.toFixed(4));
       el.style.setProperty("--p", p.toFixed(4));
       el.classList.toggle("is-up", k > 0);
-      live.current = v > MCP_AT ? 4 : v > RANK_AT ? 3 : v > SORT_AT ? 2 : p > 0.5 ? 1 : 0;
+      let next: typeof live.current = v > WORDS_OUT ? 5 : v > MCP_AT ? 4 : v > RANK_AT ? 3 : v > SORT_AT ? 2 : p > 0.5 ? 1 : 0;
+      if (next >= 4 && !asked) asked = now;
+      if (next < 4) asked = 0;
+      // The words wait for Claude's answer, unless the scroll is already taking the scene away.
+      const left = ANSWERED_MS - (now - asked);
+      if (next === 5 && left > 0 && v < OUT_FROM - 0.4) {
+        next = 4;
+        clearTimeout(wait);
+        wait = window.setTimeout(queue, left + 20);
+      }
+      live.current = next;
+      // The line draws down as the panel comes up (the words follow), and goes back up once the words have gone.
+      const line = clamp(p / 0.55) * (next === 5 ? 1 - smooth(WORDS_OUT + 0.25, OUT_FROM - 0.1, v) : 1);
+      el.style.setProperty("--line", line.toFixed(4));
       setPhase(live.current);
       home(clamp((v - BACK_FROM) / (BACK_TO - BACK_FROM)));
       if (at !== scrollY) queued = requestAnimationFrame(place);
@@ -540,14 +677,16 @@ export function Process() {
     addEventListener("resize", queue);
     return () => {
       cancelAnimationFrame(queued);
+      clearTimeout(wait);
       removeEventListener("scroll", queue);
       removeEventListener("resize", queue);
       bar?.classList.remove("is-back", "is-home");
     };
   }, []);
 
-  const step = phase < 2 ? 0 : ((phase - 1) as 1 | 2 | 3);
-  const mcp = step === 3;
+  // Step 4 is past the last words: they have gone up the line and off.
+  const step = phase < 2 ? 0 : ((phase - 1) as 1 | 2 | 3 | 4);
+  const mcp = step >= 3;
   // Each heading and line under it is gone (past), showing (now), or still to come.
   const at = (i: number) => (i < step ? " is-past" : i === step ? " is-now" : "");
   return (
@@ -555,15 +694,15 @@ export function Process() {
       <div className="px-veil" />
       <Embers />
       <div className="px-stage">
-        {/* Each switch: the heading grows, then goes off to the left as the next rises from below; the line under it
-            fades out and the next fades in. */}
+        {/* The words hang on a red line, a screen apart. Each switch: the line under the heading slides up into it, the
+            whole line moves up a screen (this heading off the top, the next up from the bottom), then the next one's
+            line slides down out of it. */}
         <div className="px-words">
-          <div className="px-heads">
-            {HEADS.map(([h], i) => <h3 key={i} className={`px-head${at(i)}`} aria-hidden={i !== step}>{h}</h3>)}
+          {/* The line on a layer of its own, so it can draw down and back up without cutting the words. */}
+          <div className="px-draw" aria-hidden>
+            <Line step={step} />
           </div>
-          <div className="px-subs">
-            {HEADS.map(([, sub], i) => <p key={i} className={`px-sub${at(i)}`} aria-hidden={i !== step}>{sub}</p>)}
-          </div>
+          <Strand step={step} at={at} />
         </div>
         <div className={`px-slot${mcp ? " is-mcp" : ""}`}>
           <Panel head={head} step={Math.min(step, 2) as 0 | 1 | 2} k={k} />

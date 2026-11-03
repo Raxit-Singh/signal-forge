@@ -501,35 +501,42 @@
 .px-slot > * { grid-area: 1 / 1; }
 .px-head { max-width: 14ch; font-size: clamp(36px, 4.6vw, 80px); font-weight: 600; line-height: 1.05; letter-spacing: -0.035em; }
 .px-sub { max-width: 38ch; margin-top: 22px; color: var(--muted); font-size: clamp(17px, 1.35vw, 22px); line-height: 1.5; }
-.px-words { opacity: clamp(0, calc((var(--p) - 0.4) * 2.5), 1); translate: 0 calc((1 - var(--p)) * 20px); }
-/* The switch, on one smooth curve. The heading: the old swells a touch, then glides off to the left, softening; the
-   new rises from below into focus as it goes. */
-.px-words { --glide: cubic-bezier(0.65, 0, 0.35, 1); }
-.px-heads, .px-subs { display: grid; }
-.px-heads > *, .px-subs > * { grid-area: 1 / 1; }
-.px-head { transform-origin: 0 50%; will-change: transform, opacity, filter; }
-/* Still to come: below, out of focus. */
-.px-head { translate: 0 48px; opacity: 0; filter: blur(8px); transition: translate 700ms var(--glide), opacity 500ms var(--glide), filter 500ms var(--glide); }
-.px-head.is-now {
-  translate: 0 0; opacity: 1; filter: blur(0);
-  transition: translate 1100ms cubic-bezier(0.22, 1, 0.36, 1) 700ms, opacity 900ms var(--glide) 700ms, filter 900ms var(--glide) 700ms;
+/* The words hang on a red line, one screen apart (process.tsx), the line broken where they are. Each switch: the line
+   under the heading slides up into it, then the whole line moves up a screen, the heading going off the top and the
+   next coming up from the bottom, then the next one's line slides down out of it. */
+.px-words { --glide: cubic-bezier(0.65, 0, 0.35, 1); --rise: cubic-bezier(0.22, 1, 0.36, 1);
+  position: relative; align-self: stretch; height: 100svh; margin: -112px 0 -40px; }
+.px-strand { position: absolute; inset: 0 0 auto; translate: 0 calc(var(--s) * -100svh); transition: translate 1200ms var(--glide) 450ms;
+  opacity: clamp(0, calc((var(--p) - 0.55) * 2.5), 1); transform: translateY(calc((1 - var(--p)) * 20px)); }
+.px-leg { position: relative; display: flex; height: 100svh; align-items: center; }
+.px-item { position: relative; width: 100%; }
+/* The line (Line, process.tsx): thin and glowing, the glow breathing, brighter where the pointer is. Drawn from
+   the top down to --line of the screen. */
+.px-draw { position: absolute; inset: 0; clip-path: inset(0 -80px calc((1 - var(--line, 0)) * 100%) -80px); }
+.px-line { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; --hot: 0;
+  filter: drop-shadow(0 0 calc(3px + 3px * var(--hot)) rgb(255 59 47 / 0.9)) drop-shadow(0 0 calc(12px + 10px * var(--hot)) rgb(255 59 47 / calc(0.35 + 0.3 * var(--hot)))); }
+.px-line path { fill: none; stroke: #ff5a4f; stroke-width: 1px; }
+.px-line path.is-hot { stroke-width: 2px; animation: none; }
+.px-line path.is-halo { stroke-width: 14px; filter: blur(7px); animation: none; }
+@keyframes px-breathe { 50% { opacity: 0.6; } }
+@media (prefers-reduced-motion: no-preference) {
+  .px-line path { animation: px-breathe 2400ms ease-in-out infinite; }
 }
-.px-head.is-past {
-  scale: 1.08; translate: -32vw 0; opacity: 0; filter: blur(6px);
-  transition: scale 900ms var(--glide), translate 1100ms var(--glide) 250ms, opacity 800ms var(--glide) 450ms, filter 800ms var(--glide) 450ms;
-}
-/* The line under it: the old lifts away into a blur; the new rises a little and comes into focus. */
-.px-sub { opacity: 0; translate: 0 10px; filter: blur(4px); transition: opacity 600ms var(--glide), translate 600ms var(--glide), filter 600ms var(--glide); }
-.px-sub.is-past { translate: 0 -8px; }
-.px-sub.is-now {
-  opacity: 1; translate: 0 0; filter: blur(0);
-  transition: opacity 900ms var(--glide) 1200ms, translate 1000ms cubic-bezier(0.22, 1, 0.36, 1) 1200ms, filter 900ms var(--glide) 1200ms;
-}
+/* The line under the heading only shows below it, so it seems to come out of it and go back in. */
+.px-subs { clip-path: inset(0 -40px -40px -40px); }
+.px-sub { opacity: 0; translate: 0 calc(-100% - 32px); transition: translate 500ms var(--glide), opacity 400ms var(--glide) 100ms; }
+.px-leg.is-now .px-sub { opacity: 1; translate: 0 0; transition: translate 900ms var(--rise) 1650ms, opacity 500ms var(--glide) 1650ms; }
 
 @media (max-width: 900px) {
   .px-stage { grid-template-columns: minmax(0, 1fr); align-content: center; gap: 20px; padding-top: 92px; }
   .px-head { font-size: clamp(28px, 7.4vw, 44px); }
   .px-sub { margin-top: 10px; font-size: 14px; }
+  /* The panel is under the words here: no line, the words change in place. */
+  .px-words { height: auto; margin: 0; }
+  .px-strand { position: static; display: grid; translate: none; }
+  .px-draw { display: none; }
+  .px-leg { grid-area: 1 / 1; height: auto; opacity: 0; transition: opacity 500ms var(--glide); }
+  .px-leg.is-now { opacity: 1; transition: opacity 600ms var(--glide) 700ms; }
 }
 
 /* Text turning over (Roll, process.tsx): the old letters roll up and away, the new roll up into their place, one by one. */
