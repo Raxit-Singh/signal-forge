@@ -1,8 +1,10 @@
 import Link from "next/link";
 import localFont from "next/font/local";
+import type { Plan } from "@/lib/domain/plans";
 import { HeardexMark } from "./hero";
 import { HeroBackground } from "./backgrounds";
 import { IntroLock } from "./intro-lock";
+import { Pricing } from "./pricing";
 import { Scenario } from "./scenario";
 import { Words } from "./words";
 import "./landing.css";
@@ -16,18 +18,20 @@ const switzer = localFont({
   display: "swap",
 });
 
-export function Landing({ signedIn }: { signedIn: boolean }) {
+export function Landing({ signedIn, plans }: { signedIn: boolean; plans: Plan[] }) {
   const start = signedIn ? { href: "/overview", label: "Open dashboard" } : { href: "/signup", label: "Start free" };
 
   return (
     <div className={`hx dark relative [color-scheme:dark] ${switzer.className}`}>
       <IntroLock />
       {/* The bar stays at the top on every screen. Its logo flies off into the story (mention-flight.tsx), and the name
-          closes up where it was. */}
+          closes up where it was; at the end of the story the logo flies back (process.tsx). */}
     <header className="hx-bar hx-frame fixed inset-x-0 top-0 z-50 flex h-20 items-center justify-between">
       <Link href="/" className="hx-link flex items-center gap-2.5 text-[20px] font-semibold tracking-[-0.03em]" aria-label="Heardex home">
         <span data-flight-source className="flex"><HeardexMark animated className="h-6 w-6" /></span><span className="hx-word">heardex</span>
       </Link>
+      {/* The mark on its way back here from Claude, at the end of the story (process.tsx). */}
+      <span data-flight-home className="hx-home" aria-hidden><HeardexMark className="h-full w-full" /></span>
       <nav aria-label="Main" className="flex items-center gap-2 text-[15px] font-medium">
         {!signedIn && <Link href="/login" className="hx-nav">Sign in</Link>}
         <Link href={start.href} className="hx-nav is-primary">{start.label}</Link>
@@ -56,6 +60,7 @@ export function Landing({ signedIn }: { signedIn: boolean }) {
 
       <main>
         <Scenario />
+        <Pricing plans={plans} start={start} />
       </main>
     </div>
   );

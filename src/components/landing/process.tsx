@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { brandMark } from "@/components/brand-logo";
 import { HeardexMark } from "./hero";
-import { VANISH } from "./dive";
+import { poseDiveOut, VANISH } from "./dive";
 import { DIVE_FROM, DIVE_TO } from "./mention-flight";
 
 // What the customer sees, after the network: the camera flies into Heardex (dive.tsx), and as the flight fades out the
@@ -17,6 +17,15 @@ const POP_FROM = AT(VANISH[1]) - 0.03;
 const POP_TO = AT(VANISH[1]) + 0.45;
 const SORT_AT = 7.1; // past here the panel turns over from the feed to the AI's sorting
 const RANK_AT = 8.6; // and past here, to the issues the sorted mentions make, ranked
+const MCP_AT = 10.1; // and past here, Heardex connected to Claude
+// Then the way in, run backwards: Claude fades and the camera flies back out of Heardex's gap and up, until it looks
+// down on the mark from overhead, as it did before the dive. Then the mark flies up into the bar, where it was at the
+// start, and the page goes on to the pricing.
+const OUT_FROM = 11.3;
+const OUT_TO = OUT_FROM + (DIVE_TO - DIVE_FROM); // as long as the way in
+const BACK_FROM = OUT_TO;
+const BACK_TO = BACK_FROM + 1.1;
+const HUB = 0.13; // the mark's width overhead, a share of the screen's shorter side (as in mention-flight.tsx)
 const FOLLOW_MS = 260; // as softly as the logo's flight (mention-flight.tsx)
 const FEED_MS = 2600; // a new mention in the feed, about this often
 const READ_MS = 9000;
@@ -68,6 +77,7 @@ const ISSUES: { title: string; kind: string; priority: [string, Tone | ""]; coun
 
 const wrap = (n: number) => ((n % FEED.length) + FEED.length) % FEED.length;
 const clamp = (v: number) => Math.min(1, Math.max(0, v));
+const easeInOut = (t: number) => 0.5 - Math.cos(Math.PI * t) / 2;
 const smooth = (from: number, to: number, v: number) => {
   const t = clamp((v - from) / (to - from));
   return t * t * (3 - 2 * t);
@@ -300,6 +310,59 @@ function Issues({ joined, on }: { joined: string; on: boolean }) {
   );
 }
 
+// Claude with Heardex connected (the Heardex MCP connector; src/lib/server/agent/mcp.ts has the real tools): asked
+// what to fix, it reads the issues and their reports from Heardex and answers from them. Sample figures, as above.
+const QUESTION = "What should I fix first this week?";
+const TOOLS = ["get_feedback_issues", "get_issue_evidence"];
+
+/**
+ * The Claude app, as you would use it. When `on`: the tools menu opens from the message box and Heardex is switched
+ * on, the question is typed and sent, Claude uses Heardex, and its answer comes in (timed in landing.css, .cl).
+ */
+function ClaudeApp({ on }: { on: boolean }) {
+  return (
+    <div className={`cl${on ? " is-on" : ""}`} aria-hidden={!on}>
+      <nav className="cl-rail">
+        <span className="cl-new">+</span>
+        <i /><i /><i />
+      </nav>
+      <div className="cl-main">
+        <div className="cl-top"><span>Fix priorities</span></div>
+        <div className="cl-chat">
+          <p className="cl-you">{QUESTION}</p>
+          <div className="cl-used">
+            <span className="cl-tick"><i /><svg viewBox="0 0 16 16" aria-hidden><path d="m3.5 8.5 3 3 6-7" /></svg></span>
+            <HeardexMark className="cl-hx h-3.5 w-3.5 flex-none" />
+            <span>Used Heardex</span>
+            <span className="cl-tools">{TOOLS.map((t) => <code key={t}>{t}</code>)}</span>
+          </div>
+          <div className="cl-say">
+            <p>Start with <b>Notes lost after 1.8 sync</b>. It is your one critical issue: 9 reports this week from the App Store, Reddit and GitHub, and rising. People say edits made offline disappear after a sync.</p>
+            <p>Then <b>PDF export crashes</b>: 15 reports, most of them from Android.</p>
+          </div>
+        </div>
+        <div className="cl-box">
+          <div className="cl-menu">
+            <p className="cl-menu-head">Search and tools</p>
+            <div className="cl-item"><span className="cl-globe" />Web search<span className="cl-switch is-set"><i /></span></div>
+            <div className="cl-item is-hx"><span className="cl-app"><HeardexMark className="h-3 w-3" /></span>Heardex<span className="cl-switch"><i /></span></div>
+          </div>
+          <p className="cl-field">
+            <span className="cl-hint">Reply to Claude…</span>
+            <span className="cl-typed">{[...QUESTION].map((c, i) => <span key={i} style={{ ["--i" as string]: i }}>{c}</span>)}</span>
+          </p>
+          <div className="cl-actions">
+            <span className="cl-btn">+</span>
+            <span className="cl-btn is-tools"><svg viewBox="0 0 16 16" aria-hidden><path d="M2 5h7M12 5h2M2 11h2M7 11h7" /><circle cx="10.5" cy="5" r="1.5" /><circle cx="5.5" cy="11" r="1.5" /></svg></span>
+            <span className="cl-model">Opus 5.5</span>
+            <span className="cl-send"><svg viewBox="0 0 16 16" aria-hidden><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" /></svg></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /**
  * The one panel: the feed of mentions, newest (`head`) at the top. When `sorted`, the bar's words turn over to the
  * AI's, the filters go up and away, the rest of the feed falls away and the top mention grows into place, to be read
@@ -363,11 +426,12 @@ function Panel({ head, step, k }: { head: number; step: 0 | 1 | 2; k: number }) 
   );
 }
 
-// The words beside the panel at each step: the feed, the AI's sorting, the issues.
+// The words beside the panel at each step: the feed, the AI's sorting, the issues, Claude.
 const HEADS: [string, string][] = [
   ["All your mentions, in one place.", "Posts, reviews and comments that name your product, gathered from each platform and checked so the feed is about you."],
   ["Then our AI sorts each one.", "It reads every mention for sentiment, what kind of feedback it is and what it is about, and puts it with the issue it belongs to."],
   ["Ranked into issues.", "Mentions of the same problem become one issue. The issues are ranked by how serious they are and how many people raise them, so you know what to fix first."],
+  ["Your feedback, inside Claude.", "Connect Heardex to Claude once with our MCP connector. Your issues, the reports behind them and your product's context are there whenever you ask Claude about them."],
 ];
 
 /**
@@ -377,7 +441,7 @@ const HEADS: [string, string][] = [
 export function Process() {
   const root = useRef<HTMLDivElement>(null);
   // 0 hidden, 1 the feed running, 2 sorted (the feed holds still while it turns over), 3 ranked into issues.
-  const [phase, setPhase] = useState<0 | 1 | 2 | 3>(0);
+  const [phase, setPhase] = useState<0 | 1 | 2 | 3 | 4>(0);
   const live = useRef(phase); // the phase as the scroll last set it, for the effects' clean-ups
   const [head, setHead] = useState(0);
   const [k, setK] = useState(0);
@@ -404,6 +468,51 @@ export function Process() {
   useEffect(() => {
     const el = root.current!;
     const track = el.closest<HTMLElement>("[data-flight-track]");
+    const stage = el.querySelector<HTMLElement>(".px-stage")!;
+    const from = el.querySelector<HTMLElement>(".cl-hx")!;
+    const fire = el.querySelector<HTMLElement>(".px-fire");
+    const source = document.querySelector<HTMLElement>("[data-flight-source]");
+    const fly = document.querySelector<HTMLElement>("[data-flight-home]");
+    const bar = source?.closest("header");
+    const dive = el.closest("section")?.querySelector<HTMLElement>("[data-dive]");
+    // The way out, 0..1: Claude and the fire go first, then the ground under them clears as the flight comes back up
+    // in reverse (the same window it went dark in on the way in).
+    const leave = (o: number, v: number) => {
+      const gone = smooth(OUT_FROM - 0.35, OUT_FROM + 0.1, v);
+      stage.style.opacity = gone ? `${1 - gone}` : "";
+      stage.style.filter = gone ? `blur(${gone * 10}px)` : "";
+      if (fire) fire.style.opacity = gone ? `${1 - gone}` : "";
+      if (dive) poseDiveOut(dive, o);
+      return o ? smooth(VANISH[0], VANISH[1], VANISH[1] * (1 - o)) : 1;
+    };
+    // The flight home, 0..1: the mark, flat again overhead in the middle of the screen, turns once on its way up and
+    // comes down to its place in the bar; there the bar takes it back (its loop starts again) and the name opens up.
+    const home = (r: number) => {
+      from.style.visibility = r > 0 ? "hidden" : "";
+      // The name makes room just before the mark arrives; mention-flight.tsx leaves the bar alone once it is back.
+      const back = r >= 1;
+      const room = r > 0.75;
+      if (bar && room !== bar.classList.contains("is-back")) {
+        bar.classList.toggle("is-back", room);
+        bar.classList.toggle("is-flown", !room);
+      }
+      if (source && r > 0) source.style.visibility = back ? "" : "hidden";
+      bar?.classList.toggle("is-home", back); // its loop starts again as it lands
+      if (!fly || !source) return;
+      fly.style.visibility = r > 0 && !back ? "visible" : "";
+      if (!r || back) return;
+      const b = source.getBoundingClientRect();
+      // Overhead the mark is HUB of the shorter side across; the flat one's box is square and as tall as the mark.
+      const start = Math.min(innerWidth, innerHeight) * HUB * (1126 / 1085);
+      const go = easeInOut(r);
+      const size = Math.exp(Math.log(start) + (Math.log(b.width) - Math.log(start)) * go);
+      const x = innerWidth / 2 + (b.left + b.width / 2 - innerWidth / 2) * go;
+      const y = innerHeight / 2 + (b.top + b.height / 2 - innerHeight / 2) * go - innerHeight * 0.1 * Math.sin(Math.PI * go);
+      fly.style.width = fly.style.height = `${b.width}px`;
+      fly.style.transform = `translate(${x - b.width / 2}px, ${y - b.width / 2}px) scale(${size / b.width}) rotate(${-14 * Math.sin(Math.PI * go)}deg)`;
+      // The solid mark had no glow; the flat one gains the bar's as it goes.
+      fly.style.filter = `drop-shadow(0 0 18px rgb(255 59 47 / ${(0.35 * go).toFixed(3)}))`;
+    };
     let at = -1;
     let last = 0;
     let queued = 0;
@@ -414,13 +523,14 @@ export function Process() {
       at = at < 0 ? scrollY : at + (scrollY - at) * (1 - Math.exp(-dt / FOLLOW_MS));
       if (Math.abs(scrollY - at) < 0.5) at = scrollY;
       const v = (at - (track?.offsetTop ?? 0)) / innerHeight;
-      const k = smooth(DARK_FROM, DARK_TO, v);
+      const k = smooth(DARK_FROM, DARK_TO, v) * leave(clamp((v - OUT_FROM) / (OUT_TO - OUT_FROM)), v);
       const p = smooth(POP_FROM, POP_TO, v);
       el.style.setProperty("--k", k.toFixed(4));
       el.style.setProperty("--p", p.toFixed(4));
       el.classList.toggle("is-up", k > 0);
-      live.current = v > RANK_AT ? 3 : v > SORT_AT ? 2 : p > 0.5 ? 1 : 0;
+      live.current = v > MCP_AT ? 4 : v > RANK_AT ? 3 : v > SORT_AT ? 2 : p > 0.5 ? 1 : 0;
       setPhase(live.current);
+      home(clamp((v - BACK_FROM) / (BACK_TO - BACK_FROM)));
       if (at !== scrollY) queued = requestAnimationFrame(place);
       else last = 0;
     };
@@ -432,10 +542,12 @@ export function Process() {
       cancelAnimationFrame(queued);
       removeEventListener("scroll", queue);
       removeEventListener("resize", queue);
+      bar?.classList.remove("is-back", "is-home");
     };
   }, []);
 
-  const step = phase < 2 ? 0 : ((phase - 1) as 1 | 2);
+  const step = phase < 2 ? 0 : ((phase - 1) as 1 | 2 | 3);
+  const mcp = step === 3;
   // Each heading and line under it is gone (past), showing (now), or still to come.
   const at = (i: number) => (i < step ? " is-past" : i === step ? " is-now" : "");
   return (
@@ -453,7 +565,10 @@ export function Process() {
             {HEADS.map(([, sub], i) => <p key={i} className={`px-sub${at(i)}`} aria-hidden={i !== step}>{sub}</p>)}
           </div>
         </div>
-        <div className="px-slot"><Panel head={head} step={step} k={k} /></div>
+        <div className={`px-slot${mcp ? " is-mcp" : ""}`}>
+          <Panel head={head} step={Math.min(step, 2) as 0 | 1 | 2} k={k} />
+          <ClaudeApp on={mcp} />
+        </div>
       </div>
     </div>
   );

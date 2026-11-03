@@ -497,7 +497,8 @@
   position: absolute; inset: 0; display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-items: center;
   gap: clamp(24px, 4vw, 72px); max-width: 1560px; margin: 0 auto; padding: 112px var(--margin) 40px;
 }
-.px-slot { display: grid; justify-items: center; }
+.px-slot { position: relative; display: grid; justify-items: center; }
+.px-slot > * { grid-area: 1 / 1; }
 .px-head { max-width: 14ch; font-size: clamp(36px, 4.6vw, 80px); font-weight: 600; line-height: 1.05; letter-spacing: -0.035em; }
 .px-sub { max-width: 38ch; margin-top: 22px; color: var(--muted); font-size: clamp(17px, 1.35vw, 22px); line-height: 1.5; }
 .px-words { opacity: clamp(0, calc((var(--p) - 0.4) * 2.5), 1); translate: 0 calc((1 - var(--p)) * 20px); }
@@ -620,6 +621,86 @@
 .px-is-count .px-dim { font-weight: 400; }
 .px-is .px-chip { width: 72px; text-align: center; }
 
+/* Into Claude (ClaudeApp, process.tsx): the panel gives way to the Claude app. In it, the tools menu opens from the
+   message box and Heardex is switched on; the question is typed and sent; Claude uses Heardex, then answers. */
+.px-panel { transition: transform 900ms var(--ease), filter 700ms var(--ease); }
+.is-mcp .px-panel { transform: translateY(-28px) scale(0.97); filter: opacity(0) blur(4px); }
+.cl {
+  --bg: #262624; --side: #1f1e1d; --edge: #3a3936; --text: #f5f4ee; --soft: #a6a39a; --field: #30302e; --orange: #c96442;
+  z-index: 2; display: flex; width: min(780px, 100%); height: 520px; overflow: hidden; border-radius: 16px;
+  background: var(--bg); border: 1px solid var(--edge); color: var(--text); text-align: left; font-size: 15px;
+  box-shadow: 0 40px 120px rgb(0 0 0 / 0.7);
+  opacity: 0; transform: translateY(28px) scale(0.98); visibility: hidden;
+  transition: opacity 500ms var(--ease), transform 900ms var(--ease), visibility 0s 900ms;
+}
+.cl.is-on { opacity: 1; transform: none; visibility: visible; transition: opacity 700ms var(--ease) 350ms, transform 1000ms var(--ease) 350ms, visibility 0s; }
+.cl-rail { display: flex; flex: none; flex-direction: column; align-items: center; gap: 14px; width: 52px; padding: 14px 0; background: var(--side); border-right: 1px solid var(--edge); }
+.cl-rail i { width: 18px; height: 18px; border-radius: 5px; background: #34332f; }
+.cl-new { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--orange); color: #fff; font-size: 18px; line-height: 1; }
+.cl-main { position: relative; display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.cl-top { display: flex; justify-content: center; padding: 14px; color: var(--soft); font-size: 13.5px; }
+.cl-chat { display: grid; flex: 1; align-content: start; gap: 16px; min-height: 0; padding: 6px 32px; overflow: hidden; }
+.cl-you { justify-self: end; max-width: 80%; padding: 10px 16px; border-radius: 14px; background: #141413; }
+.cl-used { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; width: fit-content; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--edge); color: var(--soft); font-size: 13.5px; }
+.cl-tools { display: flex; gap: 6px; }
+.cl-tools code { padding: 1px 6px; border-radius: 5px; background: #30302e; font-size: 12px; }
+.cl-tick { display: grid; flex: none; width: 14px; height: 14px; }
+.cl-tick > * { grid-area: 1 / 1; transition: opacity 300ms var(--ease); }
+.cl-tick i { border: 2px solid rgb(255 255 255 / 0.14); border-top-color: var(--orange); border-radius: 50%; animation: px-spin 800ms linear infinite; }
+.cl-tick svg { fill: none; stroke: #5fd88a; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
+@keyframes px-spin { to { rotate: 1turn; } }
+.cl-say { display: grid; gap: 12px; font-family: ui-serif, Georgia, "Times New Roman", serif; font-size: 16.5px; line-height: 1.6; }
+.cl-say b { font-weight: 600; }
+.cl-box { position: relative; margin: 0 24px 20px; padding: 14px 14px 10px; border-radius: 20px; background: var(--field); border: 1px solid var(--edge); box-shadow: 0 4px 20px rgb(0 0 0 / 0.25); }
+.cl-field { display: grid; min-height: 26px; }
+.cl-field > * { grid-area: 1 / 1; }
+.cl-hint { color: var(--soft); }
+.cl-actions { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
+.cl-btn { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; border: 1px solid var(--edge); color: var(--soft); font-size: 18px; }
+.cl-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
+.cl-model { margin-left: auto; color: var(--soft); font-size: 13.5px; }
+.cl-send { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: var(--orange); opacity: 0.5; }
+.cl-send svg { width: 16px; height: 16px; fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.cl-menu { position: absolute; left: 10px; bottom: calc(100% + 8px); width: 260px; padding: 6px; border-radius: 14px; background: #30302e; border: 1px solid var(--edge); box-shadow: 0 16px 40px rgb(0 0 0 / 0.5); transform-origin: 30px 100%; }
+.cl-menu-head { padding: 6px 10px 4px; color: var(--soft); font-size: 12px; }
+.cl-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 9px; font-size: 14px; }
+.cl-item.is-hx { background: #3a3936; }
+.cl-globe { width: 16px; height: 16px; border: 1.5px solid var(--soft); border-radius: 50%; }
+.cl-app { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; background: #0b0b0c; color: #f4f4f5; }
+.cl-switch { position: relative; width: 30px; height: 18px; margin-left: auto; border-radius: 999px; background: #4a4945; }
+.cl-switch i { position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; border-radius: 50%; background: #fff; }
+.cl-switch.is-set { background: #2c84db; }
+.cl-switch.is-set i { translate: 12px 0; }
+
+/* The sequence, after the app has come up (all of it plays back quickly when you scroll away). */
+.cl-menu, .cl-you, .cl-used, .cl-say > *, .cl-typed > * { opacity: 0; transition: opacity 200ms var(--ease), translate 200ms var(--ease), scale 200ms var(--ease); }
+.cl-menu { scale: 0.96; translate: 0 6px; }
+.cl-you, .cl-used, .cl-say > * { translate: 0 10px; }
+.cl-switch:not(.is-set), .cl-switch:not(.is-set) i { transition: background-color 300ms var(--ease), translate 300ms var(--ease); }
+.cl-btn.is-tools { transition: background-color 200ms var(--ease), color 200ms var(--ease); }
+.cl.is-on .cl-btn.is-tools { background: #3a3936; color: var(--text); transition-delay: 1400ms; }
+/* 1.5s: the tools menu opens; 2.3s: Heardex switches on; 3.2s: it closes. */
+.cl.is-on .cl-menu { animation: cl-menu 1900ms var(--ease) 1500ms both; transition: none; }
+@keyframes cl-menu { 0% { opacity: 0; scale: 0.96; translate: 0 6px; } 15%, 85% { opacity: 1; scale: 1; translate: 0 0; } 100% { opacity: 0; scale: 0.98; translate: 0 4px; } }
+.cl.is-on .cl-switch:not(.is-set) { background: #2c84db; transition-delay: 2300ms; }
+.cl.is-on .cl-switch:not(.is-set) i { translate: 12px 0; transition-delay: 2300ms; }
+/* 3.6s: the question is typed; 5.2s: sent, it goes up into the chat. */
+.cl.is-on .cl-hint { opacity: 0; transition: opacity 100ms 3600ms; }
+.cl-typed > * { white-space: pre; }
+/* Each letter shows at its turn, and all of them go at once, when it is sent. */
+.cl.is-on .cl-typed > * { animation: cl-type linear both; animation-delay: calc(3600ms + var(--i) * 40ms); animation-duration: calc(1600ms - var(--i) * 40ms); transition: none; }
+@keyframes cl-type { 0% { opacity: 0; } 1%, 97% { opacity: 1; } 100% { opacity: 0; } }
+.cl.is-on .cl-send { animation: cl-send 700ms var(--ease) 4700ms both; }
+@keyframes cl-send { 0% { opacity: 0.5; } 25%, 70% { opacity: 1; scale: 1; } 50% { scale: 0.9; } 100% { opacity: 0.5; } } /* lit as the question is in, pressed, sent */
+.cl.is-on .cl-you { opacity: 1; translate: 0 0; transition: opacity 500ms var(--ease) 5200ms, translate 700ms var(--ease) 5200ms; }
+/* 5.9s: Claude uses Heardex (a spinner, then a tick at 7.2s); 7.6s: its answer, a paragraph at a time. */
+.cl.is-on .cl-used { opacity: 1; translate: 0 0; transition: opacity 500ms var(--ease) 5900ms, translate 700ms var(--ease) 5900ms; }
+.cl.is-on .cl-tick i { opacity: 0; transition-delay: 7200ms; }
+.cl.is-on .cl-tick svg { opacity: 1; transition-delay: 7200ms; }
+.cl.is-on .cl-say > * { opacity: 1; translate: 0 0; transition: opacity 600ms var(--ease), translate 800ms var(--ease); }
+.cl.is-on .cl-say > :nth-child(1) { transition-delay: 7600ms; }
+.cl.is-on .cl-say > :nth-child(2) { transition-delay: 8300ms; }
+
 /* The AI's read: the mention, grown from its row into place, is scanned; its labels come in one by one, then its issue. */
 .px-read { display: grid; align-content: start; gap: 18px; padding: 18px; }
 .px-read:not(.is-first) { animation: px-in var(--move) var(--ease) backwards; }
@@ -670,6 +751,12 @@
   .px-trend, .px-is-count .px-dim { display: none; }
   .px-is-count { width: auto; }
   .px-is .px-chip { width: auto; }
+  .cl { height: 500px; font-size: 13.5px; }
+  .cl-rail { display: none; }
+  .cl-chat { padding: 4px 14px; gap: 12px; }
+  .cl-box { margin: 0 10px 12px; }
+  .cl-say { font-size: 14.5px; }
+  .cl-tools { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .px * { animation: none !important; }
@@ -684,3 +771,27 @@
 .hx-bar { background: linear-gradient(to bottom, rgb(5 5 6 / 0.85), rgb(5 5 6 / 0)); }
 .hx-word { transition: translate 600ms cubic-bezier(0.22, 1, 0.36, 1); }
 .hx-bar.is-flown .hx-word { translate: -34px 0; }
+
+/* The logo's flight home from Claude to the bar (process.tsx sets its place each frame). Fixed in the bar, which sits
+   at the screen's top-left, so its coordinates are the screen's. */
+.hx-home { position: fixed; left: 0; top: 0; visibility: hidden; pointer-events: none; color: var(--ink); transform-origin: center;
+  filter: drop-shadow(0 0 18px rgb(255 59 47 / 0.35)); }
+/* Back in the bar, its loop starts again at once: the tiles go out one by one and come back together. */
+@keyframes hx-tile-back {
+  0%, 100% { opacity: 0; transform: translate(calc(var(--x) * 60%), calc(var(--y) * 60%)) scale(0.4); }
+  14%, 78% { opacity: 1; transform: none; }
+  92% { opacity: 0; transform: translate(calc(var(--x) * 60%), calc(var(--y) * 60%)) scale(0.4); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .hx-bar.is-home .hx-mark > * { animation-name: hx-tile-back; animation-delay: calc(-3600ms + var(--i) * 90ms); }
+}
+
+/* Pricing: one panel per plan, the price large; the plan that tracks competitors is lit along its top edge. */
+.hx-plan { position: relative; display: flex; flex-direction: column; gap: 0; min-height: 100%; padding: 28px 24px 24px;
+  border: 1px solid var(--line); border-radius: 18px; background: var(--field-1); }
+.hx-plan.is-lit { border-color: rgb(255 59 47 / 0.45); background: linear-gradient(to bottom, rgb(255 59 47 / 0.09), var(--field-1) 42%); }
+.hx-plan.is-lit::before { content: ""; position: absolute; inset: -1px 24px auto; height: 2px; border-radius: 2px; background: var(--red); }
+.hx-plan-stat { display: grid; gap: 4px; padding: 12px; border-radius: 12px; background: var(--field-2); color: var(--muted); font-size: 13px; line-height: 1.2; }
+.hx-plan-stat b { color: var(--ink); font-size: 22px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.hx-plan-tick { flex: none; width: 16px; height: 16px; margin-top: 4px; fill: none; stroke: var(--red); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.hx-nav.is-quiet { border: 1px solid var(--line); color: var(--ink); }

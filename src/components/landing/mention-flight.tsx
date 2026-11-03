@@ -270,8 +270,12 @@ export function MentionFlight() {
 
       const flying = at > 0 && b < 1;
       ghost.current!.classList.toggle("is-flying", flying);
-      if (source) source.style.visibility = at > 0 ? "hidden" : "";
-      source?.closest("header")?.classList.toggle("is-flown", at > 0);
+      // Once the logo has come back to the bar at the end of the story (process.tsx), the bar is left as it is.
+      const bar = source?.closest("header");
+      if (!bar?.classList.contains("is-back")) {
+        if (source) source.style.visibility = at > 0 ? "hidden" : "";
+        bar?.classList.toggle("is-flown", at > 0);
+      }
       if (flying) {
         // The floor's angles before the turn (--tilt and --turn at --c 0 in landing.css).
         const tilt = (FLOOR_TILT * Math.PI) / 180;

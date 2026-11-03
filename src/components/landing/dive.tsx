@@ -38,7 +38,7 @@ const smooth = (from: number, to: number, v: number) => {
 const ease = (t: number) => 0.5 - Math.cos(Math.PI * t) / 2;
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
-type Stage = { pose: (d: number, size: number) => void; dispose: () => void };
+type Stage = { pose: (d: number, size: number) => void; out: (o: number) => void; dispose: () => void };
 const stages = new WeakMap<HTMLElement, Stage>();
 
 function build(root: HTMLElement, canvas: HTMLCanvasElement): Stage {
@@ -94,7 +94,20 @@ function build(root: HTMLElement, canvas: HTMLCanvasElement): Stage {
   const eye = new THREE.Vector3();
   let width = 0, height = 0;
 
+  // The way back out (poseDiveOut) owns the camera while it runs; the way in leaves it alone then.
+  let leaving = 0;
+  let lastSize = 0;
   const pose = (d: number, size: number) => {
+    lastSize = size;
+    if (!leaving) render(d, size);
+  };
+  // Out again, 0..1: the flight in run backwards, from where it vanished in the gap back up to overhead.
+  const out = (o: number) => {
+    if (!o && !leaving) return;
+    leaving = o;
+    render(o ? VANISH[1] * (1 - o) : 1, lastSize || Math.min(innerWidth, innerHeight) * 0.13);
+  };
+  const render = (d: number, size: number) => {
     const on = d > 0 && d < 1;
     root.classList.toggle("is-on", on);
     if (!on) return;
@@ -149,6 +162,7 @@ function build(root: HTMLElement, canvas: HTMLCanvasElement): Stage {
 
   return {
     pose,
+    out,
     dispose: () => {
       geometries.forEach((g) => g.dispose());
       floor.geometry.dispose();
@@ -162,6 +176,11 @@ function build(root: HTMLElement, canvas: HTMLCanvasElement): Stage {
 /** Places the camera, `d` 0..1 along the flight. `size` is the mark's width on screen at the start (the network's hub). */
 export function poseDive(root: HTMLElement, d: number, size: number) {
   stages.get(root)?.pose(d, size);
+}
+
+/** Flies the camera back out, `o` 0..1 (0 hands it back to `poseDive`). At 1 it is overhead, the mark as wide as at the start. */
+export function poseDiveOut(root: HTMLElement, o: number) {
+  stages.get(root)?.out(o);
 }
 
 /** The canvas the flight is drawn on; hidden until it starts. */
