@@ -38,6 +38,13 @@ export const CONTINUATIONS_PER_GAP = 5;
  * doesn't speed up checks to avoid overflow: each extra check would mostly buy unrelated posts.
  */
 export const PAID_OVERFLOW_MIN_RELEVANT_SHARE = 0.1;
+/**
+ * Paid platforms that have found nothing for this long drop to the dormant interval: every search
+ * there is paid for even when it comes back empty. The first relevant mention ends it.
+ */
+export const DORMANT_AFTER_DAYS = 14;
+/** Each keyword on a dormant paid platform is still searched at least this often (minutes). */
+export const DORMANT_INTERVAL = 10080;
 
 export type CollectionRisk = "none" | "watch" | "at_risk" | "unavoidable";
 
@@ -256,6 +263,22 @@ export function decidePlatformIntervalV2(i: PlatformModelInput): PlatformModelDe
     learning, arrivalPerDay: round2(relMean * 24), rateUpperPerHour: round2(rawUpper), uncertainty: round2(unc),
     freshMinutes: fresh, safeMinutes: safe, groups, recommended, interval, planLimited, pendingSince, risk, riskDetail: detail, reasons,
   };
+}
+
+/**
+ * Platform interval for a paid platform that has found no relevant mentions in its last 28 days
+ * and has been monitored at least DORMANT_AFTER_DAYS, or null when it isn't dormant. Rotating
+ * searches take `turns` platform checks each, so the platform interval is divided by them to keep
+ * every keyword within DORMANT_INTERVAL. Never shortens an interval; spikes and boosts keep the normal one.
+ */
+export function dormantInterval(i: {
+  paid: boolean; learning: boolean; relevant28d: number; firstMonitoredAt: Date | null; now: Date;
+  interval: number; turns: number; spikeRecent: boolean; boosted: boolean;
+}): number | null {
+  if (!i.paid || i.learning || i.relevant28d > 0 || i.spikeRecent || i.boosted || !i.firstMonitoredAt) return null;
+  if (i.now.getTime() - i.firstMonitoredAt.getTime() < DORMANT_AFTER_DAYS * 24 * 3_600_000) return null;
+  const perTurn = Math.floor(DORMANT_INTERVAL / Math.max(1, i.turns) / 60) * 60;
+  return perTurn > i.interval ? perTurn : null;
 }
 
 /**

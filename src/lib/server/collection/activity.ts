@@ -6,7 +6,7 @@ import {
   type ActivityAssessment, type IntervalDecision,
 } from "@/lib/sources/adaptive";
 import {
-  assessRisk, decidePlatformIntervalV2, importanceShares, paceForBudgetSafely, rankByImportance, snapDown,
+  assessRisk, decidePlatformIntervalV2, DORMANT_AFTER_DAYS, dormantInterval, importanceShares, paceForBudgetSafely, rankByImportance, snapDown,
   type CollectionRisk, type GroupModel, type PlatformModelDecision,
 } from "@/lib/sources/adaptive-v2";
 import { emptyEstimate, hourProfile, upperRate, type GroupEstimate } from "@/lib/sources/arrival";
@@ -254,6 +254,18 @@ export async function refreshActivity(
     for (const d of decided.filter((x) => x.paid)) {
       d.decision.reasons.push(`Paused: this period's mention allowance is used up (paid platforms resume ${new Date(c.allowance_paused_until).toISOString().slice(0, 10)})`);
     }
+  }
+
+  // Dormant paid platforms: nothing found in weeks, so each keyword is searched about once a week
+  // (empty searches still cost money). A relevant mention, spike or boost brings back the normal pace.
+  for (const d of decided.filter((x) => x.paid && x.mine.length)) {
+    const weekly = dormantInterval({
+      paid: true, learning: d.model.learning, relevant28d: d.s.row.n28, firstMonitoredAt: date(d.s.row.first_monitored_at), now,
+      interval: d.decision.interval, turns: d.turns, spikeRecent: d.s.assessment.spikeRecent, boosted: boostEnds.has(d.s.platform),
+    });
+    if (weekly === null) continue;
+    d.decision.interval = weekly;
+    d.decision.reasons.push(`Nothing found here in ${DORMANT_AFTER_DAYS}+ days: each keyword is searched once a week until a mention turns up`);
   }
 
   // Rank = relevant mentions over the last 28 days, highest first (ties by platform id). Growth, engagement and

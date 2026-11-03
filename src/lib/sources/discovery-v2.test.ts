@@ -9,7 +9,7 @@ import {
   pagesToRequest, profileFactor, safeIntervalMinutes, updateEstimate, upperRate, type GroupEstimate,
 } from "./arrival.ts";
 import {
-  assessRisk, BATCH_TARGET, decidePlatformIntervalV2, importanceShares, paceForBudgetSafely, rankByImportance,
+  assessRisk, BATCH_TARGET, decidePlatformIntervalV2, DORMANT_INTERVAL, dormantInterval, importanceShares, paceForBudgetSafely, rankByImportance,
   snapDown, worthContinuing, type GroupModel, type PlatformModelInput,
 } from "./adaptive-v2.ts";
 import { collectionProfile, historySupport, jobCapacity, planningCapacity } from "./collection-profile.ts";
@@ -201,6 +201,22 @@ test("quiet platforms keep being explored at the platform ceiling, never stopped
   const silent = decidePlatformIntervalV2(input([model(0)]));
   assert.equal(silent.interval, 720);
   assert.ok(silent.reasons.some((r) => /exploration/i.test(r)));
+});
+
+test("dormant paid platforms: nothing found in 14+ days drops each keyword to about once a week", () => {
+  const base = {
+    paid: true, learning: false, relevant28d: 0, firstMonitoredAt: new Date(now.getTime() - 15 * 24 * H), now,
+    interval: 1440, turns: 1, spikeRecent: false, boosted: false,
+  };
+  assert.equal(dormantInterval(base), DORMANT_INTERVAL);
+  assert.equal(dormantInterval({ ...base, turns: 3 }), 3360, "rotating keywords still each come round within a week");
+  assert.equal(dormantInterval({ ...base, turns: 10 }), null, "never shortens an interval");
+  assert.equal(dormantInterval({ ...base, relevant28d: 1 }), null, "a relevant mention ends it");
+  assert.equal(dormantInterval({ ...base, firstMonitoredAt: new Date(now.getTime() - 13 * 24 * H) }), null, "needs 14 days of monitoring");
+  assert.equal(dormantInterval({ ...base, paid: false }), null, "free sources cost nothing to check");
+  assert.equal(dormantInterval({ ...base, learning: true }), null);
+  assert.equal(dormantInterval({ ...base, spikeRecent: true }), null);
+  assert.equal(dormantInterval({ ...base, boosted: true }), null);
 });
 
 test("no measured rate, no claimed risk: a search never checked isn't scheduled or flagged from the prior", () => {
