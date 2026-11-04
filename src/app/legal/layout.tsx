@@ -1,32 +1,25 @@
-import Link from "next/link";
-import { HeardexMark } from "@/components/landing/hero";
-import { LEGAL, LEGAL_PAGES } from "@/lib/legal";
+import type { Metadata } from "next";
+import { INDEXED } from "@/lib/marketing";
+import { Suspense } from "react";
+import { MarketingShell } from "@/components/marketing/shell";
+import { Eclipse } from "@/components/landing/backgrounds";
 import { LegalNav } from "./legal-nav";
 
-/** Terms, privacy, refunds and contact: public, readable without signing in. */
+export const metadata: Metadata = { robots: INDEXED };
+
+/** Terms, privacy, refunds and contact: public, readable without signing in, in the same frame as the rest of the site. */
 export default function LegalLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-dvh bg-background text-foreground">
-      <header className="border-b border-border">
-        <div className="mx-auto flex h-16 max-w-3xl items-center justify-between px-4 sm:px-6">
-          <Link href="/" className="flex items-center gap-2 text-[17px] font-semibold tracking-[-0.02em]" aria-label="Heardex home">
-            <HeardexMark className="h-5 w-5" />heardex
-          </Link>
-          <Link href="/login" className="text-sm text-muted-foreground hover:text-foreground">Sign in</Link>
+    <MarketingShell>
+      <div className="relative isolate">
+      <div aria-hidden className="hx-docs-sky"><Suspense><Eclipse className="h-full w-full" rest={0.99} /></Suspense></div>
+      <div className="hx-frame mx-auto max-w-[1560px] pb-[clamp(96px,14vh,160px)]">
+        <div className="mx-auto max-w-[760px]">
+          <LegalNav />
+          <div className="legal pt-[clamp(40px,8vh,96px)]">{children}</div>
         </div>
-      </header>
-      <div className="mx-auto max-w-3xl px-4 sm:px-6">
-        <LegalNav />
-        <main id="main" className="legal pb-20 pt-10">{children}</main>
       </div>
-      <footer className="border-t border-border">
-        <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3 px-4 py-6 text-sm text-muted-foreground sm:px-6">
-          <p>{LEGAL.product} is operated by {LEGAL.operator}, {LEGAL.country}.</p>
-          <nav aria-label="Legal" className="flex gap-4">
-            {LEGAL_PAGES.map((p) => <Link key={p.href} href={p.href} className="hover:text-foreground">{p.label}</Link>)}
-          </nav>
-        </div>
-      </footer>
-    </div>
+      </div>
+    </MarketingShell>
   );
 }

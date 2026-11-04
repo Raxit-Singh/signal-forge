@@ -1,23 +1,18 @@
 import Link from "next/link";
-import localFont from "next/font/local";
 import type { Plan } from "@/lib/domain/plans";
+import { switzer } from "./fonts";
 import { HeardexMark } from "./hero";
-import { LEGAL, LEGAL_PAGES } from "@/lib/legal";
 import { HeroBackground } from "./backgrounds";
+import { SiteNav } from "@/components/marketing/shell";
+import { Faq } from "./faq";
 import { IntroLock } from "./intro-lock";
+import { Outro } from "./outro";
 import { Pricing } from "./pricing";
 import { Scenario } from "./scenario";
 import { Words } from "./words";
 import "./landing.css";
 
-const switzer = localFont({
-  src: [
-    { path: "./fonts/Switzer-400.woff2", weight: "400" },
-    { path: "./fonts/Switzer-500.woff2", weight: "500" },
-    { path: "./fonts/Switzer-600.woff2", weight: "600" },
-  ],
-  display: "swap",
-});
+
 
 export function Landing({ signedIn, plans }: { signedIn: boolean; plans: Plan[] }) {
   const start = signedIn ? { href: "/overview", label: "Open dashboard" } : { href: "/signup", label: "Start free" };
@@ -33,10 +28,7 @@ export function Landing({ signedIn, plans }: { signedIn: boolean; plans: Plan[] 
       </Link>
       {/* The mark on its way back here from Claude, at the end of the story (process.tsx). */}
       <span data-flight-home className="hx-home" aria-hidden><HeardexMark className="h-full w-full" /></span>
-      <nav aria-label="Main" className="flex items-center gap-2 text-[15px] font-medium">
-        {!signedIn && <Link href="/login" className="hx-nav">Sign in</Link>}
-        <Link href={start.href} className="hx-nav is-primary">{start.label}</Link>
-      </nav>
+      <SiteNav start={start} signIn={!signedIn} />
     </header>
       {/* The first screen: the question and answer, and the eclipse behind them. */}
       {/* Pinned while the logo comes out of the bar toward you (mention-flight.tsx), then it scrolls away. */}
@@ -62,13 +54,9 @@ export function Landing({ signedIn, plans }: { signedIn: boolean; plans: Plan[] 
       <main>
         <Scenario />
         <Pricing plans={plans} start={start} />
+        <Faq plans={plans} />
       </main>
-      <footer className="hx-frame mx-auto flex max-w-[1560px] flex-wrap items-center justify-between gap-4 border-t border-white/10 py-8 text-[14px] text-[var(--muted)]">
-        <p>© 2026 {LEGAL.product} · {LEGAL.operator}, {LEGAL.country} · <a href={`mailto:${LEGAL.email}`} className="hx-link">{LEGAL.email}</a></p>
-        <nav aria-label="Legal" className="flex gap-5">
-          {LEGAL_PAGES.map((p) => <Link key={p.href} href={p.href} className="hx-link">{p.label}</Link>)}
-        </nav>
-      </footer>
+      <Outro start={start} />
     </div>
   );
 }

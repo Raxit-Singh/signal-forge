@@ -3,9 +3,11 @@ import { getUser } from "@/lib/server/session";
 import { createClient } from "@/lib/supabase/server";
 import { planFromRow, type PlanRow } from "@/lib/domain/plans";
 import { Landing } from "@/components/landing/landing";
+import { INDEXED } from "@/lib/marketing";
 
 export const metadata: Metadata = {
   title: { absolute: "Heardex · Heard. Indexed. Fixed." },
+  robots: INDEXED,
   description: "Heardex finds what people say about your product across Reddit, Hacker News, GitHub, app stores and more, and ranks it into bugs, requests and complaints.",
 };
 

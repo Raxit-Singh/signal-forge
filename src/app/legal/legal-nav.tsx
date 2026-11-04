@@ -7,13 +7,13 @@ import { LEGAL_PAGES } from "@/lib/legal";
 export function LegalNav() {
   const path = usePathname();
   return (
-    <nav aria-label="Policies" className="-mx-1 flex gap-1 overflow-x-auto pt-6 text-sm">
+    <nav aria-label="Policies" className="hx-in flex gap-2 overflow-x-auto pt-[clamp(32px,6vh,64px)]">
       {LEGAL_PAGES.map((p) => (
         <Link
           key={p.href}
           href={p.href}
           aria-current={path === p.href ? "page" : undefined}
-          className="whitespace-nowrap rounded-md px-3 py-1.5 text-muted-foreground hover:text-foreground aria-[current=page]:bg-muted aria-[current=page]:text-foreground"
+          className="hx-chip whitespace-nowrap"
         >
           {p.label}
         </Link>

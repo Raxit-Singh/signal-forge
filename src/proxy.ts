@@ -6,7 +6,7 @@ import { NextResponse, type NextRequest } from "next/server";
 // Authorization is NOT decided here: every page and action re-checks the user
 // and workspace membership on the server, and RLS enforces it again in Postgres.
 
-const PUBLIC_PREFIXES = ["/login", "/signup", "/forgot-password", "/auth", "/legal",
+const PUBLIC_PREFIXES = ["/login", "/signup", "/forgot-password", "/auth", "/legal", "/alternatives", "/docs", "/blog", "/product",
   // Design samples: sample data only, and the page returns 404 in production.
   ...(process.env.NODE_ENV === "production" ? [] : ["/prototypes"])];
 

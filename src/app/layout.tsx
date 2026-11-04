@@ -4,14 +4,17 @@ import { headers } from "next/headers";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TimeZoneProvider } from "@/components/time";
 import { getTimeZone } from "@/lib/server/timezone";
+import { publicEnv } from "@/lib/env";
 import "./globals.css";
 
 const sans = Geist({ subsets: ["latin"], variable: "--font-geist-sans", display: "swap" });
 const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono", display: "swap" });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(publicEnv.NEXT_PUBLIC_SITE_URL),
   title: { default: "Heardex", template: "%s · Heardex" },
   description: "Social listening and product intelligence for software teams.",
+  // The app is private: only the public pages (landing, product, docs, blog, alternatives, legal) opt in to indexing.
   robots: { index: false, follow: false },
 };
 

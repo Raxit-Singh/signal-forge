@@ -32,14 +32,15 @@ const outCubic = (v: number) => 1 - (1 - v) ** 3;
 /** How far the planet has risen past its resting place, 0..1 of the screen height; set by the scroll (mention-flight.tsx). */
 export const horizon = { lift: 0 };
 
-function eclipse(): Scene {
+function eclipse(enterAt = ENTER_AT, rest = 0.8): Scene {
+  const ENTER = enterAt;
   let grid: HTMLCanvasElement | null = null;
   let gridFor = "";
   let lx = 0.5; // where along the rim the light sits, 0..1 across the screen, eased toward the pointer
   const signals = [0.12, 0.47, 0.81].map((at, i) => ({ at, speed: 0.018 + i * 0.006 }));
   return (ctx, w, h, t, p) => {
     ctx.clearRect(0, 0, w, h);
-    const e = t - ENTER_AT;
+    const e = t - ENTER;
     if (e <= 0) return;
     // The entrance, each part 0..1.
     const rise = outExpo(clamp01(e / 2.2));
@@ -78,7 +79,7 @@ function eclipse(): Scene {
     // The planet: its top edge rises from below the screen to 80% of the height, then on with the scroll until it
     // fills the screen and its dark side becomes the ground of the next page.
     const R = Math.max(w * 0.95, h * 1.1);
-    const crown = h * (1.25 - 0.45 * rise - horizon.lift);
+    const crown = h * (1.25 - (1.25 - rest) * rise - horizon.lift);
     const cx = w / 2, cy = crown + R;
     const breathe = 0.85 + Math.sin(t * 0.5) * 0.15;
     const atmosphere = ctx.createRadialGradient(cx, cy, R * 0.98, cx, cy, R + h * 0.38);
@@ -144,7 +145,7 @@ function eclipse(): Scene {
     if (late > 0) {
       const seen = span / 1.15;
       for (const s of signals) {
-        const u = (s.at + (t - ENTER_AT) * s.speed) % 1;
+        const u = (s.at + (t - ENTER) * s.speed) % 1;
         for (let k = 0; k < 14; k++) {
           const a3 = -Math.PI / 2 - seen + 2 * seen * (u - k * 0.0035);
           const x = cx + Math.cos(a3) * R, y = cy + Math.sin(a3) * R;
@@ -289,14 +290,14 @@ function lines(): Scene {
 
 const SCENES: Record<Exclude<BackgroundKind, "smoke">, () => Scene> = { eclipse, waves, dots, tiles, lines };
 
-function CanvasScene({ kind, className }: { kind: Exclude<BackgroundKind, "smoke">; className?: string }) {
+function CanvasScene({ kind, className, enterAt, rest }: { kind: Exclude<BackgroundKind, "smoke">; className?: string; enterAt?: number; rest?: number }) {
   const canvas = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const el = canvas.current!;
     const ctx = el.getContext("2d");
     if (!ctx) return;
-    const draw = SCENES[kind]();
+    const draw = kind === "eclipse" && enterAt !== undefined ? eclipse(enterAt, rest) : SCENES[kind]();
     let w = 0, h = 0;
     const size = () => {
       const dpr = Math.min(window.devicePixelRatio, 2);
@@ -336,7 +337,7 @@ function CanvasScene({ kind, className }: { kind: Exclude<BackgroundKind, "smoke
       window.removeEventListener("pointermove", onPointer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [kind]);
+  }, [kind, enterAt, rest]);
 
   return <canvas ref={canvas} className={className} aria-hidden />;
 }
@@ -346,4 +347,13 @@ export function HeroBackground({ className }: { className?: string }) {
   const asked = useSearchParams().get("bg") as BackgroundKind | null;
   const kind = asked && KINDS.includes(asked) ? asked : "eclipse";
   return kind === "smoke" ? <RedFlow className={className} /> : <CanvasScene key={kind} kind={kind} className={className} />;
+}
+
+/**
+ * The eclipse on its own, for the other public pages: it rises sooner (enterAt seconds), comes to rest with its crown
+ * at `rest` of the canvas height, and never lifts with the scroll.
+ */
+export function Eclipse({ className, enterAt = 0.15, rest = 0.94 }: { className?: string; enterAt?: number; rest?: number }) {
+  useEffect(() => { horizon.lift = 0; }, []);
+  return <CanvasScene kind="eclipse" enterAt={enterAt} rest={rest} className={className} />;
 }
