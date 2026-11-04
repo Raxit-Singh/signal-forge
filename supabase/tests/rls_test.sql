@@ -596,6 +596,18 @@ select t.ok((select (period_start, period_end) from private.billing_period((sele
   = ('2026-03-31T10:00:00Z'::timestamptz, '2026-04-30T10:00:00Z'::timestamptz), 'period boundary: the renewal instant starts the next period');
 select t.ok((select (period_start, period_end) from private.billing_period((select v from ids where k = 'ws_period'), '2026-03-31T09:59:59Z'))
   = ('2026-02-28T10:00:00Z'::timestamptz, '2026-03-31T10:00:00Z'::timestamptz), 'one second before renewal is still the previous period');
+-- A yearly subscription: the mention allowance still renews monthly inside the paid year.
+update public.subscriptions set current_period_start = '2026-01-31T10:00:00Z', current_period_end = '2027-01-31T10:00:00Z'
+ where workspace_id = (select v from ids where k = 'ws_period');
+select t.ok((select (period_start, period_end) from private.billing_period((select v from ids where k = 'ws_period'), '2026-02-10T00:00:00Z'))
+  = ('2026-01-31T10:00:00Z'::timestamptz, '2026-02-28T10:00:00Z'::timestamptz), 'yearly subscription: the first month of the year');
+select t.ok((select (period_start, period_end) from private.billing_period((select v from ids where k = 'ws_period'), '2026-07-04T00:00:00Z'))
+  = ('2026-06-30T10:00:00Z'::timestamptz, '2026-07-31T10:00:00Z'::timestamptz), 'yearly subscription: monthly periods keep the 31st anchor');
+select t.ok((select (period_start, period_end) from private.billing_period((select v from ids where k = 'ws_period'), '2027-01-20T00:00:00Z'))
+  = ('2026-12-31T10:00:00Z'::timestamptz, '2027-01-31T10:00:00Z'::timestamptz), 'yearly subscription: the last month ends with the year');
+select t.ok((select price_cents_monthly = 12000 and price_cents_yearly = 120000 from public.plans where id = 'pro')
+  and (select price_cents_monthly = 35000 and price_cents_yearly = 360000 from public.plans where id = 'scale')
+  and (select price_cents_monthly = 7000 and price_cents_yearly = 72000 from public.plans where id = 'starter'), 'prices: monthly and yearly');
 set role service_role;
 select t.throws($$select public.svc_ingest_mentions(gen_random_uuid(), 'github', '[]')$$, 'ingest into unknown product fails', 'not found');
 reset role;

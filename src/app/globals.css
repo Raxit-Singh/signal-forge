@@ -350,3 +350,13 @@ body::after {
     transform: none !important;
   }
 }
+
+/* Legal pages (src/app/legal): plain readable prose. */
+.legal { font-size: 16px; line-height: 1.65; }
+.legal h1 { font-size: clamp(30px, 5vw, 40px); font-weight: 600; letter-spacing: -0.03em; line-height: 1.1; }
+.legal h2 { margin-top: 2.5rem; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+.legal h1 + p { margin-top: 0.5rem; color: var(--muted-foreground); font-size: 14px; }
+.legal p, .legal ul { margin-top: 0.9rem; }
+.legal ul { list-style: disc; padding-left: 1.25rem; display: grid; gap: 0.4rem; }
+.legal a { color: var(--accent-foreground); text-decoration: underline; text-underline-offset: 3px; }
+.legal strong { font-weight: 600; }

@@ -38,9 +38,11 @@ const serverSchema = z.object({
   // Email (Resend). EMAIL_FROM must be on a domain verified in Resend, e.g. "Heardex <reports@mail.example.com>".
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().optional(),
-  // Stripe (subscriptions). Test keys (sk_test_…) until launch. The webhook secret is per endpoint (whsec_…).
-  STRIPE_SECRET_KEY: z.string().optional(),
-  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  // Dodo Payments (subscriptions; Dodo is the merchant of record). Test mode until launch: the key and the webhook
+  // secret (whsec_…, per endpoint) come from the same mode's dashboard.
+  DODO_PAYMENTS_API_KEY: z.string().optional(),
+  DODO_PAYMENTS_WEBHOOK_KEY: z.string().optional(),
+  DODO_PAYMENTS_ENVIRONMENT: z.enum(["test_mode", "live_mode"]).default("test_mode"),
   // Heardex staff (comma-separated verified emails): the internal cost dashboard at /admin/costs.
   SIGNALFORGE_STAFF_EMAILS: z.string().default(""),
 });

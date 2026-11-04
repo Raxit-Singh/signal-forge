@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { FormMessage, SubmitButton } from "@/components/ui/form";
 import { idle } from "@/lib/action-state";
-import { openBillingPortalAction, releaseHeldMentionsAction, startCheckoutAction } from "@/app/actions/billing";
+import { changePlanAction, openBillingPortalAction, releaseHeldMentionsAction, startCheckoutAction } from "@/app/actions/billing";
 
 export function ReleaseHeldForm({ workspaceId, held, remaining }: { workspaceId: string; held: number; remaining: number }) {
   const [state, action] = useActionState(releaseHeldMentionsAction, idle);
@@ -20,13 +20,27 @@ export function ReleaseHeldForm({ workspaceId, held, remaining }: { workspaceId:
   );
 }
 
-export function CheckoutButton({ workspaceId, planId, label }: { workspaceId: string; planId: string; label: string }) {
+export function CheckoutButton({ workspaceId, planId, interval, label }: { workspaceId: string; planId: string; interval: "month" | "year"; label: string }) {
   const [state, action] = useActionState(startCheckoutAction, idle);
   return (
     <form action={action} className="grid gap-2">
       <input type="hidden" name="workspaceId" value={workspaceId} />
       <input type="hidden" name="planId" value={planId} />
+      <input type="hidden" name="interval" value={interval} />
       <SubmitButton size="sm" className="w-full" pendingLabel="Opening checkout…">{label}</SubmitButton>
+      <FormMessage state={state} />
+    </form>
+  );
+}
+
+export function ChangePlanButton({ workspaceId, planId, interval, label }: { workspaceId: string; planId: string; interval: "month" | "year"; label: string }) {
+  const [state, action] = useActionState(changePlanAction, idle);
+  return (
+    <form action={action} className="grid gap-2">
+      <input type="hidden" name="workspaceId" value={workspaceId} />
+      <input type="hidden" name="planId" value={planId} />
+      <input type="hidden" name="interval" value={interval} />
+      <SubmitButton size="sm" className="w-full" pendingLabel="Changing plan…">{label}</SubmitButton>
       <FormMessage state={state} />
     </form>
   );

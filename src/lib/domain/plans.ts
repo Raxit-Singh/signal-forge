@@ -7,6 +7,8 @@ export interface Plan {
   name: string;
   description: string | null;
   priceCentsMonthly: number;
+  /** The whole year's price when billed yearly; null when there's no yearly option. */
+  priceCentsYearly: number | null;
   currency: string;
   maxProducts: number;
   maxCompetitorsPerProduct: number;
@@ -28,6 +30,7 @@ export interface PlanRow {
   name: string;
   description: string | null;
   price_cents_monthly: number;
+  price_cents_yearly?: number | null;
   currency: string;
   max_products: number;
   max_competitors_per_product: number;
@@ -54,6 +57,7 @@ export function planFromRow(row: PlanRow): Plan {
     name: row.name,
     description: row.description,
     priceCentsMonthly: row.price_cents_monthly,
+    priceCentsYearly: row.price_cents_yearly ?? null,
     currency: row.currency,
     maxProducts: row.max_products,
     maxCompetitorsPerProduct: row.max_competitors_per_product,
@@ -158,6 +162,15 @@ export function checkProductLimit(plan: Pick<Plan, "maxProducts" | "name">, acti
     allowed: false,
     message: `The ${plan.name} plan includes ${plan.maxProducts} ${noun}. Archive a product or change plan to add another.`,
   };
+}
+
+export type BillingInterval = "month" | "year";
+
+/** What a plan costs a month on each interval, and what a year of yearly billing saves over twelve monthly payments. */
+export function intervalPrice(p: Pick<Plan, "priceCentsMonthly" | "priceCentsYearly">, interval: BillingInterval) {
+  const yearly = p.priceCentsYearly;
+  if (interval === "month" || !yearly) return { perMonthCents: p.priceCentsMonthly, perYearCents: p.priceCentsMonthly * 12, saveCents: 0 };
+  return { perMonthCents: Math.round(yearly / 12), perYearCents: yearly, saveCents: Math.max(0, p.priceCentsMonthly * 12 - yearly) };
 }
 
 export function formatPrice(cents: number, currency = "usd"): string {

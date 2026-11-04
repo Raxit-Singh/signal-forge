@@ -1,14 +1,15 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Check } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspacePlan, getWorkspaceUsage, hasRole, requireWorkspace } from "@/lib/server/session";
-import { formatPrice, mentionUsageLevel, planFromRow, type PlanRow } from "@/lib/domain/plans";
+import { formatPrice, intervalPrice, mentionUsageLevel, planFromRow, type PlanRow } from "@/lib/domain/plans";
 import { formatInterval } from "@/lib/sources/adaptive";
 import { Button } from "@/components/ui/button";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
-import { CheckoutButton, PortalButton, ReleaseHeldForm } from "./release-form";
-import { stripeEnabled, stripeMode } from "@/lib/server/billing/stripe";
+import { ChangePlanButton, CheckoutButton, PortalButton, ReleaseHeldForm } from "./release-form";
+import { dodoEnabled, dodoMode } from "@/lib/server/billing/dodo";
 
 export const metadata: Metadata = { title: "Plan & billing" };
 
@@ -22,31 +23,38 @@ const FEATURE_LABELS: Record<string, string> = {
 
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 
-export default async function BillingSettings({ searchParams }: { searchParams: Promise<{ checkout?: string }> }) {
+export default async function BillingSettings({ searchParams }: { searchParams: Promise<{ checkout?: string; interval?: string }> }) {
   const { workspace } = await requireWorkspace();
-  const checkout = (await searchParams).checkout;
+  const { checkout, interval: asked } = await searchParams;
   const supabase = await createClient();
   const [{ plan: current, status, internalGrant }, usage, { data: rows }, { data: sub }] = await Promise.all([
     getWorkspacePlan(workspace.id),
     getWorkspaceUsage(workspace.id),
     supabase.from("plans").select("*").eq("is_public", true).order("sort_order"),
-    supabase.from("subscriptions").select("provider, provider_customer_id, cancel_at_period_end, current_period_end").eq("workspace_id", workspace.id).maybeSingle(),
+    supabase.from("subscriptions").select("provider, provider_customer_id, status, cancel_at_period_end, current_period_start, current_period_end").eq("workspace_id", workspace.id).maybeSingle(),
   ]);
-  const online = stripeEnabled();
+  const online = dodoEnabled();
   const isOwner = workspace.role === "owner";
-  const subscribed = sub?.provider === "stripe";
-  const priced = new Set((rows ?? []).filter((r) => r.stripe_price_id).map((r) => r.id as string));
+  const subscribed = sub?.provider === "dodo";
+  const onHold = subscribed && sub?.status === "unpaid";
+  // A subscription whose period is longer than 45 days is billed yearly.
+  const currentInterval = subscribed && sub?.current_period_start && sub.current_period_end
+    && new Date(sub.current_period_end as string).getTime() - new Date(sub.current_period_start as string).getTime() > 45 * 86_400_000 ? "year" : "month";
+  const interval = asked === "year" || asked === "month" ? asked : currentInterval;
+  const priced = new Set((rows ?? []).filter((r) => (interval === "year" ? r.dodo_yearly_product_id : r.dodo_product_id)).map((r) => r.id as string));
   const plans = (rows ?? []).map((r) => planFromRow(r as PlanRow)).filter((p) => !p.retired);
   const level = usage ? mentionUsageLevel(usage.mentionsConsumed, usage.mentionAllowance) : null;
   const barTone = !level || level.level === "ok" ? "bg-foreground" : level.level === "warning" ? "bg-warning" : "bg-signal";
 
   return (
     <>
-      {checkout === "success" && <p role="status" className="rounded-md border border-positive/30 px-3 py-2 text-[13px] text-positive">Payment received. Your plan updates as soon as Stripe confirms it (usually a few seconds) — refresh if it hasn&apos;t yet.</p>}
+      {checkout === "done" && <p role="status" className="rounded-md border border-positive/30 px-3 py-2 text-[13px] text-positive">Thanks. Your plan updates as soon as Dodo Payments confirms the payment (usually a few seconds); refresh if it hasn&apos;t yet.</p>}
       {checkout === "cancelled" && <p role="status" className="rounded-md border px-3 py-2 text-[13px] text-muted-foreground">Checkout cancelled; nothing was charged.</p>}
-      {status === "past_due" && (
+      {(status === "past_due" || onHold) && (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/40 px-3 py-2 text-[13px]">
-          <span>Your last payment failed. Stripe will retry; update your card to keep your plan.</span>
+          <span>{onHold
+            ? "Your last payment failed, so the workspace is on Free limits until it's paid. Update your payment method to get your plan back."
+            : "Your last payment failed. It will be retried; update your payment method to keep your plan."}</span>
           {isOwner && <div className="w-40"><PortalButton workspaceId={workspace.id} label="Update payment method" variant="default" /></div>}
         </div>
       )}
@@ -59,7 +67,9 @@ export default async function BillingSettings({ searchParams }: { searchParams: 
               <Badge tone="info">Internal testing entitlement — not a paid subscription</Badge>
             ) : (
               <span className="text-[13px] font-normal text-muted-foreground tabular">
-                {current.priceCentsMonthly === 0 ? "$0" : formatPrice(current.priceCentsMonthly, current.currency)}/month
+                {current.priceCentsMonthly === 0 ? "$0/month" : currentInterval === "year" && current.priceCentsYearly
+                  ? `${formatPrice(current.priceCentsYearly, current.currency)}/year`
+                  : `${formatPrice(current.priceCentsMonthly, current.currency)}/month`}
               </span>
             )}
             {!internalGrant && status && status !== "active" && <Badge tone="warning" className="capitalize">{status.replace("_", " ")}</Badge>}
@@ -134,9 +144,26 @@ export default async function BillingSettings({ searchParams }: { searchParams: 
         )}
       </Card>
 
+      <nav aria-label="Billing interval" className="flex flex-wrap items-center gap-3 text-[13px]">
+        <div className="inline-flex rounded-full border p-0.5">
+          {(["month", "year"] as const).map((i) => (
+            <Link key={i} href={`?interval=${i}`} scroll={false} aria-current={interval === i ? "page" : undefined}
+              className="rounded-full px-3.5 py-1 text-muted-foreground aria-[current=page]:bg-foreground aria-[current=page]:text-background">
+              {i === "month" ? "Monthly" : "Yearly"}
+            </Link>
+          ))}
+        </div>
+        {(() => {
+          const best = Math.max(0, ...plans.map((p) => intervalPrice(p, "year").saveCents));
+          return best > 0 ? <span className={interval === "year" ? "text-signal" : "text-muted-foreground"}>Save up to {formatPrice(best, current.currency)} a year with yearly billing</span> : null;
+        })()}
+      </nav>
+
       <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-4">
         {plans.map((p, idx) => {
-          const isCurrent = p.id === current.id;
+          const isCurrent = p.id === current.id && (p.priceCentsMonthly === 0 || !subscribed || interval === currentInterval);
+          const price = intervalPrice(p, interval);
+          const rank = (x: typeof p) => x.priceCentsMonthly;
           return (
             <Card key={p.id} className={cn("lift rise relative flex flex-col overflow-hidden p-5", isCurrent && "border-signal/40 shadow-[0_0_0_1px_color-mix(in_oklab,var(--signal)_35%,transparent),0_20px_50px_-30px_color-mix(in_oklab,var(--signal)_70%,transparent)]")}
               style={{ ["--d" as string]: `${120 + idx * 60}ms` }} aria-label={`${p.name} plan`}>
@@ -146,9 +173,16 @@ export default async function BillingSettings({ searchParams }: { searchParams: 
                 {isCurrent && <Badge tone="negative">Current</Badge>}
               </div>
               <p className="relative mt-3 flex items-baseline gap-1">
-                <span className="text-[36px] font-semibold leading-none tracking-[-0.04em] tabular-nums">{p.priceCentsMonthly === 0 ? "$0" : formatPrice(p.priceCentsMonthly, p.currency)}</span>
+                <span className="text-[36px] font-semibold leading-none tracking-[-0.04em] tabular-nums">{p.priceCentsMonthly === 0 ? "$0" : formatPrice(price.perMonthCents, p.currency)}</span>
                 <span className="text-[13px] text-muted-foreground">/month</span>
               </p>
+              {p.priceCentsMonthly > 0 && (
+                <p className="relative mt-1 text-[12px] text-muted-foreground">
+                  {interval === "year" && p.priceCentsYearly
+                    ? <>{formatPrice(p.priceCentsYearly, p.currency)} billed yearly · <span className="text-signal">save {formatPrice(price.saveCents, p.currency)}</span></>
+                    : "Billed monthly"}
+                </p>
+              )}
               {p.description && <p className="relative mt-2 text-[12px] text-muted-foreground">{p.description}</p>}
               <div className="relative mt-4 grid grid-cols-2 gap-2">
                 <span className="grid rounded-xl bg-foreground/[0.04] p-2.5">
@@ -180,12 +214,15 @@ export default async function BillingSettings({ searchParams }: { searchParams: 
                   <Button variant="secondary" disabled className="w-full">Current plan</Button>
                 ) : !online || !isOwner || internalGrant ? (
                   <Button disabled className="w-full" aria-describedby="checkout-note">
-                    {p.priceCentsMonthly > current.priceCentsMonthly ? "Upgrade" : "Change plan"}
+                    {rank(p) > rank(current) ? "Upgrade" : "Change plan"}
                   </Button>
                 ) : subscribed ? (
-                  <PortalButton workspaceId={workspace.id} label={p.priceCentsMonthly === 0 ? "Cancel subscription" : p.priceCentsMonthly > current.priceCentsMonthly ? "Upgrade" : "Change plan"} />
+                  p.priceCentsMonthly === 0 ? <PortalButton workspaceId={workspace.id} label="Cancel subscription" />
+                  : priced.has(p.id) ? <ChangePlanButton workspaceId={workspace.id} planId={p.id} interval={interval}
+                      label={p.id === current.id ? `Switch to ${interval === "year" ? "yearly" : "monthly"}` : rank(p) > rank(current) ? `Upgrade to ${p.name}` : `Switch to ${p.name}`} />
+                  : <Button disabled className="w-full" aria-describedby="checkout-note">Not available yet</Button>
                 ) : p.priceCentsMonthly > 0 && priced.has(p.id) ? (
-                  <CheckoutButton workspaceId={workspace.id} planId={p.id} label={`Upgrade to ${p.name}`} />
+                  <CheckoutButton workspaceId={workspace.id} planId={p.id} interval={interval} label={`Upgrade to ${p.name}`} />
                 ) : (
                   <Button disabled className="w-full" aria-describedby="checkout-note">{p.priceCentsMonthly === 0 ? "Included" : "Not available yet"}</Button>
                 )}
@@ -198,7 +235,7 @@ export default async function BillingSettings({ searchParams }: { searchParams: 
         <div className="flex flex-wrap items-center justify-between gap-2 text-[13px]">
           <span className="text-muted-foreground">
             {sub?.cancel_at_period_end && sub.current_period_end ? `Your subscription ends on ${day(sub.current_period_end as string)}; you keep your plan until then. ` : ""}
-            Invoices, payment method and cancellation are in Stripe&apos;s billing portal.
+            Invoices, payment method and cancellation are in the Dodo Payments billing portal.
           </span>
           <div className="w-44"><PortalButton workspaceId={workspace.id} /></div>
         </div>
@@ -207,9 +244,10 @@ export default async function BillingSettings({ searchParams }: { searchParams: 
         {!online
           ? "Online payment isn't set up on this server yet, so plans can't be purchased or changed in the app. "
           : !isOwner ? "Only the workspace owner can change the plan. "
-          : stripeMode() === "test" ? "Payments are in Stripe test mode: use a test card (4242 4242 4242 4242); nothing is charged. " : ""}
-        Payments are handled by Stripe; Heardex never sees card details. Prices are in USD, billed monthly; no annual
-        plans for now.
+          : dodoMode() === "test" ? "Payments are in Dodo Payments test mode: use a test card (4242 4242 4242 4242); nothing is charged. " : ""}
+        Payments are handled by Dodo Payments, our merchant of record, which also handles sales tax and VAT; Heardex never
+        sees card details. Prices are in USD, billed monthly or yearly; mention allowances renew every month either way. Changing plan or
+        billing interval applies at once, and you pay or are credited the difference for the rest of the period.
       </p>
     </>
   );

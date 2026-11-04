@@ -30,7 +30,7 @@ function contentSecurityPolicy(nonce: string): string {
     "frame-src 'none'",
     "object-src 'none'",
     "base-uri 'self'",
-    `form-action 'self' ${supabase} https://accounts.google.com https://github.com https://x.com https://twitter.com https://api.x.com https://api.twitter.com https://checkout.stripe.com https://billing.stripe.com`,
+    `form-action 'self' ${supabase} https://accounts.google.com https://github.com https://x.com https://twitter.com https://api.x.com https://api.twitter.com https://*.dodopayments.com`,
     "frame-ancestors 'none'",
     ...(dev ? [] : ["upgrade-insecure-requests"]),
   ].join("; ");
@@ -96,6 +96,6 @@ export const config = {
     // Skip static assets and the scheduler endpoint (authenticated by its own secret).
     // Also skipped: the MCP server, OAuth endpoints and discovery documents (bearer-token or
     // public; no browser session), and the development-only routine stand-in.
-    "/((?!_next/static|_next/image|favicon.ico|api/jobs|api/mcp|api/agent/queue|api/oauth|api/dev/mock-routine|api/dev/mock-github|api/stripe/webhook|api/email/unsubscribe|\\.well-known|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/jobs|api/mcp|api/agent/queue|api/oauth|api/dev/mock-routine|api/dev/mock-github|api/dodo/webhook|api/email/unsubscribe|\\.well-known|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml)$).*)",
   ],
 };

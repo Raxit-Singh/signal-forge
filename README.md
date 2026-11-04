@@ -6,7 +6,7 @@ Social listening, buzz analytics and product intelligence for software teams: wh
 
 ## Stack
 
-Next.js 16 (App Router, Server Actions) · TypeScript · Tailwind CSS 4 · shadcn-style components on Radix · Lucide · Recharts (from M3) · Zod 4 · Supabase (Postgres, Auth, RLS) · Postgres-backed job queue driven by Supabase Cron · Stripe (M6).
+Next.js 16 (App Router, Server Actions) · TypeScript · Tailwind CSS 4 · shadcn-style components on Radix · Lucide · Recharts (from M3) · Zod 4 · Supabase (Postgres, Auth, RLS) · Postgres-backed job queue driven by Supabase Cron · Dodo Payments (subscriptions).
 
 A modular monolith: one Next.js app, one Postgres database. No extra services until something actually needs one.
 

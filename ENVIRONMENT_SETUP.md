@@ -284,13 +284,14 @@ Create an application at https://discord.com/developers/applications:
 
 Nothing to configure on the server. Each customer connects their own Play Console on the Integrations page with a Google Cloud service account JSON key invited in Play Console with "View app information", and sets the product's Google Play URL.
 
-## Stripe (subscriptions)
+## Dodo Payments (subscriptions)
 
-Test mode first:
-1. Stripe Dashboard (test mode) → Developers → API keys: copy the secret key into `STRIPE_SECRET_KEY=sk_test_…`.
-2. `node scripts/stripe-setup.ts` (dry run), then `node scripts/stripe-setup.ts --apply` — creates the Pro and Scale prices from the plans table and the billing portal configuration.
-3. Webhooks: locally `stripe listen --forward-to localhost:3000/api/stripe/webhook` prints a `whsec_…` secret for `STRIPE_WEBHOOK_SECRET`; deployed, add an endpoint `https://<site>/api/stripe/webhook` with events `checkout.session.completed`, `customer.subscription.created/updated/deleted/paused/resumed` and use its signing secret.
-4. Pay with test card 4242 4242 4242 4242. Going live repeats this with live keys (`--apply --live`) — only after the founder approves.
+Dodo Payments is the merchant of record: it sells to the customer, handles sales tax and VAT, and pays out to Heardex. Test mode first:
+1. Dodo dashboard, test mode → Developer → API Keys: create a key → `DODO_PAYMENTS_API_KEY=…`, and keep `DODO_PAYMENTS_ENVIRONMENT=test_mode`.
+2. `node scripts/dodo-setup.ts` (dry run), then `node scripts/dodo-setup.ts --apply`: creates one monthly subscription product per paid public plan at its price (from the plans table) and stores its id in `plans.dodo_product_id`.
+3. Webhooks: Developer → Webhooks → add an endpoint `https://<site>/api/dodo/webhook` with the `subscription.*` events (active, updated, renewed, plan_changed, on_hold, past_due, paused, unpaused, cancelled, expired, failed) and copy its secret (`whsec_…`) into `DODO_PAYMENTS_WEBHOOK_KEY`. Locally, `dodo wh listen` (Dodo CLI) forwards test-mode webhooks to `localhost:3000/api/dodo/webhook`.
+4. Pay with test card 4242 4242 4242 4242 (any future expiry, CVV 123); 4000 0000 0000 0002 is declined. Plan changes happen in the app (prorated at once); payment method, invoices and cancellation are in Dodo's customer portal.
+5. Going live: live-mode key and webhook secret, `DODO_PAYMENTS_ENVIRONMENT=live_mode`, then `node scripts/dodo-setup.ts --apply --live`. Only after the founder approves, and after Dodo has verified the business (it asks for terms, privacy and refund pages on the site).
 
 ## Email (Resend)
 

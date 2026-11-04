@@ -7,47 +7,50 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { failure, logServerError, type ActionState } from "@/lib/server/action-result";
 import { AuthorizationError, requireWorkspaceRole } from "@/lib/server/session";
-import { customerFor, stripe, stripeEnabled } from "@/lib/server/billing/stripe";
+import { customerFor, dodo, dodoEnabled } from "@/lib/server/billing/dodo";
 import { site } from "@/lib/server/agent/http";
 
-const checkoutSchema = z.object({ workspaceId: z.uuid(), planId: z.string().min(1).max(40) });
+const LIVE = ["active", "trialing", "past_due", "unpaid", "paused"];
+const checkoutSchema = z.object({ workspaceId: z.uuid(), planId: z.string().min(1).max(40), interval: z.enum(["month", "year"]).default("month") });
 
-/** Stripe Checkout for a paid plan (workspace owners). Existing subscriptions change plans in the billing portal. */
+/** The plan's Dodo product for the billing interval (null: not sold that way yet). */
+const productFor = (plan: { dodo_product_id: unknown; dodo_yearly_product_id: unknown }, interval: "month" | "year") =>
+  ((interval === "year" ? plan.dodo_yearly_product_id : plan.dodo_product_id) as string | null) ?? null;
+
+/** Dodo checkout for a paid plan (workspace owners). A workspace that already subscribes changes plan in place (changePlanAction). */
 export async function startCheckoutAction(_: ActionState, formData: FormData): Promise<ActionState> {
   const parsed = checkoutSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return failure("Invalid request.");
-  if (!stripeEnabled()) return failure("Online payment isn't set up on this server yet.");
+  if (!dodoEnabled()) return failure("Online payment isn't set up on this server yet.");
   let email: string | null;
   try {
     email = (await requireWorkspaceRole(parsed.data.workspaceId, "owner")).user.email ?? null;
   } catch (e) {
     return failure(e instanceof AuthorizationError ? "Only the workspace owner can change the plan." : "Not allowed.");
   }
+  if (!email) return failure("Your account needs an email address to pay.");
   const admin = createAdminClient();
   const [{ data: plan }, { data: sub }] = await Promise.all([
-    admin.from("plans").select("id, stripe_price_id, is_public").eq("id", parsed.data.planId).maybeSingle(),
+    admin.from("plans").select("id, dodo_product_id, dodo_yearly_product_id, is_public").eq("id", parsed.data.planId).maybeSingle(),
     admin.from("subscriptions").select("provider, provider_subscription_id, status").eq("workspace_id", parsed.data.workspaceId).maybeSingle(),
   ]);
-  if (!plan?.is_public || !plan.stripe_price_id) return failure("That plan can't be bought online yet.");
-  if (sub?.provider === "stripe" && sub.provider_subscription_id && ["active", "trialing", "past_due"].includes(sub.status as string)) {
-    return failure("You already have a subscription: change plans in the billing portal.");
+  const product = plan?.is_public ? productFor(plan, parsed.data.interval) : null;
+  if (!plan || !product) return failure(`That plan can't be bought ${parsed.data.interval === "year" ? "yearly" : "online"} yet.`);
+  if (sub?.provider === "dodo" && sub.provider_subscription_id && LIVE.includes(sub.status as string)) {
+    return failure("You already have a subscription: change plan from the plan cards.");
   }
-  let url: string | null;
+  let url: string;
   try {
     const customer = await customerFor(admin, parsed.data.workspaceId, email);
-    const session = await stripe().checkout.sessions.create({
-      mode: "subscription",
-      customer,
-      client_reference_id: parsed.data.workspaceId,
-      line_items: [{ price: plan.stripe_price_id as string, quantity: 1 }],
-      subscription_data: { metadata: { workspace_id: parsed.data.workspaceId } },
-      metadata: { workspace_id: parsed.data.workspaceId },
-      allow_promotion_codes: true,
-      billing_address_collection: "auto",
-      success_url: `${site()}/settings/billing?checkout=success`,
+    const session = await dodo().checkoutSessions.create({
+      product_cart: [{ product_id: product, quantity: 1 }],
+      customer: { customer_id: customer },
+      metadata: { workspace_id: parsed.data.workspaceId, plan_id: plan.id as string, interval: parsed.data.interval },
+      return_url: `${site()}/settings/billing?checkout=done`,
       cancel_url: `${site()}/settings/billing?checkout=cancelled`,
-    }, { idempotencyKey: `checkout:${parsed.data.workspaceId}:${plan.id}:${Math.floor(Date.now() / 60_000)}` });
-    url = session.url;
+      feature_flags: { allow_discount_code: true },
+    });
+    url = session.checkout_url ?? "";
   } catch (e) {
     logServerError("checkout", e);
     return failure("Couldn't start checkout. Try again in a moment.");
@@ -56,13 +59,47 @@ export async function startCheckoutAction(_: ActionState, formData: FormData): P
   redirect(url);
 }
 
+/** Moves an existing subscription to another paid plan or billing interval at once, charging or crediting the difference (prorated). */
+export async function changePlanAction(_: ActionState, formData: FormData): Promise<ActionState> {
+  const parsed = checkoutSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return failure("Invalid request.");
+  if (!dodoEnabled()) return failure("Online payment isn't set up on this server yet.");
+  try {
+    await requireWorkspaceRole(parsed.data.workspaceId, "owner");
+  } catch (e) {
+    return failure(e instanceof AuthorizationError ? "Only the workspace owner can change the plan." : "Not allowed.");
+  }
+  const admin = createAdminClient();
+  const [{ data: plan }, { data: sub }] = await Promise.all([
+    admin.from("plans").select("id, name, dodo_product_id, dodo_yearly_product_id, is_public").eq("id", parsed.data.planId).maybeSingle(),
+    admin.from("subscriptions").select("provider, provider_subscription_id, status, plan_id").eq("workspace_id", parsed.data.workspaceId).maybeSingle(),
+  ]);
+  const product = plan?.is_public ? productFor(plan, parsed.data.interval) : null;
+  if (!plan || !product) return failure(`That plan can't be bought ${parsed.data.interval === "year" ? "yearly" : "online"} yet.`);
+  if (sub?.provider !== "dodo" || !sub.provider_subscription_id || !LIVE.includes(sub.status as string)) return failure("There's no subscription to change: choose a plan first.");
+  const every = parsed.data.interval === "year" ? "yearly" : "monthly";
+  try {
+    const current = await dodo().subscriptions.retrieve(sub.provider_subscription_id as string);
+    if (current.product_id === product) return { status: "error", message: `You're already on ${plan.name}, billed ${every}.` };
+    await dodo().subscriptions.changePlan(sub.provider_subscription_id as string, {
+      product_id: product, quantity: 1, proration_billing_mode: "prorated_immediately",
+    });
+  } catch (e) {
+    logServerError("changePlan", e);
+    return failure("Couldn't change the plan. Nothing was charged; try again in a moment.");
+  }
+  // The plan itself changes when Dodo confirms it (subscription.plan_changed webhook).
+  revalidatePath("/settings/billing");
+  return { status: "success", message: `Switching to ${plan.name}, billed ${every}. It applies as soon as the payment goes through, usually within seconds.` };
+}
+
 const portalSchema = z.object({ workspaceId: z.uuid() });
 
-/** Stripe's billing portal: change plan, update the card, see invoices, cancel. */
+/** Dodo's customer portal: payment method, invoices, cancellation. */
 export async function openBillingPortalAction(_: ActionState, formData: FormData): Promise<ActionState> {
   const parsed = portalSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return failure("Invalid request.");
-  if (!stripeEnabled()) return failure("Online payment isn't set up on this server yet.");
+  if (!dodoEnabled()) return failure("Online payment isn't set up on this server yet.");
   try {
     await requireWorkspaceRole(parsed.data.workspaceId, "owner");
   } catch {
@@ -72,12 +109,7 @@ export async function openBillingPortalAction(_: ActionState, formData: FormData
   if (!sub?.provider_customer_id) return failure("There's no billing account yet: choose a plan first.");
   let url: string;
   try {
-    // The configuration scripts/stripe-setup.ts created (plan switching between Heardex prices); else the account default.
-    const configs = await stripe().billingPortal.configurations.list({ active: true, limit: 20 });
-    const configuration = configs.data.filter((c) => c.metadata?.app === "signalforge").sort((a, b) => b.created - a.created)[0]?.id;
-    url = (await stripe().billingPortal.sessions.create({
-      customer: sub.provider_customer_id as string, return_url: `${site()}/settings/billing`, ...(configuration ? { configuration } : {}),
-    })).url;
+    url = (await dodo().customers.customerPortal.create(sub.provider_customer_id as string, { return_url: `${site()}/settings/billing` })).link;
   } catch (e) {
     logServerError("portal", e);
     return failure("Couldn't open the billing portal. Try again in a moment.");

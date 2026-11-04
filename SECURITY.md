@@ -11,10 +11,10 @@ What was checked, what was changed, and what still needs a human before real cus
 - Secrets (data-source keys, Google Play keys, routine tokens) are AES-256-GCM encrypted per workspace, decrypted only at use, never returned to the browser or logged. Token hashes (invitations, OAuth) are stored, not tokens.
 
 **Web**
-- Content Security Policy with a per-request nonce and `strict-dynamic` (no `unsafe-eval` in production; inline styles allowed for charts); `frame-ancestors 'none'`, `object-src 'none'`, `base-uri 'self'`, `form-action` limited to SignalForge, Supabase Auth, the Google, GitHub and X sign-in pages, Stripe and Discord. No violations on the main pages in development or a production build.
+- Content Security Policy with a per-request nonce and `strict-dynamic` (no `unsafe-eval` in production; inline styles allowed for charts); `frame-ancestors 'none'`, `object-src 'none'`, `base-uri 'self'`, `form-action` limited to SignalForge, Supabase Auth, the Google, GitHub and X sign-in pages, Dodo Payments and Discord. No violations on the main pages in development or a production build.
 - HSTS (2 years, preload), `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`; `poweredByHeader` off.
 - Server actions reject cross-origin POSTs (Next.js); redirects after sign-in use `safeRedirectPath` (same-origin paths only).
-- Inbound webhooks and callbacks verify signatures or signed state: Stripe (signature over the raw body, 5-minute tolerance, idempotent per event), Discord and GitHub installs (HMAC state bound to the user + code exchange), scheduler (`JOBS_TICK_SECRET`, constant-time compare), unsubscribe links (HMAC; GET only confirms).
+- Inbound webhooks and callbacks verify signatures or signed state: Dodo Payments (Standard Webhooks signature over the raw body, 5-minute tolerance, idempotent per webhook id), Discord and GitHub installs (HMAC state bound to the user + code exchange), scheduler (`JOBS_TICK_SECRET`, constant-time compare), unsubscribe links (HMAC; GET only confirms).
 - No server-side fetch of user-supplied URLs except Claude routine URLs, which must match Anthropic's documented pattern.
 - Email templates escape all user- and post-derived text; subjects are single-line; reports' CSV export neutralises spreadsheet formulas.
 
@@ -31,7 +31,7 @@ What was checked, what was changed, and what still needs a human before real cus
 
 ## Needs a human before launch
 1. **Supabase Auth**: turn on *Leaked password protection* (Authentication → Passwords; flagged by the advisor), set the minimum password length to at least 10 to match the app, require email confirmation, and configure custom SMTP (Resend) so auth emails aren't rate-limited.
-2. **Secrets for production**: new values for `CREDENTIALS_ENCRYPTION_KEY`, `JOBS_TICK_SECRET`, Stripe live keys and webhook secret, Resend key — none of the development values.
+2. **Secrets for production**: new values for `CREDENTIALS_ENCRYPTION_KEY`, `JOBS_TICK_SECRET`, Dodo Payments live key and webhook secret, Resend key — none of the development values.
 3. **Staff list**: set `SIGNALFORGE_STAFF_EMAILS` to the founder's account only.
 4. **Hosting**: commercial-use hosting (Vercel Pro or equivalent), HTTPS only, Supabase project on a paid plan (free projects pause).
 5. **External review**: a penetration test / dependency audit once deployed (`npm audit` reports 0 production vulnerabilities today).

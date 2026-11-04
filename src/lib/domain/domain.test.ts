@@ -5,7 +5,7 @@ import {
   normalizeWebsiteUrl, parseGithubRepo, parseAppStoreUrl, parsePlayStoreUrl, safeRedirectPath,
 } from "./urls.ts";
 import { suggestAliases, isAmbiguousTerm, isAmbiguousCustomTerm, splitWords, contextKeywords, ensureBrandTerm, retargetBrandAliases } from "./aliases.ts";
-import { checkKeywordLimit, checkProductLimit, effectivePlanId, formatPrice, mentionUsageLevel, planFromRow, planLimitMessage, usageFromRpc } from "./plans.ts";
+import { checkKeywordLimit, checkProductLimit, effectivePlanId, formatPrice, intervalPrice, mentionUsageLevel, planFromRow, planLimitMessage, usageFromRpc } from "./plans.ts";
 import { fitSuggestionsToAllowance } from "./keyword-allowance.ts";
 import { checkKeyShape, keyHint } from "./ai-providers.ts";
 import { INTEGRATIONS } from "./integrations.ts";
@@ -277,4 +277,10 @@ test("retargetBrandAliases follows a product rename and a new website", () => {
   // Old name wasn't a keyword: the new name is still added as the brand term.
   const add = retargetBrandAliases([before[2]!], { name: "Erly", domain: null }, { name: "toing", domain: null });
   assert.equal(add.aliases[0]!.term, "toing");
+});
+
+test("yearly billing: price a month, a year, and the saving over twelve monthly payments", () => {
+  assert.deepEqual(intervalPrice({ priceCentsMonthly: 12000, priceCentsYearly: 120000 }, "year"), { perMonthCents: 10000, perYearCents: 120000, saveCents: 24000 });
+  assert.deepEqual(intervalPrice({ priceCentsMonthly: 12000, priceCentsYearly: 120000 }, "month"), { perMonthCents: 12000, perYearCents: 144000, saveCents: 0 });
+  assert.deepEqual(intervalPrice({ priceCentsMonthly: 0, priceCentsYearly: null }, "year"), { perMonthCents: 0, perYearCents: 0, saveCents: 0 });
 });

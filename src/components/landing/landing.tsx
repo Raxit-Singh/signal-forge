@@ -2,6 +2,7 @@ import Link from "next/link";
 import localFont from "next/font/local";
 import type { Plan } from "@/lib/domain/plans";
 import { HeardexMark } from "./hero";
+import { LEGAL, LEGAL_PAGES } from "@/lib/legal";
 import { HeroBackground } from "./backgrounds";
 import { IntroLock } from "./intro-lock";
 import { Pricing } from "./pricing";
@@ -62,6 +63,12 @@ export function Landing({ signedIn, plans }: { signedIn: boolean; plans: Plan[] 
         <Scenario />
         <Pricing plans={plans} start={start} />
       </main>
+      <footer className="hx-frame mx-auto flex max-w-[1560px] flex-wrap items-center justify-between gap-4 border-t border-white/10 py-8 text-[14px] text-[var(--muted)]">
+        <p>© 2026 {LEGAL.product} · {LEGAL.operator}, {LEGAL.country} · <a href={`mailto:${LEGAL.email}`} className="hx-link">{LEGAL.email}</a></p>
+        <nav aria-label="Legal" className="flex gap-5">
+          {LEGAL_PAGES.map((p) => <Link key={p.href} href={p.href} className="hx-link">{p.label}</Link>)}
+        </nav>
+      </footer>
     </div>
   );
 }

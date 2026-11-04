@@ -802,3 +802,34 @@
 .hx-plan-stat b { color: var(--ink); font-size: 22px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .hx-plan-tick { flex: none; width: 16px; height: 16px; margin-top: 4px; fill: none; stroke: var(--red); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .hx-nav.is-quiet { border: 1px solid var(--line); color: var(--ink); }
+
+/* Monthly / yearly switch: a pill slides under the chosen side. */
+.hx-switch { position: relative; display: inline-grid; grid-template-columns: 1fr 1fr; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: var(--field-1); }
+.hx-switch button { position: relative; z-index: 1; height: 36px; padding: 0 20px; border-radius: 999px; color: var(--muted); font-size: 15px; font-weight: 500; transition: color 200ms ease; }
+.hx-switch button[aria-pressed="true"] { color: var(--ground); }
+.hx-switch button:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+.hx-switch-pill { position: absolute; inset: 4px auto 4px 4px; width: calc(50% - 4px); border-radius: 999px; background: var(--ink);
+  transition: transform 320ms cubic-bezier(0.32, 0.72, 0, 1); }
+.hx-switch[data-interval="year"] .hx-switch-pill { transform: translateX(100%); }
+.hx-save { font-size: 15px; color: var(--muted); transition: color 200ms ease; }
+.hx-save.is-on { color: var(--red); }
+.hx-plan-off { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); font-size: 12px; font-weight: 500;
+  transition: color 200ms ease, border-color 200ms ease, background-color 200ms ease; }
+.hx-plan-off.is-on { color: var(--red); border-color: rgb(255 59 47 / 0.45); background: rgb(255 59 47 / 0.1); }
+
+/* The border glows red where the pointer is, and a little light spills inside (--mx/--my from pricing.tsx). */
+.hx-plan-glow { position: absolute; inset: -1px; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity 300ms ease; }
+.hx-plan-glow::before, .hx-plan-glow::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+/* The lit border: a red spot masked to a 1.5px ring. */
+.hx-plan-glow::before { padding: 1.5px;
+  background: radial-gradient(300px circle at var(--mx, 50%) var(--my, 0), #ff6a5f, rgb(255 59 47 / 0.55) 30%, transparent 65%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
+/* Its glow: the same spot, blurred, outside the card, and a faint wash inside. */
+.hx-plan-glow::after { inset: -1px; z-index: -1; filter: blur(14px);
+  background: radial-gradient(220px circle at var(--mx, 50%) var(--my, 0), rgb(255 59 47 / 0.35), transparent 70%); }
+.hx-plan { isolation: isolate; }
+.hx-plan-glow { background: radial-gradient(480px circle at var(--mx, 50%) var(--my, 0), rgb(255 59 47 / 0.1), transparent 60%); }
+.hx-plans:hover .hx-plan-glow { opacity: 1; }
+.hx-plan > :not(.hx-plan-glow) { position: relative; }
+@media (hover: none) { .hx-plan-glow { display: none; } }
+@media (prefers-reduced-motion: reduce) { .hx-switch-pill, .hx-plan-glow { transition: none; } }
