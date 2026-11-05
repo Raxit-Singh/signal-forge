@@ -5,14 +5,14 @@ import { AlertTriangle } from "lucide-react";
 import { Logo } from "@/components/brand";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/primitives";
 import { SubmitButton } from "@/components/ui/form";
-import { authorizeSchema, clientRedirect, parseScopes, redirectMatches, resourceUrl, SCOPES } from "@/lib/agent/oauth";
+import { appForRedirect, authorizeSchema, clientRedirect, isLocalRedirect, parseScopes, redirectMatches, resourceUrl, SCOPES } from "@/lib/agent/oauth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getClient } from "@/lib/server/agent/oauth-store";
 import { site } from "@/lib/server/agent/http";
 import { getUser, getWorkspaces, hasRole } from "@/lib/server/session";
 import { decideAuthorizationAction } from "./actions";
 
-export const metadata: Metadata = { title: "Connect Claude to Heardex" };
+export const metadata: Metadata = { title: "Connect an AI app to Heardex" };
 
 const SCOPE_TEXT: Record<string, string> = {
   [SCOPES.read]: "Read this workspace's products, prioritised feedback issues, their evidence and spike analyses",
@@ -45,10 +45,10 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
   if (!user) redirect(`/login?next=${encodeURIComponent(`/oauth/authorize?${new URLSearchParams(sp as Record<string, string>).toString()}`)}`);
   const parsed = authorizeSchema.safeParse(sp);
   // Errors before the client and redirect are verified are shown here, never redirected (RFC 6749 §4.1.2.1).
-  if (!parsed.success) return <Problem text="The connection request is incomplete or malformed. Start again from Claude." />;
+  if (!parsed.success) return <Problem text="The connection request is incomplete or malformed. Start again from the app you were connecting." />;
   const req = parsed.data;
   const client = await getClient(createAdminClient(), req.client_id);
-  if (!client || !redirectMatches(client.redirect_uris, req.redirect_uri)) return <Problem text="This connection request didn't come from a registered Claude client." />;
+  if (!client || !redirectMatches(client.redirect_uris, req.redirect_uri)) return <Problem text="This connection request didn't come from a registered app." />;
   if (req.resource && req.resource.replace(/\/$/, "") !== resourceUrl(site())) {
     redirect(clientRedirect(req.redirect_uri, { error: "invalid_target", error_description: "Unknown resource.", state: req.state }));
   }
@@ -57,26 +57,28 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
 
   const workspaces = (await getWorkspaces()).filter((w) => hasRole(w.role, "member"));
   const host = new URL(req.redirect_uri).host;
-  const loopback = /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host);
+  const local = isLocalRedirect(req.redirect_uri);
+  const app = appForRedirect(req.redirect_uri);
+  const App = app.charAt(0).toUpperCase() + app.slice(1);
 
   return (
     <Shell>
       <Card>
         <CardHeader>
-          <CardTitle>Connect {client.client_name} to Heardex</CardTitle>
+          <CardTitle>Connect {app} to Heardex</CardTitle>
           <CardDescription>
-            Signed in as {user!.email}. After you approve, you&apos;ll be sent back to <span className="font-medium text-foreground">{host}</span>.
+            Signed in as {user!.email}. The app calls itself “{client.client_name}”. After you approve, you&apos;ll be sent back to <span className="font-medium text-foreground">{host}</span>.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 text-[13px]">
-          {loopback && (
+          {local && (
             <p className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 p-2 text-xs">
               <AlertTriangle className="mt-px size-3.5 shrink-0 text-warning" aria-hidden />
-              This returns to a program on your own computer (Claude Code). Only approve if you just started this connection yourself.
+              This returns to a program on your own computer, such as Claude Code, Cursor or VS Code. Only approve if you just started this connection yourself.
             </p>
           )}
           {workspaces.length === 0 ? (
-            <p>You need to be a member (not a viewer) of a workspace to connect Claude.</p>
+            <p>You need to be a member (not a viewer) of a workspace to connect an app.</p>
           ) : (
             <form action={decideAuthorizationAction} className="grid gap-4">
               {Object.entries(req).map(([k, v]) => (v === undefined ? null : <input key={k} type="hidden" name={k} value={String(v)} />))}
@@ -85,10 +87,10 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
                 <select name="workspace_id" className="h-9 rounded-md border bg-surface px-2" defaultValue={workspaces[0]!.id}>
                   {workspaces.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
                 </select>
-                <span className="text-xs text-muted-foreground">Claude can only see this workspace. You can disconnect it any time in Settings → Developer agent.</span>
+                <span className="text-xs text-muted-foreground">{App} can only see this workspace. You can disconnect it any time in Settings → Developer agent.</span>
               </label>
               <div className="grid gap-1">
-                <span className="font-medium">Claude will be able to</span>
+                <span className="font-medium">{App} will be able to</span>
                 <ul className="list-disc pl-5 text-muted-foreground">{scopes!.map((s) => <li key={s}>{SCOPE_TEXT[s]}</li>)}</ul>
                 <span className="text-xs text-muted-foreground">It can&apos;t change your settings, see other workspaces, see API keys, or start code changes on its own: implementation always needs your approval in Heardex.</span>
               </div>

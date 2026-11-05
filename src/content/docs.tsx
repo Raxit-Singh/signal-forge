@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { formatPrice, intervalPrice, type Plan } from "@/lib/domain/plans";
 import { Shot } from "@/components/marketing/shot";
+import { LEGAL } from "@/lib/legal";
 
 export interface DocContext { plans: Plan[]; mcpUrl: string }
 export interface Doc {
@@ -18,7 +19,7 @@ const every = (m: number) => (m >= 10080 ? "once a week" : m >= 1440 ? "once a d
 const A = ({ href, children }: { href: string; children: React.ReactNode }) => <Link href={href}>{children}</Link>;
 
 /** Platforms, as the source adapters and their collection profiles define them (src/lib/sources). */
-const FREE_PLATFORMS: Array<[string, string, string]> = [
+export const FREE_PLATFORMS: Array<[string, string, string]> = [
   ["Hacker News", "Stories and comments that contain a keyword", "Full archive"],
   ["GitHub", "Public issues with a keyword in the title or body", "Full history (up to 1,000 results per search, older ones reached by narrowing the dates)"],
   ["Stack Overflow", "Questions and answers", "Full history"],
@@ -26,7 +27,7 @@ const FREE_PLATFORMS: Array<[string, string, string]> = [
   ["DEV", "Articles tagged with a keyword, and their comments", "Newest 100 articles per tag"],
   ["App Store", "Reviews of your app (from its App Store link)", "Most recent reviews (Apple's feed holds up to 500)"],
 ];
-const PAID_PLATFORMS: Array<[string, string, string]> = [
+export const PAID_PLATFORMS: Array<[string, string, string]> = [
   ["Reddit", "Posts and comments", "Posts up to 12 months back (240 per search); the newest 250 comments per search"],
   ["X", "Posts, replies and quotes", "By date range, in whole days; very busy days can't be read completely"],
   ["LinkedIn", "Public posts", "Last 30 days"],
@@ -300,11 +301,17 @@ export const DOCS: Doc[] = [
   {
     slug: "claude",
     group: "Insights",
-    title: "Heardex for Claude (MCP)",
-    description: "Connect Claude, Claude Code or another MCP client to read your feedback and investigate issues.",
-    Body: ({ mcpUrl }) => (
+    title: "Connect Claude, ChatGPT, Cursor and more (MCP)",
+    description: "Connect Claude, Claude Code, ChatGPT, Cursor, VS Code or another MCP client to read your feedback and investigate issues.",
+    Body: ({ mcpUrl }) => {
+      const cursorConfig = btoa(JSON.stringify({ url: mcpUrl }));
+      const cursorInstall = `https://cursor.com/en/install-mcp?name=heardex&config=${encodeURIComponent(cursorConfig)}`;
+      const vscodeInstall = `vscode:mcp/install?${encodeURIComponent(JSON.stringify({ name: "heardex", type: "http", url: mcpUrl }))}`;
+      return (
       <>
-        <p>The Heardex connector lets Claude read your workspace&apos;s products, issues, the posts behind them and spike analysis. It&apos;s read-only: Claude can&apos;t change anything in Heardex. It&apos;s included on every plan; Claude usage counts toward your own Claude plan.</p>
+        <p>The Heardex connector lets an AI app read your workspace&apos;s products, issues, the posts behind them and spike analysis. It can&apos;t change your settings or your data. The only things it can write are investigation reports and progress updates for developer-agent tasks you start yourself. It&apos;s included on every plan; the AI app&apos;s usage counts toward your own plan with that app.</p>
+        <p>Every app uses the same address, and signs in to Heardex the same way: you approve one workspace, and the app can only see that workspace.</p>
+        <pre><code>{mcpUrl}</code></pre>
         <h2>Claude on the web and the desktop app</h2>
         <Shot shot="claude" spots={[
           { x: 34.9, y: 66.3, at: [26.5, 69], label: "Settings → Claude.", text: "Where the connector lives." },
@@ -313,23 +320,40 @@ export const DOCS: Doc[] = [
         ]} />
         <ol>
           <li>In Heardex, open Settings → Claude and click Connect Claude. Copy the address it shows, add it in Claude as a custom connector, then approve access for your workspace.</li>
-          <li>Or add it by hand: in Claude, go to Customize → Connectors → Add → Custom connector and paste the URL below. Leave the advanced OAuth settings empty.</li>
+          <li>Or add it by hand: in Claude, go to Customize → Connectors → Add → Custom connector and paste the address above. Leave the advanced OAuth settings empty.</li>
         </ol>
-        <pre><code>{mcpUrl}</code></pre>
         <p>On Claude Team and Enterprise plans, an owner adds the connector for the organization first, then each member connects it. Free Claude plans can add one custom connector.</p>
         <h2>Claude Code</h2>
         <pre><code>{`claude mcp add --transport http heardex ${mcpUrl}`}</code></pre>
         <p>Then run <code>/mcp</code> in Claude Code to sign in to Heardex.</p>
+        <h2>ChatGPT</h2>
+        <ol>
+          <li>In ChatGPT, open Settings → Apps &amp; Connectors → Advanced settings and turn on Developer mode. This needs a paid ChatGPT plan, and on Business and Enterprise plans an admin may have to allow it.</li>
+          <li>Back in Apps &amp; Connectors, click Create. Name it Heardex, paste the address above, choose OAuth, and save.</li>
+          <li>Sign in to Heardex when asked and approve your workspace. In a new chat, add Heardex from the + menu.</li>
+        </ol>
+        <h2>Cursor</h2>
+        <p><a href={cursorInstall}>Add Heardex to Cursor</a>, or add it to <code>~/.cursor/mcp.json</code> yourself:</p>
+        <pre><code>{JSON.stringify({ mcpServers: { heardex: { url: mcpUrl } } }, null, 2)}</code></pre>
+        <p>Then open Cursor Settings → MCP and click Connect next to Heardex to sign in.</p>
+        <h2>VS Code (GitHub Copilot)</h2>
+        <p><a href={vscodeInstall}>Add Heardex to VS Code</a>, or add it to <code>.vscode/mcp.json</code> in your project:</p>
+        <pre><code>{JSON.stringify({ servers: { heardex: { type: "http", url: mcpUrl } } }, null, 2)}</code></pre>
+        <p>Start the server from the file or the MCP view, sign in to Heardex, then use it from Copilot Chat in agent mode.</p>
         <h2>Other MCP clients</h2>
-        <p>Clients that support remote MCP servers with OAuth sign-in can connect with the same URL.</p>
-        <h2>What Claude can read</h2>
+        <p>Any client that supports remote MCP servers over Streamable HTTP with OAuth sign-in can connect with the same address, as long as it signs in through a callback Heardex recognises: one of the apps above, or a loopback address on your own computer. If an app is refused, email <a href={`mailto:${LEGAL.email}`}>{LEGAL.email}</a> and say which one.</p>
+        <p>To check the connection on its own, run <code>npx @modelcontextprotocol/inspector</code>, choose Streamable HTTP, paste the address and connect. It signs in the same way and lists the tools.</p>
+        <h2>What the app can read</h2>
         <ul>
           <li><code>get_product_context</code>: your products, websites, aliases and competitors</li>
           <li><code>get_feedback_issues</code>: issues, highest priority first</li>
           <li><code>get_issue_details</code> and <code>get_issue_evidence</code>: one issue and the posts behind it</li>
           <li><code>get_issue_priority</code>: how its priority was decided, measured facts apart from AI inferences</li>
           <li><code>get_spike_analysis</code>: recent spikes and their explanations</li>
+          <li><code>get_implementation_context</code>: what a coding agent needs about one issue</li>
         </ul>
+        <h2>What it can write</h2>
+        <p>Only for developer-agent tasks you start in Heardex: <code>get_agent_task</code> picks one up, <code>submit_investigation_report</code> sends its report back for you to review, and <code>report_implementation_status</code> reports progress on a plan you approved. Nothing is implemented without your approval.</p>
         <h2>Things to ask</h2>
         <ul>
           <li>“What are the top complaints about my product this week?”</li>
@@ -337,9 +361,10 @@ export const DOCS: Doc[] = [
           <li>“Which platforms talk about us the most?”</li>
         </ul>
         <h2>Revoking access</h2>
-        <p>Settings → Claude lists every Claude account approved for the workspace. Revoke one, or disconnect, and access stops at once.</p>
+        <p>Settings → Claude lists every app approved for the workspace. Revoke one, or disconnect, and access stops at once.</p>
       </>
-    ),
+      );
+    },
   },
   {
     slug: "billing",

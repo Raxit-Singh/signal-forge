@@ -4,9 +4,10 @@
 // building/authentication): RFC 9728 protected-resource metadata, RFC 8414
 // authorization-server metadata, Dynamic Client Registration (RFC 7591), S256 PKCE,
 // rotating refresh tokens for public clients, form-encoded token requests, and a
-// 401 with a resource_metadata pointer. Redirect URIs are limited to Claude's hosted
-// callback and Claude Code's loopback callback (port-agnostic), so the connector can
-// only be used from Claude.
+// 401 with a resource_metadata pointer. Redirect URIs are limited to the known
+// callbacks of the MCP clients we support (Claude, ChatGPT, Cursor, VS Code) and
+// loopback callbacks on this computer (port-agnostic), so a registered client can
+// only send its codes to one of those apps.
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
@@ -22,7 +23,23 @@ export const CODE_TTL_SECONDS = 600;
 
 export const CLAUDE_CALLBACKS = ["https://claude.ai/api/mcp/auth_callback", "https://claude.com/api/mcp/auth_callback"];
 
-/** Loopback redirect used by Claude Code (any port, path /callback). */
+/** Fixed callbacks of the hosted MCP clients we support. */
+export const CLIENT_CALLBACKS = [
+  ...CLAUDE_CALLBACKS,
+  // ChatGPT (older connectors; newer ones get a per-app URL, matched below).
+  "https://chatgpt.com/connector_platform_oauth_redirect",
+  // Cursor: cloud agents, and the desktop app's older custom-scheme callback.
+  "https://www.cursor.com/agents/mcp/oauth/callback",
+  "cursor://anysphere.cursor-mcp/oauth/callback",
+  // VS Code (GitHub Copilot) on the desktop and the web.
+  "https://vscode.dev/redirect",
+  "https://insiders.vscode.dev/redirect",
+];
+
+/** ChatGPT's per-app callback, https://chatgpt.com/connector/oauth/<id>. */
+const CHATGPT_APP_CALLBACK = /^https:\/\/chatgpt\.com\/connector\/oauth\/[A-Za-z0-9_-]{1,100}$/;
+
+/** Loopback redirect used by desktop clients (any port). */
 function loopback(uri: string): { host: string; path: string } | null {
   try {
     const u = new URL(uri);
@@ -36,9 +53,25 @@ function loopback(uri: string): { host: string; path: string } | null {
 
 /** Redirect URIs a client may register. */
 export function isAllowedRedirect(uri: string): boolean {
-  if (CLAUDE_CALLBACKS.includes(uri)) return true;
+  if (CLIENT_CALLBACKS.includes(uri) || CHATGPT_APP_CALLBACK.test(uri)) return true;
   const l = loopback(uri);
-  return !!l && l.path === "/callback";
+  // Any path on a loopback address (RFC 8252 §7.3): Claude Code and Cursor use /callback, VS Code /,
+  // MCP Inspector /oauth/callback. The code only ever reaches a program on the user's own computer.
+  return !!l && new URL(uri).search === "";
+}
+
+/** True when the redirect returns to a program on the user's own computer. */
+export function isLocalRedirect(uri: string): boolean {
+  return !!loopback(uri) || uri.startsWith("cursor://");
+}
+
+/** The app a redirect returns to, named from the redirect itself (client_name is self-asserted). */
+export function appForRedirect(uri: string): string {
+  if (CLAUDE_CALLBACKS.includes(uri)) return "Claude";
+  if (uri === "https://chatgpt.com/connector_platform_oauth_redirect" || CHATGPT_APP_CALLBACK.test(uri)) return "ChatGPT";
+  if (uri.startsWith("cursor://") || uri.startsWith("https://www.cursor.com/")) return "Cursor";
+  if (uri.startsWith("https://vscode.dev/") || uri.startsWith("https://insiders.vscode.dev/")) return "VS Code";
+  return "an app on your computer";
 }
 
 /** Does a requested redirect match a registered one? Exact, except loopback ports (RFC 8252 §7.3). */
@@ -127,7 +160,7 @@ export function validateRegistration(body: unknown): { ok: true; name: string; r
     return { ok: false, err: { error: "invalid_client_metadata", error_description: "Only the code response type is supported." } };
   }
   const bad = d.redirect_uris.find((u) => !isAllowedRedirect(u));
-  if (bad) return { ok: false, err: { error: "invalid_redirect_uri", error_description: "Heardex's MCP server only accepts Claude's callback URLs." } };
+  if (bad) return { ok: false, err: { error: "invalid_redirect_uri", error_description: "Heardex's MCP server only accepts the callback URLs of supported apps (Claude, ChatGPT, Cursor, VS Code) or a loopback address on this computer." } };
   return { ok: true, name: d.client_name ?? "MCP client", redirectUris: [...new Set(d.redirect_uris)] };
 }
 

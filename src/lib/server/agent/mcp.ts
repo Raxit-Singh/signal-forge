@@ -33,13 +33,29 @@ async function clusterInWorkspace(admin: SupabaseClient, who: McpPrincipal, issu
   return data;
 }
 
+/** Human-readable tool names, shown by MCP clients and directories. */
+const TITLES: Record<string, string> = {
+  get_product_context: "Get products",
+  get_feedback_issues: "List feedback issues",
+  get_issue_details: "Get issue details",
+  get_issue_evidence: "Get issue evidence",
+  get_issue_priority: "Explain issue priority",
+  get_spike_analysis: "Get spike analysis",
+  get_implementation_context: "Get implementation context",
+  get_agent_task: "Get developer-agent task",
+  submit_investigation_report: "Submit investigation report",
+  report_implementation_status: "Report implementation status",
+};
+
 export function buildMcpServer(admin: SupabaseClient, who: McpPrincipal): McpServer {
   const server = new McpServer({ name: "heardex", version: "1.0.0" }, {
     instructions: "Heardex product intelligence for one workspace: products, prioritised feedback issues with evidence, spikes, and developer-agent tasks. " + UNTRUSTED,
   });
   const has = (scope: string) => who.scopes.includes(scope);
   const tool = <S extends z.ZodRawShape>(name: string, description: string, input: S, scope: string, run: (args: z.infer<z.ZodObject<S>>) => Promise<unknown>, readOnly = true) => {
-    server.registerTool(name, { description, inputSchema: input, annotations: { readOnlyHint: readOnly, openWorldHint: false } }, (async (args: z.infer<z.ZodObject<S>>) => {
+    const title = TITLES[name] ?? name;
+    // Write tools only add reports and status to tasks the user started; they never delete or overwrite data.
+    server.registerTool(name, { title, description, inputSchema: input, annotations: { title, readOnlyHint: readOnly, destructiveHint: false, idempotentHint: readOnly, openWorldHint: false } }, (async (args: z.infer<z.ZodObject<S>>) => {
       if (!has(scope)) return fail(`This connection wasn't granted the ${scope} scope.`);
       try {
         const out = await run(args);

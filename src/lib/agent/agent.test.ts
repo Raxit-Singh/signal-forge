@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { createHash, createVerify, generateKeyPairSync, randomBytes } from "node:crypto";
 
 import {
-  authorizationServerMetadata, authorizeSchema, clientRedirect, hashToken, isAllowedRedirect, parseScopes, protectedResourceMetadata,
+  appForRedirect, authorizationServerMetadata, authorizeSchema, clientRedirect, hashToken, isAllowedRedirect, isLocalRedirect, parseScopes, protectedResourceMetadata,
   redirectMatches, validateRegistration, verifyPkce, wwwAuthenticate, SCOPES,
 } from "./oauth.ts";
 import { signState, verifyState } from "./signed-state.ts";
@@ -23,17 +23,35 @@ import {
 const SITE = "https://app.signalforge.test";
 
 // ---------------------------------------------------------------- OAuth
-test("redirects: only Claude's hosted callback and Claude Code loopback (any port, /callback)", () => {
-  assert.ok(isAllowedRedirect("https://claude.ai/api/mcp/auth_callback"));
-  assert.ok(isAllowedRedirect("https://claude.com/api/mcp/auth_callback"));
-  assert.ok(isAllowedRedirect("http://localhost:3118/callback"));
-  assert.ok(isAllowedRedirect("http://127.0.0.1:50000/callback"));
-  for (const bad of ["https://evil.example/cb", "http://claude.ai/api/mcp/auth_callback", "http://localhost:3118/other", "https://claude.ai/api/mcp/auth_callback/x", "http://user:pw@localhost:1/callback", "javascript:alert(1)"]) {
-    assert.equal(isAllowedRedirect(bad), false, bad);
-  }
+test("redirects: supported apps' callbacks and loopback (any port, any path)", () => {
+  for (const good of [
+    "https://claude.ai/api/mcp/auth_callback", "https://claude.com/api/mcp/auth_callback",
+    "https://chatgpt.com/connector_platform_oauth_redirect", "https://chatgpt.com/connector/oauth/abc_DEF-123",
+    "https://www.cursor.com/agents/mcp/oauth/callback", "cursor://anysphere.cursor-mcp/oauth/callback",
+    "https://vscode.dev/redirect", "https://insiders.vscode.dev/redirect",
+    "http://localhost:3118/callback", "http://127.0.0.1:50000/callback", "http://localhost:8787/callback",
+    "http://127.0.0.1:33418/", "http://127.0.0.1:33418", "http://localhost:6274/oauth/callback",
+  ]) assert.ok(isAllowedRedirect(good), good);
+  for (const bad of [
+    "https://evil.example/cb", "http://claude.ai/api/mcp/auth_callback", "https://localhost:3118/callback", "https://claude.ai/api/mcp/auth_callback/x",
+    "http://user:pw@localhost:1/callback", "javascript:alert(1)", "http://localhost:1/?next=x", "http://localhost:1/callback#x",
+    "https://chatgpt.com/connector/oauth/", "https://chatgpt.com/connector/oauth/a/b", "https://chatgpt.com.evil.example/connector/oauth/a",
+    "https://chatgpt.com/connector/oauth/a?x=1", "cursor://anysphere.cursor-mcp/oauth/other", "https://vscode.dev/redirect/x", "http://vscode.dev/redirect",
+    "http://192.168.1.2:1/callback", "https://cursor.com/agents/mcp/oauth/callback",
+  ]) assert.equal(isAllowedRedirect(bad), false, bad);
   assert.ok(redirectMatches(["http://localhost/callback"], "http://localhost:4567/callback"), "loopback port-agnostic");
+  assert.ok(redirectMatches(["http://127.0.0.1:33418/"], "http://127.0.0.1:40000/"), "VS Code loopback port-agnostic");
+  assert.equal(redirectMatches(["http://127.0.0.1:33418/"], "http://127.0.0.1:40000/callback"), false, "path must match");
   assert.equal(redirectMatches(["http://localhost/callback"], "http://127.0.0.1:4567/callback"), false, "host must match");
   assert.equal(redirectMatches(["https://claude.ai/api/mcp/auth_callback"], "https://claude.ai/api/mcp/auth_callback?x=1"), false, "exact for https");
+  assert.equal(redirectMatches(["https://chatgpt.com/connector/oauth/a1"], "https://chatgpt.com/connector/oauth/a2"), false, "ChatGPT per-app URL is exact");
+  assert.equal(appForRedirect("https://claude.ai/api/mcp/auth_callback"), "Claude");
+  assert.equal(appForRedirect("https://chatgpt.com/connector/oauth/a1"), "ChatGPT");
+  assert.equal(appForRedirect("cursor://anysphere.cursor-mcp/oauth/callback"), "Cursor");
+  assert.equal(appForRedirect("https://vscode.dev/redirect"), "VS Code");
+  assert.equal(appForRedirect("http://localhost:1/callback"), "an app on your computer");
+  assert.ok(isLocalRedirect("http://127.0.0.1:33418/") && isLocalRedirect("cursor://anysphere.cursor-mcp/oauth/callback"));
+  assert.equal(isLocalRedirect("https://chatgpt.com/connector/oauth/a1"), false);
 });
 
 test("PKCE S256 (RFC 7636 test vector) and token hashing", () => {

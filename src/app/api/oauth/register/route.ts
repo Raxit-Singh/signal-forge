@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { registerClient } from "@/lib/server/agent/oauth-store";
 import { json } from "@/lib/server/agent/http";
 
-// RFC 7591 Dynamic Client Registration (public clients; Claude's callbacks only).
+// RFC 7591 Dynamic Client Registration (public clients; supported apps' callbacks only).
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
   const v = validateRegistration(body);
