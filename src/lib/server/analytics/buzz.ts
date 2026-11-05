@@ -70,6 +70,18 @@ export async function totals(sb: SupabaseClient, productId: string, from: Date, 
   return sumTotals((data ?? []) as TotalsRow[], null);
 }
 
+/** Totals for many windows in one database scan; the result is in the order of `windows`. */
+export async function totalsMany<const W extends ReadonlyArray<readonly [Date, Date]>>(
+  sb: SupabaseClient, productId: string, windows: W, sources: string[] | null,
+): Promise<{ -readonly [K in keyof W]: PeriodTotals }> {
+  const { data, error } = await sb.rpc("buzz_totals_windows", {
+    p_product_id: productId, p_from: windows.map(([f]) => f.toISOString()), p_to: windows.map(([, t]) => t.toISOString()), p_sources: sources,
+  });
+  if (error) throw new Error(`buzz_totals_windows failed (${error.code ?? "db"})`);
+  const rows = (data ?? []) as Array<TotalsRow & { win: number }>;
+  return windows.map((_, i) => sumTotals(rows.filter((r) => r.win === i + 1).map(({ win: _win, ...r }) => r), null)) as { -readonly [K in keyof W]: PeriodTotals };
+}
+
 export async function coverageRows(sb: SupabaseClient, productId: string, from: Date, to: Date, bucket: Bucket, tz: string, sources: string[] | null) {
   const { data, error } = await sb.rpc("buzz_coverage", {
     p_product_id: productId, p_from: from.toISOString(), p_to: to.toISOString(), p_bucket: bucket, p_tz: tz, p_sources: sources,
@@ -108,20 +120,18 @@ export async function getBuzzDashboard(
   const todayStart = zonedDayStart(now, tz);
   const yesterdayStart = zonedDayStart(now, tz, -1);
 
-  const [seriesRes, cov, rangeTotals, prevTotals, t24, p24, today, yesterday, w, pw, m, pm, base, covGrowth, spikesRes, eventsRes, kwSpikesRes, evalRes] = await Promise.all([
+  const ago = (days: number) => new Date(now.getTime() - days * D);
+  const [seriesRes, cov, windowTotals, covGrowth, spikesRes, eventsRes, kwSpikesRes, evalRes] = await Promise.all([
     sb.rpc("buzz_series", { p_product_id: productId, p_from: from.toISOString(), p_to: range.to.toISOString(), p_bucket: bucket, p_tz: tz, p_sources: sourceFilter }),
     coverageRows(sb, productId, from, range.to, bucket, tz, sourceFilter),
-    totals(sb, productId, from, range.to, sourceFilter),
-    totals(sb, productId, prev.from, prev.to, sourceFilter),
-    totals(sb, productId, new Date(now.getTime() - D), now, sourceFilter),
-    totals(sb, productId, new Date(now.getTime() - 2 * D), new Date(now.getTime() - D), sourceFilter),
-    totals(sb, productId, todayStart, now, sourceFilter),
-    totals(sb, productId, yesterdayStart, todayStart, sourceFilter),
-    totals(sb, productId, new Date(now.getTime() - 7 * D), now, sourceFilter),
-    totals(sb, productId, new Date(now.getTime() - 14 * D), new Date(now.getTime() - 7 * D), sourceFilter),
-    totals(sb, productId, new Date(now.getTime() - 30 * D), now, sourceFilter),
-    totals(sb, productId, new Date(now.getTime() - 60 * D), new Date(now.getTime() - 30 * D), sourceFilter),
-    totals(sb, productId, new Date(now.getTime() - 29 * D), new Date(now.getTime() - D), sourceFilter),
+    totalsMany(sb, productId, [
+      [from, range.to], [prev.from, prev.to],
+      [ago(1), now], [ago(2), ago(1)],
+      [todayStart, now], [yesterdayStart, todayStart],
+      [ago(7), now], [ago(14), ago(7)],
+      [ago(30), now], [ago(60), ago(30)],
+      [ago(29), ago(1)],
+    ], sourceFilter),
     coverageRows(sb, productId, new Date(Math.min(now.getTime() - 60 * D, prev.from.getTime())), now, "day", "UTC", sourceFilter),
     sb.from("buzz_spikes")
       .select("id, platform, granularity, period_start, period_end, observed, expected, ratio, severity, confidence, note")
@@ -145,6 +155,7 @@ export async function getBuzzDashboard(
       .eq("product_id", productId).eq("scope", "product").eq("scope_key", "").eq("granularity", bucket).maybeSingle(),
   ]);
   if (seriesRes.error) throw new Error(`buzz_series failed (${seriesRes.error.code ?? "db"})`);
+  const [rangeTotals, prevTotals, t24, p24, today, yesterday, w, pw, m, pm, base] = windowTotals;
 
   const rows = (seriesRes.data ?? []) as SeriesRow[];
   // Platforms in this view: those monitored in the range or with data in it.
@@ -181,11 +192,7 @@ export async function getBuzzDashboard(
     return rows.length > 0 && rows.reduce((a, c) => a + Number(c.complete), 0) / rows.length >= 0.9;
   });
   const sameSet = completeSources.length === sources.length;
-  const [vt24, vp24, vbase] = sameSet ? [t24, p24, base] : completeSources.length === 0 ? [null, null, null] : await Promise.all([
-    totals(sb, productId, new Date(now.getTime() - D), now, completeSources),
-    totals(sb, productId, new Date(now.getTime() - 2 * D), new Date(now.getTime() - D), completeSources),
-    totals(sb, productId, new Date(now.getTime() - 29 * D), new Date(now.getTime() - D), completeSources),
-  ]);
+  const [vt24, vp24, vbase] = sameSet ? [t24, p24, base] : completeSources.length === 0 ? [null, null, null] : await totalsMany(sb, productId, [[ago(1), now], [ago(2), ago(1)], [ago(29), ago(1)]], completeSources);
   const virality: Virality & { basis: string[] } = vt24 && vp24 && vbase
     ? {
         ...viralityScore({

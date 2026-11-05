@@ -673,6 +673,7 @@ reset role;
 set role anon;
 select t.throws($$select * from public.launch_boosts$$, 'anon cannot read launch boosts', 'permission denied');
 select t.throws($$select public.buzz_totals(gen_random_uuid(), now() - interval '1 day', now())$$, 'anon cannot run analytics', 'permission denied');
+select t.throws($$select public.buzz_totals_windows(gen_random_uuid(), array[now() - interval '1 day']::timestamptz[], array[now()]::timestamptz[])$$, 'anon cannot run windowed analytics', 'permission denied');
 reset role;
 
 -- Reservations (service role). ws_a is on Pro (allowance $5), ws_d on Free ($0).
@@ -922,6 +923,21 @@ select t.ok((select duplicates_excluded from tot where source = 'hackernews') = 
 select t.ok((select engagement from tot where source = 'reddit') = 6, 'engagement totals');
 -- Totals reconcile with the series.
 select t.ok((select sum(relevant) from s_utc) = (select sum(relevant) from tot), 'series and totals reconcile');
+-- Many windows in one scan give the same rows as one buzz_totals call per window.
+create temp table totw as select * from public.buzz_totals_windows((select v from ids where k = 'p_d'),
+  array['2026-09-01T00:00:00Z', '2026-09-02T00:00:00Z', '2026-08-01T00:00:00Z']::timestamptz[],
+  array['2026-09-03T00:00:00Z', '2026-09-03T00:00:00Z', '2026-08-02T00:00:00Z']::timestamptz[]);
+select t.ok(not exists (
+    (select source, relevant, irrelevant, pending, posts, comments, engagement, unique_authors, with_author, duplicates_excluded, undated from totw where win = 1)
+    except all (select source, relevant, irrelevant, pending, posts, comments, engagement, unique_authors, with_author, duplicates_excluded, undated from tot))
+  and (select count(*) from totw where win = 1) = (select count(*) from tot), 'windowed totals match buzz_totals');
+select t.ok(not exists (
+    (select source, relevant, pending, undated from totw where win = 2)
+    except all (select source, relevant, pending, undated from public.buzz_totals((select v from ids where k = 'p_d'), '2026-09-02T00:00:00Z', '2026-09-03T00:00:00Z'))),
+  'each window counts only its own mentions');
+select t.ok(not exists (select 1 from totw where win = 3), 'an empty window returns no rows');
+select t.throws($$select * from public.buzz_totals_windows(gen_random_uuid(), array[now()]::timestamptz[], array[now() - interval '1 day']::timestamptz[])$$, 'inverted windows are rejected', 'invalid range');
+select t.throws($$select * from public.buzz_totals_windows(gen_random_uuid(), array[now() - interval '500 days', now()]::timestamptz[], array[now() - interval '499 days', now() + interval '1 day']::timestamptz[])$$, 'windows may not span more than 400 days', 'too long');
 create temp table cov as select * from public.buzz_coverage((select v from ids where k = 'p_d'), '2026-08-31T00:00:00Z', '2026-09-03T00:00:00Z', 'day', 'UTC');
 select t.ok((select covered from cov where bucket_start = '2026-08-31T00:00:00Z' and source = 'reddit') = 0, 'day before monitoring is uncovered (a gap, not zero)');
 select t.ok((select covered from cov where bucket_start = '2026-09-02T00:00:00Z' and source = 'hackernews') = 1
@@ -940,6 +956,8 @@ select t.ok((select count(*) from public.buzz_series((select v from ids where k 
   'analytics never aggregate another workspace''s mentions');
 select t.ok((select count(*) from public.buzz_totals((select v from ids where k = 'p_d'), '2026-09-01T00:00:00Z', '2026-09-03T00:00:00Z')) = 0,
   'totals are isolated too');
+select t.ok((select count(*) from public.buzz_totals_windows((select v from ids where k = 'p_d'), array['2026-09-01T00:00:00Z']::timestamptz[], array['2026-09-03T00:00:00Z']::timestamptz[])) = 0,
+  'windowed totals are isolated too');
 select t.ok((select count(*) from public.buzz_coverage((select v from ids where k = 'p_d'), '2026-09-01T00:00:00Z', '2026-09-03T00:00:00Z', 'day', 'UTC') where source is not null) = 0,
   'coverage is isolated too');
 reset role;
