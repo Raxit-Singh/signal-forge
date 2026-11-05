@@ -407,8 +407,8 @@
 .is-network .nx-card { animation: nx-card var(--cyc) linear infinite both; animation-delay: var(--d); }
 @keyframes nx-card {
   0%, 1.38% { opacity: 0; transform: translateY(8px) scale(0.94); animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1); }
-  2.76%, 12.42% { opacity: 1; transform: none; border-color: #2a2a30; box-shadow: 0 18px 40px -16px #000; }
-  13.11%, 14.26% { opacity: 1; transform: translateY(-3px) scale(1.03); border-color: var(--hex); box-shadow: 0 18px 40px -16px #000, 0 0 28px -6px var(--hex); animation-timing-function: cubic-bezier(0.6, 0, 0.3, 1); }
+  2.76%, 12.42% { opacity: 1; transform: none; border-color: var(--card-line); box-shadow: var(--card-shadow); }
+  13.11%, 14.26% { opacity: 1; transform: translateY(-3px) scale(1.03); border-color: var(--hex); box-shadow: var(--card-shadow), 0 0 28px -6px var(--hex); animation-timing-function: cubic-bezier(0.6, 0, 0.3, 1); }
   16.56%, 100% { opacity: 0; transform: translate(calc(var(--shift) * -1), calc(var(--side) * var(--gap) * -1)) scale(0.08); border-color: var(--hex); }
 }
 .nx-head-row, .nx-foot { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
@@ -839,7 +839,7 @@
 .hx-faq summary { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 22px 0; cursor: pointer; list-style: none;
   font-size: clamp(17px, 1rem + 0.4vw, 21px); font-weight: 500; letter-spacing: -0.01em; transition: color 150ms ease; }
 .hx-faq summary::-webkit-details-marker { display: none; }
-.hx-faq summary:hover { color: #fff; }
+.hx-faq summary:hover { color: var(--ink); }
 .hx-faq summary:focus-visible { outline: 2px solid var(--red); outline-offset: 4px; border-radius: 4px; }
 .hx-faq summary svg { flex: none; width: 18px; height: 18px; fill: none; stroke: var(--muted); stroke-width: 1.6; stroke-linecap: round; transition: transform 250ms ease, stroke 150ms ease; }
 .hx-faq[open] summary svg { transform: rotate(45deg); stroke: var(--red); }
@@ -921,7 +921,7 @@
 .hx-prose > * + * { margin-top: 1em; }
 .hx-prose h2 { margin-top: 2.2em; font-size: 24px; font-weight: 600; line-height: 1.25; letter-spacing: -0.02em; }
 .hx-prose h3 { margin-top: 1.8em; font-size: 19px; font-weight: 600; }
-.hx-prose p, .hx-prose li { color: #c9c9cf; }
+.hx-prose p, .hx-prose li { color: var(--body, #c9c9cf); }
 .hx-prose strong { color: var(--ink); font-weight: 600; }
 .hx-prose ul, .hx-prose ol { display: grid; gap: 0.45em; padding-left: 1.3em; }
 .hx-prose ul { list-style: disc; }
@@ -939,20 +939,21 @@
 .hx-chip:hover { color: var(--ink); }
 .hx-chip[aria-current="page"] { background: var(--ink); border-color: var(--ink); color: var(--ground); }
 .hx-post-row { display: block; padding: 28px 0; transition: opacity 150ms ease; }
-.hx-post-row:hover span:nth-child(2) { color: #fff; text-decoration: underline; text-decoration-color: var(--red); text-underline-offset: 4px; text-decoration-thickness: 2px; }
+.hx-post-row:hover span:nth-child(2) { color: var(--ink); text-decoration: underline; text-decoration-color: var(--red); text-underline-offset: 4px; text-decoration-thickness: 2px; }
 
 /* ── The other public pages (marketing/shell.tsx) ──────────────────────────────────────────────
    They speak the landing's language: its bar dropping in, titles coming out of a blur word by word,
    the eclipse rising behind the first screen, sections rising in as they scroll into view, and
    cards whose border lights up where the pointer is. There is no opening here, so it all starts at once. */
 .hx-site { --answer: 0ms; }
-.hx-site .hx-bar { animation-delay: 80ms; background: linear-gradient(to bottom, rgb(5 5 6 / 0.9), rgb(5 5 6 / 0.62));
+.hx-site .hx-bar { animation-delay: 80ms; background: linear-gradient(to bottom, color-mix(in srgb, var(--ground) 90%, transparent), color-mix(in srgb, var(--ground) 62%, transparent));
   -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2); border-bottom: 1px solid rgb(255 255 255 / 0.04); }
 .hx-title .hx-w { animation: hx-focus-in 1300ms cubic-bezier(0.22, 1, 0.36, 1) calc(120ms + var(--i) * 70ms) both; }
 .hx-hero { padding-top: clamp(48px, 10vh, 120px); }
-.hx-hero.is-eclipse { padding-bottom: clamp(112px, 15vh, 190px); }
-/* The sky reaches the screen's sides and up under the bar; the planet rests just under the hero's content. */
-.hx-hero-sky { position: absolute; z-index: -1; top: -80px; bottom: 0; left: calc(50% - 50vw); right: calc(50% - 50vw); pointer-events: none; }
+.hx-hero.has-sky { padding-bottom: clamp(96px, 13vh, 170px); }
+/* The sky (sky.tsx) reaches the screen's sides and up under the bar, and fades out at its foot into the page. */
+.hx-hero-sky { position: absolute; z-index: -1; top: -80px; bottom: 0; left: calc(50% - 50vw); right: calc(50% - 50vw); pointer-events: none;
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent); mask-image: linear-gradient(to bottom, #000 55%, transparent); }
 .hx-rise.is-in { transition-delay: var(--d, 0ms); }
 
 /* The pointer glow of the pricing cards, for any card in a .hx-glow-group (motion.tsx sets --mx/--my). */
@@ -994,7 +995,7 @@
 .hx .legal h1 { font-size: clamp(36px, 5vw, 68px); line-height: 1; letter-spacing: -0.045em; animation: hx-focus-in 1200ms cubic-bezier(0.22, 1, 0.36, 1) 120ms both; }
 .hx .legal h1 + p { margin-top: 1rem; color: var(--muted); font-size: 15px; animation: hx-in 700ms cubic-bezier(0.2, 0.7, 0.2, 1) 400ms both; }
 .hx .legal h2 { font-size: 24px; letter-spacing: -0.02em; }
-.hx .legal p, .hx .legal li { color: #c9c9cf; }
+.hx .legal p, .hx .legal li { color: var(--body, #c9c9cf); }
 .hx .legal strong { color: var(--ink); }
 .hx .legal a { color: var(--ink); text-decoration-color: var(--red); }
 
@@ -1004,7 +1005,8 @@
   .hx-js .hx-shot.is-wide .hx-shot-frame { transform: none; opacity: 1; transition: none; }
   .hx-glow::before, .hx-glow::after { transition: none; }
 }
-.hx-docs-sky { position: absolute; z-index: -1; inset: -80px 0 auto; height: calc(80px + clamp(260px, 34vh, 360px)); pointer-events: none; }
+.hx-docs-sky { position: absolute; z-index: -1; inset: -80px 0 auto; height: calc(80px + clamp(300px, 40vh, 420px)); pointer-events: none;
+  -webkit-mask-image: linear-gradient(to bottom, #000 40%, transparent); mask-image: linear-gradient(to bottom, #000 40%, transparent); }
 
 /* Walkthroughs (walkthrough.tsx): a screenshot played like a screen recording. */
 .hx-walk-cam { position: relative; transition: transform 1100ms cubic-bezier(0.65, 0, 0.35, 1), transform-origin 1100ms cubic-bezier(0.65, 0, 0.35, 1); will-change: transform; }
@@ -1040,3 +1042,90 @@
 .hx .hx-walk-bar ol { display: flex; padding: 0; list-style: none; margin: 0; }
 .hx .hx-walk-bar li { margin: 0; }
 .hx .hx-walk-bar li::marker { content: none; }
+
+/* ── Light, for the whole site, the landing included. Follows the site's theme (next-themes puts .light or .dark
+   on <html>); the toggle is in the top bar (theme-toggle.tsx). */
+.hx { color-scheme: dark; --body: #c9c9cf; --mono-mark: #e8e8ea; --card-line: #2a2a30; --card-shadow: 0 18px 40px -16px #000; }
+html.light .hx {
+  --ground: #f6f5f2;
+  --field-1: #ffffff;
+  --field-2: #efeeea;
+  --field-3: #e6e4df;
+  --line: #e0ded8;
+  --ink: #0c0c0d;
+  --muted: #64646c;
+  --body: #34343a;
+  --red: #e2362b;
+  --red-deep: #c82d22;
+  color-scheme: light;
+}
+html.light .hx .hx-nav.is-primary:hover { background: #2b2b30; }
+html.light .hx .hx-shot-frame { box-shadow: 0 40px 90px -40px rgb(226 54 43 / 0.3), 0 1px 2px rgb(0 0 0 / 0.06); }
+html.light .hx .hx-alt-panel, html.light .hx .hx-alt-card, html.light .hx .hx-alt-table { box-shadow: 0 1px 2px rgb(0 0 0 / 0.04); }
+html.light .hx .hx-spot-key li > span, html.light .hx .hx-walk-cap p > span:first-child { background: rgb(226 54 43 / 0.1); }
+/* The app's own pieces (the live clips) stay dark, as the app does in these pictures. */
+.hx .hx-island { --mono-mark: #e8e8ea; --card-line: #2a2a30; --ground: #050506; --field-1: #0e0e10; --field-2: #141416; --field-3: #1f1f23; --line: #222226; --ink: #f4f4f5; --muted: #8f8f96; --red: #ff3b2f; color: var(--ink); color-scheme: dark; }
+
+/* The theme switch in the bar. */
+.hx-theme { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 999px; color: var(--muted); transition: color 150ms ease, background-color 150ms ease; }
+.hx-theme:hover { color: var(--ink); background: var(--field-2); }
+.hx-theme:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+.hx-theme svg { width: 18px; height: 18px; }
+/* In light, the footer keeps black on red: the name's top half red on the light page, its foot black on the red. */
+html.light .hx .hx-end { --ground: #0b0b0c; --end-ink: #0b0b0c; }
+
+/* The landing's scenes in light: the same pictures, the page light and the cards white. */
+html.light .hx {
+  --mono-mark: #18181b;
+  --card-line: #e0ded8;
+  --card-shadow: 0 18px 40px -18px rgb(30 20 10 / 0.28);
+}
+html.light .hx .hx-panel { background: linear-gradient(180deg, #ffffff, #f8f7f4); box-shadow: 0 1px 2px rgb(0 0 0 / 0.05); }
+html.light .hx .hx-button.is-quiet { border-color: var(--line); }
+html.light .hx .hx-bar { background: linear-gradient(to bottom, rgb(246 245 242 / 0.88), rgb(246 245 242 / 0)); }
+html.light .hx.hx-site .hx-bar { background: linear-gradient(to bottom, rgb(246 245 242 / 0.9), rgb(246 245 242 / 0.62)); border-bottom-color: rgb(0 0 0 / 0.05); }
+html.light .mf-ghost { --ink: #0c0c0d; }
+/* The mention's flight. */
+html.light .hx .mf-grid { background-image: linear-gradient(rgb(0 0 0 / 0.08) 1px, transparent 1px), linear-gradient(90deg, rgb(0 0 0 / 0.08) 1px, transparent 1px); }
+html.light .hx .mf-wire { stroke: var(--ground); }
+html.light .hx .mf-wire-core { stroke: #cfcdc6; }
+html.light .hx .s6:not(.s9) .mf-wire-core { stroke: #f2a59e; }
+html.light .hx .mf-hx .mf-slice:not(.is-top) { color: color-mix(in srgb, #5b5b62 calc(var(--z) * 7%), #dcdad4); }
+html.light .hx .s7:not(.s8) .mf-hx .mf-slice:not(.is-top) { color: color-mix(in srgb, var(--red) calc(30% + var(--z) * 8%), #ffd9d4); }
+html.light .hx .mf-coin .mf-slice { background: color-mix(in srgb, #ff4500 calc(35% + var(--z) * 7%), #ffd2bf); }
+html.light .hx .mf-post, html.light .hx .mf-mention { border-color: var(--card-line); background: linear-gradient(180deg, #ffffff, #f8f7f4); box-shadow: 0 3cqw 6cqw -2cqw rgb(30 20 10 / 0.25); }
+html.light .hx .s3 .mf-post { border-color: #ff450099; box-shadow: 0 3cqw 6cqw -2cqw rgb(30 20 10 / 0.25), 0 0 5cqw -1cqw #ff450066; }
+html.light .hx .mf-mention { border-color: rgb(226 54 43 / 0.35); box-shadow: 0 3cqw 6cqw -2cqw rgb(30 20 10 / 0.25), 0 0 6cqw -2cqw rgb(226 54 43 / 0.3); }
+html.light .hx .mf-chip { border-color: var(--card-line); }
+html.light .hx .mf-chip.is-red { border-color: rgb(226 54 43 / 0.35); color: var(--red); }
+/* The network. */
+html.light .hx .nx-fill::before { background-image: radial-gradient(circle, rgb(0 0 0 / 0.11) 1px, transparent 1.5px); }
+html.light .hx .nx-case { stroke: var(--ground); }
+html.light .hx .nx-wire { stroke: #dad8d1; }
+html.light .hx .nx-head { stroke: #ff7b70; }
+html.light .hx .nx-plate { background: radial-gradient(circle at 50% 35%, #ffffff, #efeee9 70%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hex) 30%, #dcdad4), 0 6px 18px -6px rgb(30 20 10 / 0.2), 0 0 18px -4px color-mix(in srgb, var(--hex) 30%, transparent); }
+html.light .hx .nx-card { border-color: var(--card-line); background: linear-gradient(180deg, #ffffff, #f8f7f4); box-shadow: var(--card-shadow); }
+/* The story's panel and its fire. */
+html.light .hx .px-panel { border-color: var(--line); box-shadow: 0 40px 120px -30px rgb(30 20 10 / 0.3), 0 0 0 1px rgb(226 54 43 / 0.05), 0 0 90px rgb(226 54 43 / 0.1); }
+html.light .hx .px-grain { mix-blend-mode: multiply; opacity: 0.05; }
+html.light .hx .px-fire canvas.is-soft { filter: blur(6px) saturate(1.2); }
+html.light .hx .px-flame.is-low { background: radial-gradient(ellipse 62% 64% at 0% 100%, rgb(226 54 43 / 0.2), rgb(226 54 43 / 0.06) 45%, transparent 72%); }
+html.light .hx .px-flame.is-high { background: radial-gradient(ellipse 55% 58% at 100% 0%, rgb(226 54 43 / 0.14), rgb(226 54 43 / 0.04) 45%, transparent 72%); }
+html.light .hx .px .px-text, html.light .hx .px-chip { color: #3f3f46; }
+html.light .hx .px-chip.is-neg { color: #c8281d; background: rgb(226 54 43 / 0.1); }
+html.light .hx .px-chip.is-pos { color: #1a8a47; background: rgb(26 138 71 / 0.1); }
+html.light .hx .px-chip.is-mid { color: #55555c; background: rgb(0 0 0 / 0.06); }
+html.light .hx .px-trend { stroke: #9a9aa2; }
+/* Claude, in its own light look. */
+html.light .hx .cl { --bg: #faf9f5; --side: #f3f1ea; --edge: #e4e1d7; --text: #1f1e1d; --soft: #6e6b63; --field: #ffffff; box-shadow: 0 40px 120px -30px rgb(30 20 10 / 0.3); }
+html.light .hx .cl-rail i { background: #e4e1d7; }
+html.light .hx .cl-you { background: #efece3; }
+html.light .hx .cl-tools code, html.light .hx .cl-menu { background: #f3f1ea; }
+html.light .hx .cl-item.is-hx, html.light .hx .cl.is-on .cl-btn.is-tools { background: #e9e6dd; }
+html.light .hx .cl-tick i { border-color: rgb(0 0 0 / 0.12); border-top-color: var(--orange); }
+html.light .hx .cl-switch { background: #d4d1c8; }
+html.light .hx .cl-box { box-shadow: 0 4px 20px rgb(30 20 10 / 0.08); }
+html.light .hx .cl-menu { box-shadow: 0 16px 40px rgb(30 20 10 / 0.18); }
+/* Pricing and the menu. */
+html.light .hx .hx-menu-panel { box-shadow: 0 24px 60px -24px rgb(30 20 10 / 0.3); }

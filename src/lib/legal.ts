@@ -11,7 +11,7 @@ export const LEGAL = {
   replyDays: 2,
   /** Days after the first payment of a new subscription in which it can be refunded in full. */
   refundDays: 14,
-  updated: "4 November 2026",
+  updated: "5 November 2026",
 } as const;
 
 export const LEGAL_PAGES = [

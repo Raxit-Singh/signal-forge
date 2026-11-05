@@ -135,8 +135,8 @@ export const PRODUCT: ProductPage[] = [
     blocks: [
       { title: "Ask in plain words", body: "“What are the top complaints this week?” “Summarize the bug reports and where they come from.” “Which platforms talk about us the most?” Claude answers from your real data, with links to the posts." },
       { title: "Investigate in your code", body: "“Investigate with Claude” on an issue gives Claude the issue, every report and its priority. In Claude Code it can then search your repository for the cause and suggest a fix. It asks before changing anything." },
-      { title: "Read-only and revocable", body: "Claude sees only the workspace you approve and can't change anything in Heardex. You can see every connected Claude account and revoke access at once." },
-      { title: "Works where you use Claude", body: "Claude on the web, the desktop app and Claude Code, on your own Claude plan. It uses the open Model Context Protocol (MCP), so other MCP clients that support remote servers can connect too." },
+      { title: "Read-only and revocable", body: "Claude sees only the workspace you approve and can't change your settings or data; it only sends back reports for tasks you start. You can see every connected account and revoke access at once." },
+      { title: "Works in Claude, and beyond", body: "Claude on the web, the desktop app and Claude Code, on your own Claude plan. It uses the open Model Context Protocol (MCP), so ChatGPT, Cursor and VS Code can connect with the same address too." },
     ],
     steps: [
       "In Heardex, open Settings → Claude and click Connect.",
@@ -145,7 +145,7 @@ export const PRODUCT: ProductPage[] = [
     ],
     plans: () => ["Included on every plan, Free included."],
     limits: ["Claude usage counts toward your own Claude plan, not Heardex's."],
-    docs: { href: "/docs/claude", label: "Connect Claude, Claude Code or Cursor" },
+    docs: { href: "/docs/claude", label: "Connect Claude, ChatGPT, Cursor or VS Code" },
     shot: "claude",
     clip: "claude",
   },

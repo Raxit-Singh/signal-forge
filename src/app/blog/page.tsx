@@ -18,7 +18,7 @@ export default async function BlogIndex({ searchParams }: { searchParams: Promis
   );
   return (
     <div className="hx-frame mx-auto max-w-[1560px] pb-[clamp(96px,14vh,160px)]">
-      <PageHero eyebrow="Blog" title="Hearing what users say."
+      <PageHero sky="threads" eyebrow="Blog" title="Hearing what users say."
         lede="Guides and notes on hearing what people say about your software, and doing something about it.">
         <nav aria-label="Categories" className="flex flex-wrap gap-2">{[chip(null), ...BLOG_CATEGORIES.map(chip)]}</nav>
       </PageHero>

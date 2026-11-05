@@ -8,6 +8,7 @@ import { PRODUCT_PAGES } from "@/lib/marketing";
 import { PageHero } from "@/components/marketing/page-hero";
 import { Shot } from "@/components/marketing/shot";
 import { ClaudeClip, FeedClip, SortClip, SpikeClip, VoiceClip } from "@/components/landing/product";
+import type { SkyKind } from "@/components/marketing/sky";
 
 const CLIPS = { sort: SortClip, feed: FeedClip, voice: VoiceClip, spike: SpikeClip, claude: ClaudeClip };
 
@@ -22,6 +23,15 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return p ? { title: { absolute: `${p.eyebrow} · Heardex` }, description: p.lede } : {};
 }
 
+// Each product page has its own background, drawn from what that product does.
+const SKIES: Record<string, SkyKind> = {
+  "feedback-intelligence": "clusters",
+  "smart-monitoring": "pulse",
+  "competitor-tracking": "orbits",
+  "buzz-analytics": "chart",
+  claude: "mcp",
+};
+
 export default async function ProductFeaturePage({ params }: { params: Promise<{ slug: string }> }) {
   const p = productPage((await params).slug);
   if (!p) notFound();
@@ -33,7 +43,7 @@ export default async function ProductFeaturePage({ params }: { params: Promise<{
 
   return (
     <article className="hx-frame mx-auto max-w-[1560px] pb-[clamp(96px,14vh,160px)]">
-      <PageHero eyebrow={p.eyebrow} title={p.title} lede={p.lede}>
+      <PageHero sky={SKIES[p.slug] ?? "pulse"} eyebrow={p.eyebrow} title={p.title} lede={p.lede}>
         <div className="flex flex-wrap gap-2">
           <Link href="/signup" className="hx-nav is-primary">Start free</Link>
           <Link href={p.docs.href} className="hx-nav is-quiet">Read the docs</Link>
@@ -59,7 +69,7 @@ export default async function ProductFeaturePage({ params }: { params: Promise<{
           </ol>
         </div>
         <figure className="hx-rise" style={{ ["--d" as string]: "120ms" }}>
-          <Clip />
+          <div className="hx-island dark"><Clip /></div>
           <figcaption className="mt-4 text-[13px] text-[var(--muted)]">An animated example with sample data about a made-up notes app.</figcaption>
         </figure>
       </section>

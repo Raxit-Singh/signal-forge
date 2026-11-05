@@ -88,7 +88,7 @@ const smooth = (from: number, to: number, v: number) => {
 function Logo({ source }: { source: string }) {
   const m = brandMark(source);
   return (
-    <span className="px-logo" style={{ color: m?.dark ? "#e8e8ea" : (m?.hex ?? "#0a66c2") }}>
+    <span className="px-logo" style={{ color: m?.dark ? "var(--mono-mark)" : (m?.hex ?? "#0a66c2") }}>
       {m ? <svg viewBox="0 0 24 24" aria-hidden><path d={m.path} fill="currentColor" /></svg> : <b>in</b>}
     </span>
   );
@@ -187,6 +187,7 @@ function Embers() {
         while (n > 1 || Math.random() < n) { spawn(src); n--; }
       }
       const t = now / 1000;
+      const light = document.documentElement.classList.contains("light");
       ctx.clearRect(0, 0, w, h);
       for (let i = embers.length - 1; i >= 0; i--) {
         const e = embers[i]!;
@@ -203,7 +204,7 @@ function Embers() {
         // Yellow-orange when new, red as it cools.
         const g = Math.round(200 * (1 - k) + 50 * k);
         const bl = Math.round(80 * (1 - k) + 30 * k);
-        ctx.fillStyle = `rgba(255,${g},${bl},${alpha.toFixed(3)})`;
+        ctx.fillStyle = light ? `rgba(226,${Math.round(g * 0.45)},${Math.round(bl * 0.5)},${alpha.toFixed(3)})` : `rgba(255,${g},${bl},${alpha.toFixed(3)})`;
         ctx.beginPath();
         ctx.arc(e.x, e.y, e.size * (1 - k * 0.5), 0, Math.PI * 2);
         ctx.fill();

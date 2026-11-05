@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function AlternativesIndex() {
   return (
     <div className="hx-frame mx-auto max-w-[1560px] pb-[clamp(96px,14vh,160px)]">
-      <PageHero eyebrow="Alternatives" title="How Heardex compares."
+      <PageHero sky="venn" eyebrow="Alternatives" title="How Heardex compares."
         lede="Heardex listens to what people say about your software and ranks it into bugs, feature requests and complaints. Here's how it stacks up against other listening tools, including where they're the better pick." />
       <ol className="hx-glow-group relative z-10 -mt-[clamp(32px,6vh,72px)] grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {COMPETITORS.map((c, i) => (

@@ -59,7 +59,7 @@ export default async function AlternativePage({ params }: { params: Promise<{ sl
 
   return (
     <article className="hx-frame mx-auto max-w-[1560px] pb-[clamp(96px,14vh,160px)]">
-      <PageHero eyebrow={<><Link href="/alternatives" className="hx-link text-[var(--muted)]">Alternatives</Link> <span className="text-[var(--muted)]">/</span> {c.name}</>}
+      <PageHero sky="venn" eyebrow={<><Link href="/alternatives" className="hx-link text-[var(--muted)]">Alternatives</Link> <span className="text-[var(--muted)]">/</span> {c.name}</>}
         title={`Heardex vs ${c.name}`} lede={c.summary}>
         {c.notice && <p role="note" className="max-w-[70ch] rounded-2xl border border-[rgb(255_59_47/0.45)] bg-[rgb(255_59_47/0.08)] px-5 py-4 text-[15px]">{c.notice}</p>}
       </PageHero>

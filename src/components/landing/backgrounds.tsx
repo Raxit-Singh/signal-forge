@@ -29,18 +29,19 @@ const ENTER_AT = 3.9; // seconds; keep in step with --answer in landing.css
 const clamp01 = (v: number) => Math.min(Math.max(v, 0), 1);
 const outExpo = (v: number) => (v >= 1 ? 1 : 1 - 2 ** (-10 * v));
 const outCubic = (v: number) => 1 - (1 - v) ** 3;
+/** Whether the site is in light (next-themes puts .light on <html>); kept up to date by the canvas while it runs. */
+const theme = { light: false };
 /** How far the planet has risen past its resting place, 0..1 of the screen height; set by the scroll (mention-flight.tsx). */
 export const horizon = { lift: 0 };
 
-function eclipse(enterAt = ENTER_AT, rest = 0.8): Scene {
-  const ENTER = enterAt;
+function eclipse(): Scene {
   let grid: HTMLCanvasElement | null = null;
   let gridFor = "";
   let lx = 0.5; // where along the rim the light sits, 0..1 across the screen, eased toward the pointer
   const signals = [0.12, 0.47, 0.81].map((at, i) => ({ at, speed: 0.018 + i * 0.006 }));
   return (ctx, w, h, t, p) => {
     ctx.clearRect(0, 0, w, h);
-    const e = t - ENTER;
+    const e = t - ENTER_AT;
     if (e <= 0) return;
     // The entrance, each part 0..1.
     const rise = outExpo(clamp01(e / 2.2));
@@ -53,15 +54,15 @@ function eclipse(enterAt = ENTER_AT, rest = 0.8): Scene {
     const px = p ? p.x / w - 0.5 : 0, py = p ? p.y / h - 0.5 : 0;
 
     // The dot grid, drawn once per size and faded out toward the edges and the planet.
-    if (gridFor !== `${w}x${h}`) {
-      gridFor = `${w}x${h}`;
+    if (gridFor !== `${w}x${h}${theme.light}`) {
+      gridFor = `${w}x${h}${theme.light}`;
       grid = document.createElement("canvas");
       grid.width = w; grid.height = h;
       const g = grid.getContext("2d")!;
       for (let y = 16; y < h; y += 32) for (let x = 16; x < w; x += 32) {
         const a = 0.13 * gauss((x - w / 2) ** 2, w * 0.42) * gauss((y - h * 0.35) ** 2, h * 0.42);
         if (a < 0.004) continue;
-        g.fillStyle = `rgba(255, 255, 255, ${a})`;
+        g.fillStyle = theme.light ? `rgba(12, 12, 13, ${a * 1.4})` : `rgba(255, 255, 255, ${a})`;
         g.fillRect(x, y, 1.2, 1.2);
       }
     }
@@ -70,7 +71,7 @@ function eclipse(enterAt = ENTER_AT, rest = 0.8): Scene {
 
     // A cool, very faint light from above.
     const top = ctx.createRadialGradient(w / 2 + px * 80, -h * 0.15, 0, w / 2 + px * 80, -h * 0.15, h * 0.95);
-    top.addColorStop(0, "rgba(255, 255, 255, 0.07)");
+    top.addColorStop(0, theme.light ? "rgba(255, 255, 255, 0.5)" : "rgba(255, 255, 255, 0.07)");
     top.addColorStop(1, "rgba(255, 255, 255, 0)");
     ctx.fillStyle = top;
     ctx.fillRect(0, 0, w, h);
@@ -79,7 +80,7 @@ function eclipse(enterAt = ENTER_AT, rest = 0.8): Scene {
     // The planet: its top edge rises from below the screen to 80% of the height, then on with the scroll until it
     // fills the screen and its dark side becomes the ground of the next page.
     const R = Math.max(w * 0.95, h * 1.1);
-    const crown = h * (1.25 - (1.25 - rest) * rise - horizon.lift);
+    const crown = h * (1.25 - 0.45 * rise - horizon.lift);
     const cx = w / 2, cy = crown + R;
     const breathe = 0.85 + Math.sin(t * 0.5) * 0.15;
     const atmosphere = ctx.createRadialGradient(cx, cy, R * 0.98, cx, cy, R + h * 0.38);
@@ -101,7 +102,7 @@ function eclipse(enterAt = ENTER_AT, rest = 0.8): Scene {
 
     ctx.beginPath();
     ctx.arc(cx, cy, R, 0, Math.PI * 2);
-    ctx.fillStyle = "#050506";
+    ctx.fillStyle = theme.light ? "#f6f5f2" : "#050506"; // the page's ground, in either theme
     ctx.fill();
 
     // The rim: lit from the crown outward, brightest where the light is, fading to nothing at both sides.
@@ -145,12 +146,12 @@ function eclipse(enterAt = ENTER_AT, rest = 0.8): Scene {
     if (late > 0) {
       const seen = span / 1.15;
       for (const s of signals) {
-        const u = (s.at + (t - ENTER) * s.speed) % 1;
+        const u = (s.at + (t - ENTER_AT) * s.speed) % 1;
         for (let k = 0; k < 14; k++) {
           const a3 = -Math.PI / 2 - seen + 2 * seen * (u - k * 0.0035);
           const x = cx + Math.cos(a3) * R, y = cy + Math.sin(a3) * R;
           const fade = late * (1 - k / 14) * Math.sin(u * Math.PI); // fades in and out at the ends of the rim
-          ctx.fillStyle = k === 0 ? `rgba(255, 210, 200, ${fade})` : `rgba(${RED}, ${fade * 0.6})`;
+          ctx.fillStyle = k === 0 ? (theme.light ? `rgba(${RED}, ${fade})` : `rgba(255, 210, 200, ${fade})`) : `rgba(${RED}, ${fade * 0.6})`;
           ctx.beginPath();
           ctx.arc(x, y, k === 0 ? 2.2 : 1.4, 0, Math.PI * 2);
           ctx.fill();
@@ -290,14 +291,14 @@ function lines(): Scene {
 
 const SCENES: Record<Exclude<BackgroundKind, "smoke">, () => Scene> = { eclipse, waves, dots, tiles, lines };
 
-function CanvasScene({ kind, className, enterAt, rest }: { kind: Exclude<BackgroundKind, "smoke">; className?: string; enterAt?: number; rest?: number }) {
+function CanvasScene({ kind, className }: { kind: Exclude<BackgroundKind, "smoke">; className?: string }) {
   const canvas = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const el = canvas.current!;
     const ctx = el.getContext("2d");
     if (!ctx) return;
-    const draw = kind === "eclipse" && enterAt !== undefined ? eclipse(enterAt, rest) : SCENES[kind]();
+    const draw = SCENES[kind]();
     let w = 0, h = 0;
     const size = () => {
       const dpr = Math.min(window.devicePixelRatio, 2);
@@ -309,6 +310,10 @@ function CanvasScene({ kind, className, enterAt, rest }: { kind: Exclude<Backgro
     };
     size();
     window.addEventListener("resize", size);
+    const readTheme = () => { theme.light = document.documentElement.classList.contains("light"); };
+    readTheme();
+    const themeWatch = new MutationObserver(readTheme);
+    themeWatch.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
 
     const t0 = performance.now();
     let pointer: Pointer = null;
@@ -333,11 +338,12 @@ function CanvasScene({ kind, className, enterAt, rest }: { kind: Exclude<Backgro
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelAnimationFrame(raf);
+      themeWatch.disconnect();
       window.removeEventListener("resize", size);
       window.removeEventListener("pointermove", onPointer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [kind, enterAt, rest]);
+  }, [kind]);
 
   return <canvas ref={canvas} className={className} aria-hidden />;
 }
@@ -347,13 +353,4 @@ export function HeroBackground({ className }: { className?: string }) {
   const asked = useSearchParams().get("bg") as BackgroundKind | null;
   const kind = asked && KINDS.includes(asked) ? asked : "eclipse";
   return kind === "smoke" ? <RedFlow className={className} /> : <CanvasScene key={kind} kind={kind} className={className} />;
-}
-
-/**
- * The eclipse on its own, for the other public pages: it rises sooner (enterAt seconds), comes to rest with its crown
- * at `rest` of the canvas height, and never lifts with the scroll.
- */
-export function Eclipse({ className, enterAt = 0.15, rest = 0.94 }: { className?: string; enterAt?: number; rest?: number }) {
-  useEffect(() => { horizon.lift = 0; }, []);
-  return <CanvasScene kind="eclipse" enterAt={enterAt} rest={rest} className={className} />;
 }

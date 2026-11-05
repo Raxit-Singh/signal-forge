@@ -75,10 +75,14 @@ function build(root: HTMLElement, canvas: HTMLCanvasElement): Stage {
   const dot = document.createElement("canvas");
   dot.width = dot.height = 64;
   const ctx = dot.getContext("2d")!;
-  ctx.fillStyle = "#34343a";
-  ctx.beginPath();
-  ctx.arc(32, 32, 2.2, 0, Math.PI * 2);
-  ctx.fill();
+  const paintDot = (light: boolean) => {
+    ctx.clearRect(0, 0, 64, 64);
+    ctx.fillStyle = light ? "#bdbbb5" : "#34343a";
+    ctx.beginPath();
+    ctx.arc(32, 32, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  };
+  paintDot(false);
   const texture = new THREE.CanvasTexture(dot);
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
@@ -107,7 +111,20 @@ function build(root: HTMLElement, canvas: HTMLCanvasElement): Stage {
     leaving = o;
     render(o ? VANISH[1] * (1 - o) : 1, lastSize || Math.min(innerWidth, innerHeight) * 0.13);
   };
+  // Light or dark (next-themes' class on <html>): the mark's faces take the page's ink, the fog and floor its ground.
+  let light: boolean | null = null;
+  const theme = () => {
+    const now = document.documentElement.classList.contains("light");
+    if (now === light) return;
+    light = now;
+    fog.color.set(now ? 0xf6f5f2 : 0x050506);
+    caps.color.set(now ? 0x0c0c0d : 0xf4f4f5);
+    grey.set(now ? 0x75757d : 0x9a9aa2);
+    paintDot(now);
+    texture.needsUpdate = true;
+  };
   const render = (d: number, size: number) => {
+    theme();
     const on = d > 0 && d < 1;
     root.classList.toggle("is-on", on);
     if (!on) return;

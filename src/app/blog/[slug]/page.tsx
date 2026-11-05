@@ -22,7 +22,7 @@ export default async function BlogPost({ params }: { params: Promise<{ slug: str
   return (
     <article className="hx-frame mx-auto max-w-[1560px] pb-[clamp(96px,14vh,160px)]">
       <div className="mx-auto max-w-[760px]">
-        <PageHero size="lg" className="!pb-[clamp(72px,10vh,120px)]"
+        <PageHero sky="threads" size="lg" className="!pb-[clamp(72px,10vh,120px)]"
           eyebrow={<><Link href="/blog" className="hx-link text-[var(--muted)]">Blog</Link> <span className="text-[var(--muted)]">/</span> <Link href={`/blog?category=${p.category.toLowerCase()}`} className="hx-link">{p.category}</Link></>}
           title={p.title} lede={p.description}>
           <p className="text-[14px] text-[var(--muted)]">The Heardex team · <time dateTime={p.date}>{formatPostDate(p.date)}</time> · {p.minutes} min read</p>

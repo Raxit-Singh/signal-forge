@@ -18,7 +18,7 @@ export function Landing({ signedIn, plans }: { signedIn: boolean; plans: Plan[] 
   const start = signedIn ? { href: "/overview", label: "Open dashboard" } : { href: "/signup", label: "Start free" };
 
   return (
-    <div className={`hx dark relative [color-scheme:dark] ${switzer.className}`}>
+    <div className={`hx relative ${switzer.className}`}>
       <IntroLock />
       {/* The bar stays at the top on every screen. Its logo flies off into the story (mention-flight.tsx), and the name
           closes up where it was; at the end of the story the logo flies back (process.tsx). */}
@@ -28,7 +28,7 @@ export function Landing({ signedIn, plans }: { signedIn: boolean; plans: Plan[] 
       </Link>
       {/* The mark on its way back here from Claude, at the end of the story (process.tsx). */}
       <span data-flight-home className="hx-home" aria-hidden><HeardexMark className="h-full w-full" /></span>
-      <SiteNav start={start} signIn={!signedIn} />
+      <SiteNav start={start} signIn={!signedIn} theme />
     </header>
       {/* The first screen: the question and answer, and the eclipse behind them. */}
       {/* Pinned while the logo comes out of the bar toward you (mention-flight.tsx), then it scrolls away. */}

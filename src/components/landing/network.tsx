@@ -143,7 +143,7 @@ function layout(w: number, h: number, hub: number) {
     return {
       ...p, x, y, size, card, gap, mark, d, length,
       route: pts.map((q) => ({ x: q.x - cx, y: q.y - cy })), // from Heardex's centre, for the screen before
-      hex: mark?.dark ? "#e8e8ea" : (mark?.hex ?? "#0a66c2"),
+      hex: mark?.dark ? "var(--mono-mark)" : (mark?.hex ?? "#0a66c2"), // black-and-white marks follow the theme
       // Kept on screen; lifted over the wires (landing.css), it shows a little larger than its width, so allow for that.
       shift: Math.min(Math.max(0, 24 - x + card * 0.55), w - 24 - x - card * 0.55),
       below: y - gap - CARD_H < TITLE_H,
