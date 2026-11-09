@@ -65,7 +65,7 @@
 
 /* The opening: at first only the question, on black. When the answer arrives (--answer), the eclipse rises in
    behind it (its entrance is drawn in backgrounds.tsx, ENTER_AT) and the bar drops in above it. */
-.hx { --answer: 3900ms; }
+.hx { --answer: 1700ms; }
 @keyframes hx-drop { from { opacity: 0; transform: translateY(-16px); } }
 .hx-bar { animation: hx-drop 900ms cubic-bezier(0.22, 1, 0.36, 1) calc(var(--answer) + 500ms) both; }
 
@@ -84,10 +84,10 @@
 @keyframes hx-focus-in { from { opacity: 0; filter: blur(18px); transform: scale(1.18); } }
 @keyframes hx-focus-out { to { opacity: 0; filter: blur(14px); transform: scale(0.94); } }
 .hx-q .hx-w {
-  animation: hx-focus-in 1400ms cubic-bezier(0.22, 1, 0.36, 1) calc(300ms + var(--i) * 140ms) both,
-             hx-focus-out 900ms cubic-bezier(0.55, 0, 0.75, 0.2) calc(2900ms + var(--i) * 80ms) forwards;
+  animation: hx-focus-in 900ms cubic-bezier(0.22, 1, 0.36, 1) calc(100ms + var(--i) * 90ms) both,
+             hx-focus-out 500ms cubic-bezier(0.55, 0, 0.75, 0.2) calc(1250ms + var(--i) * 50ms) forwards;
 }
-.hx-a .hx-w { animation: hx-focus-in 1600ms cubic-bezier(0.22, 1, 0.36, 1) calc(var(--answer) + var(--i) * 110ms) both; }
+.hx-a .hx-w { animation: hx-focus-in 1200ms cubic-bezier(0.22, 1, 0.36, 1) calc(var(--answer) + var(--i) * 90ms) both; }
 
 /* The scenario screen: the situation comes into focus, then the answer, the first time it is in view. */
 .hx-s.is-armed:not(.is-in) .hx-w { opacity: 0; }
@@ -312,7 +312,7 @@
   .hx-js .hx-rise { opacity: 1; transform: none; transition: none; }
   .hx-draw { stroke-dashoffset: 0; }
   .hx-dot, .hx-tip { opacity: 1; }
-  .hx-arrive, .hx-live, .hx-in, .hx-w, .hx-mark > *, .hx-bar { animation: none; }
+  .hx-arrive, .hx-live, .hx-in, .hx-w, .hx-mark > *, .hx-bar, .hx-hero-cta, .hx-hero-note, .hx-auth-rise { animation: none; }
   .hx-q { visibility: hidden; }
   .hx-s.is-armed:not(.is-in) .hx-w { opacity: 1; }
   .mf *, .mf-stage * { animation: none; transition: none; }
@@ -1176,3 +1176,30 @@ html.light .hx .cl-box { box-shadow: 0 4px 20px rgb(30 20 10 / 0.08); }
 html.light .hx .cl-menu { box-shadow: 0 16px 40px rgb(30 20 10 / 0.18); }
 /* Pricing and the menu. */
 html.light .hx .hx-menu-panel { box-shadow: 0 24px 60px -24px rgb(30 20 10 / 0.3); }
+
+/* The first screen's action, arriving as the answer settles. */
+@keyframes hx-rise-in { from { opacity: 0; transform: translateY(16px); } }
+.hx .hx-hero-cta { height: 52px; padding: 0 30px; font-size: 17px; font-weight: 500; animation: hx-rise-in 800ms cubic-bezier(0.22, 1, 0.36, 1) calc(var(--answer) + 600ms) both; }
+.hx-hero-note { animation: hx-rise-in 800ms cubic-bezier(0.22, 1, 0.36, 1) calc(var(--answer) + 700ms) both; }
+
+/* Sign up and sign in. The app's form parts read these tokens, and are reshaped here: flat filled fields, squared buttons. */
+.hx-auth {
+  --background: var(--ground); --foreground: var(--ink); --muted-foreground: var(--muted);
+  --border: var(--line); --input: var(--line); --ring: var(--ink);
+  --primary: var(--red-deep); --primary-foreground: #fff;
+}
+.hx-auth-main { border-left: 1px solid var(--line); }
+@media (max-width: 1023px) { .hx-auth-main { border-left: 0; } }
+.hx-auth-rise { animation: hx-rise-in 900ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.hx-auth-feed { height: min(560px, 68vh); overflow: hidden; mask-image: linear-gradient(to bottom, #000 80%, transparent); }
+.hx-auth h1 { font-size: 24px; font-weight: 600; line-height: 1.2; letter-spacing: -0.02em; }
+.hx-auth label { color: var(--muted); font-size: 13px; font-weight: 500; }
+.hx-auth input:not([type="hidden"]) { height: 46px; border-color: transparent; border-radius: 10px; background: var(--field-2); }
+.hx-auth input:not([type="hidden"]):hover { border-color: var(--line); }
+.hx-auth input:not([type="hidden"]):focus-visible { border-color: var(--ink); }
+.hx-auth button[type="submit"] { height: 46px; border-radius: 10px; font-size: 15px; }
+.hx-auth [aria-label="Social sign-in"] { grid-template-columns: 1fr 1fr; }
+.hx-auth [aria-label="Social sign-in"] button { padding: 0 8px; border-color: transparent; background: var(--field-2); box-shadow: none; font-size: 14px; }
+.hx-auth [aria-label="Social sign-in"] button:hover { background: var(--field-3); }
+.hx-auth [aria-label="Password requirements"] { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+@media (max-width: 400px) { .hx-auth [aria-label="Social sign-in"] { grid-template-columns: 1fr; } }

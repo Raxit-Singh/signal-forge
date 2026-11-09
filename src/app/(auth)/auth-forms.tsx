@@ -45,7 +45,7 @@ export function SignUpForm({ next }: { next?: string }) {
     <form action={action} className="grid gap-4" noValidate>
       {next && <input type="hidden" name="next" value={next} />}
       <FormMessage state={state} />
-      <Field name="email" label="Work email" type="email" autoComplete="email" required autoFocus state={state} />
+      <Field name="email" label="Email" type="email" autoComplete="email" required autoFocus state={state} />
       <div className="grid gap-2">
         <Field
           name="password"

@@ -79,17 +79,17 @@ test("signup form shows password requirements and validates on the server", asyn
   await expect(rules).toContainText("At least 10 characters (met)");
   await expect(rules).toContainText("A number (met)");
   await page.getByLabel("Password", { exact: true }).fill("short");
-  await page.getByLabel("Work email").fill("not-an-email");
+  await page.getByLabel("Email").fill("not-an-email");
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page.getByText("Use at least 10 characters.")).toBeVisible();
-  await expect(page.getByLabel("Work email")).toHaveValue("not-an-email");
+  await expect(page.getByLabel("Email")).toHaveValue("not-an-email");
 });
 
 test("signing up with an existing address creates no second account", async ({ page }) => {
   const u = await createPasswordUser(PASSWORD);
   users.push(u.id);
   await page.goto("/signup");
-  await page.getByLabel("Work email").fill(u.email);
+  await page.getByLabel("Email").fill(u.email);
   await page.getByLabel("Password", { exact: true }).fill("Another-pass-2026");
   await page.getByRole("button", { name: "Create account" }).click();
   // Same answer as a new address (no account enumeration).

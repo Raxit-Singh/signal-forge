@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { RedFlow } from "./red-flow";
 
@@ -25,7 +25,7 @@ const gauss = (d2: number, r: number) => Math.exp(-d2 / (r * r));
  * bursts at its crown, the rim lights from the centre outward with two hot points racing to the edges, the air
  * blooms, and the grid and the signals arrive last.
  */
-const ENTER_AT = 3.9; // seconds; keep in step with --answer in landing.css
+const ENTER_AT = 1.7; // seconds; keep in step with --answer in landing.css
 const clamp01 = (v: number) => Math.min(Math.max(v, 0), 1);
 const outExpo = (v: number) => (v >= 1 ? 1 : 1 - 2 ** (-10 * v));
 const outCubic = (v: number) => 1 - (1 - v) ** 3;
@@ -34,7 +34,7 @@ const theme = { light: false };
 /** How far the planet has risen past its resting place, 0..1 of the screen height; set by the scroll (mention-flight.tsx). */
 export const horizon = { lift: 0 };
 
-function eclipse(): Scene {
+function eclipse(enterAt = ENTER_AT): Scene {
   let grid: HTMLCanvasElement | null = null;
   let gridFor = "";
   let lx = 0.5; // where along the rim the light sits, 0..1 across the screen, eased toward the pointer
@@ -46,7 +46,7 @@ function eclipse(): Scene {
     ctx.clearRect(0, 0, w, h);
     const dt = lastT ? Math.min(0.05, Math.max(0, t - lastT)) : 0;
     lastT = t;
-    const e = t - ENTER_AT;
+    const e = t - enterAt;
     if (e <= 0) return;
     // The entrance, each part 0..1.
     const rise = outExpo(clamp01(e / 2.2));
@@ -189,7 +189,7 @@ function eclipse(): Scene {
     if (late > 0) {
       const seen = span / 1.15;
       for (const s of signals) {
-        const u = (s.at + (t - ENTER_AT) * s.speed) % 1;
+        const u = (s.at + (t - enterAt) * s.speed) % 1;
         for (let k = 0; k < 14; k++) {
           const a3 = -Math.PI / 2 - seen + 2 * seen * (u - k * 0.0035);
           const x = cx + Math.cos(a3) * R, y = cy + Math.sin(a3) * R;
@@ -334,14 +334,14 @@ function lines(): Scene {
 
 const SCENES: Record<Exclude<BackgroundKind, "smoke">, () => Scene> = { eclipse, waves, dots, tiles, lines };
 
-function CanvasScene({ kind, className }: { kind: Exclude<BackgroundKind, "smoke">; className?: string }) {
+function CanvasScene({ kind, className, enterAt }: { kind: Exclude<BackgroundKind, "smoke">; className?: string; enterAt?: number }) {
   const canvas = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const el = canvas.current!;
     const ctx = el.getContext("2d");
     if (!ctx) return;
-    const draw = SCENES[kind]();
+    const draw = kind === "eclipse" ? eclipse(enterAt) : SCENES[kind]();
     let w = 0, h = 0;
     const size = () => {
       const dpr = Math.min(window.devicePixelRatio, 2);
@@ -370,7 +370,7 @@ function CanvasScene({ kind, className }: { kind: Exclude<BackgroundKind, "smoke
     const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let raf = 0;
     const frame = (now: number) => {
-      draw(ctx, w, h, still ? 60 : (now - t0) / 1000, pointer);
+      if (w && h) draw(ctx, w, h, still ? 60 : (now - t0) / 1000, pointer); // no size while its panel is hidden (phones)
       if (!still) raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
@@ -386,9 +386,15 @@ function CanvasScene({ kind, className }: { kind: Exclude<BackgroundKind, "smoke
       window.removeEventListener("pointermove", onPointer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [kind]);
+  }, [kind, enterAt]);
 
   return <canvas ref={canvas} className={className} aria-hidden />;
+}
+
+/** The landing's eclipse for the sign-up and log-in pages: it rises as soon as the page opens, at its resting height. */
+export function AuthEclipse({ className }: { className?: string }) {
+  useLayoutEffect(() => { horizon.lift = 0; }, []);
+  return <CanvasScene kind="eclipse" enterAt={0.1} className={className} />;
 }
 
 /** Shows the background named by ?bg= (eclipse by default). */

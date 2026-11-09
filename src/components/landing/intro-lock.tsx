@@ -3,8 +3,8 @@
 import { useEffect } from "react";
 
 // The opening plays out before the page can be scrolled: until the answer is sharp and the bar and eclipse are in.
-// --answer (3.9s) + the slowest word of the answer (1.6s, plus its 0.4s stagger) — keep in step with landing.css.
-const INTRO_MS = 5900;
+// --answer (1.7s) + the slowest word of the answer (1.2s, plus its 0.3s stagger) — keep in step with landing.css.
+const INTRO_MS = 3300;
 
 /**
  * Holds the page at the top while the opening plays. Skipped for reduced motion, which shows the finished page, and

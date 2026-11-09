@@ -28,7 +28,7 @@ export function Landing({ signedIn, plans }: { signedIn: boolean; plans: Plan[] 
       </Link>
       {/* The mark on its way back here from Claude, at the end of the story (process.tsx). */}
       <span data-flight-home className="hx-home" aria-hidden><HeardexMark className="h-full w-full" /></span>
-      <SiteNav start={start} signIn={!signedIn} theme />
+      <SiteNav start={start} theme />
     </header>
       {/* The first screen: the question and answer, and the eclipse behind them. */}
       {/* Pinned while the logo comes out of the bar toward you (mention-flight.tsx), then it scrolls away. */}
@@ -37,7 +37,7 @@ export function Landing({ signedIn, plans }: { signedIn: boolean; plans: Plan[] 
         <HeroBackground className="hx-flow pointer-events-none absolute inset-0 h-full w-full" />
 
         <div className="h-20 flex-none" />
-        <section id="main" data-hero-copy className="hx-frame relative z-10 flex flex-1 items-center justify-center pb-20 text-center" aria-label="Heardex">
+        <section id="main" data-hero-copy className="hx-frame relative z-10 flex flex-1 flex-col items-center justify-center pb-20 text-center" aria-label="Heardex">
           {/* The question comes into focus, holds and fades; the answer then comes into focus in the same place. */}
           <h1 className="grid text-[clamp(48px,7.4vw,136px)] font-semibold leading-[0.95] tracking-[-0.05em]">
             <span className="hx-q col-start-1 row-start-1 self-center text-[var(--muted)]" aria-hidden>
@@ -47,6 +47,8 @@ export function Landing({ signedIn, plans }: { signedIn: boolean; plans: Plan[] 
               <Words text="We hear what people say about your product." breakAfter={4} />
             </span>
           </h1>
+          <Link href={start.href} className="hx-nav is-primary hx-hero-cta mt-9">{signedIn ? start.label : "Start for free"}</Link>
+          {!signedIn && <p className="hx-hero-note mt-3 text-[14px] text-[var(--muted)]">No credit card required</p>}
         </section>
       </div>
       </div>

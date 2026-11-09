@@ -22,6 +22,11 @@ export default async function SignUpPage({ searchParams }: { searchParams: Promi
       <ProviderButtons providers={providers} next={next} />
       <SignUpForm next={next === "/onboarding" ? undefined : next} />
       <p className="text-center text-[13px] text-muted-foreground">
+        By creating an account, you agree to our{" "}
+        <Link href="/legal/terms" target="_blank" rel="noopener" className="text-foreground underline underline-offset-2">Terms of Service</Link>{" "}and{" "}
+        <Link href="/legal/privacy" target="_blank" rel="noopener" className="text-foreground underline underline-offset-2">Privacy Policy</Link>.
+      </p>
+      <p className="text-center text-[13px] text-muted-foreground">
         Already have an account?{" "}
         <Link href={next === "/onboarding" ? "/login" : `/login?next=${encodeURIComponent(next)}`} className="font-medium text-foreground hover:underline">
           Sign in
