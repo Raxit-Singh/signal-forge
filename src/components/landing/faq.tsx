@@ -36,6 +36,10 @@ const QA: Array<{ q: string; a: React.ReactNode }> = [
     q: "Can I use it from Claude?",
     a: "Yes. Every plan includes the Claude MCP connector, so you can ask Claude about your mentions and issues in plain words.",
   },
+  {
+    q: "What happens when someone praises my product?",
+    a: "On paid plans, our AI files the post under Testimonials with a link to the original, so the kind words are all in one place. These are public posts, so ask the author before using their words in your marketing.",
+  },
 ];
 
 /** After pricing: the questions people ask before they pay. Native details/summary, so it works without script. */

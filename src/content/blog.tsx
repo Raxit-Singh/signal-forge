@@ -51,7 +51,7 @@ export const POSTS: Post[] = [
           <li>Bug, performance problem or security concern</li>
           <li>Feature request</li>
           <li>Complaint about usability or pricing</li>
-          <li>Question, praise, or comparison with a competitor</li>
+          <li>Question, testimonial, or comparison with a competitor</li>
         </ul>
 
         <h2>4. Group posts about the same problem</h2>

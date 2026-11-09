@@ -100,7 +100,7 @@ function addInto(sum: Vec, v: Vec) {
 const CATEGORY_LABEL: Record<FeedbackCategory, string> = {
   bug_report: "Bug reports", feature_request: "Feature requests", usability_complaint: "Usability complaints",
   pricing_complaint: "Pricing complaints", performance_issue: "Performance issues", security_concern: "Security concerns",
-  positive_review: "Praise", general_discussion: "Discussion", support_question: "Support questions",
+  positive_review: "Testimonials", general_discussion: "Discussion", support_question: "Support questions",
   competitor_comparison: "Competitor comparisons", complaint: "Complaints", other: "Other feedback",
 };
 export const categoryLabel = (c: FeedbackCategory) => CATEGORY_LABEL[c];

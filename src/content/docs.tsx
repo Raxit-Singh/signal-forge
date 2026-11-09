@@ -253,7 +253,7 @@ export const DOCS: Doc[] = [
           <li>Bug report, performance issue, security concern</li>
           <li>Feature request</li>
           <li>Usability complaint, pricing complaint</li>
-          <li>Support question, comparison with a competitor, praise, general discussion</li>
+          <li>Support question, comparison with a competitor, testimonial, general discussion</li>
         </ul>
         <p>Classification is done by AI and can be wrong. You can correct any mention; the correction is kept along with the history of earlier ones.</p>
         <h2>Grouping into issues</h2>

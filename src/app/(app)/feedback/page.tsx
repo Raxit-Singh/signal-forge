@@ -28,7 +28,7 @@ export const metadata: Metadata = { title: "Issues" };
 
 
 const MATRIX_KINDS = ["bugs", "features", "complaints", "praise", "questions"] as const;
-const KIND_SHORT: Record<(typeof MATRIX_KINDS)[number], string> = { bugs: "Bugs", features: "Requests", complaints: "Complaints", praise: "Praise", questions: "Questions" };
+const KIND_SHORT: Record<(typeof MATRIX_KINDS)[number], string> = { bugs: "Bugs", features: "Requests", complaints: "Complaints", praise: "Testimonials", questions: "Questions" };
 
 const PRIORITY_INK: Record<string, string> = {
   critical: "var(--signal)", high: "color-mix(in oklab, var(--signal) 55%, var(--foreground) 25%)",
@@ -145,7 +145,7 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
     { label: "Bug reports", value: sum("bugs"), unit: "posts", href: mentionsHref("bugs"), cta: "Show them →", line: series("bugs"), red: true },
     { label: "Feature requests", value: sum("features"), unit: "posts", href: mentionsHref("features"), cta: "Show them →", line: series("features"), red: false },
     { label: "Complaints", value: sum("complaints"), unit: "posts", href: mentionsHref("complaints"), cta: "Show them →", line: series("complaints"), red: false },
-    { label: "Praise", value: sum("praise"), unit: "posts", href: mentionsHref("praise"), cta: "Show them →", line: series("praise"), red: false },
+    { label: "Testimonials", value: sum("praise"), unit: "posts", href: mentionsHref("praise"), cta: "Show them →", line: series("praise"), red: false },
   ];
   const byPriority = Object.fromEntries(PRIORITIES.map((p) => [p, open.filter((c) => c.suggested_priority === p).length])) as Record<(typeof PRIORITIES)[number], number>;
   const worsening = open.filter((c) => ["worsening", "growing"].includes(c.priority_evidence?.observed.trend ?? "")).length;
@@ -306,7 +306,7 @@ export default async function FeedbackPage({ searchParams }: { searchParams: Pro
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-2 xl:grid-cols-12">
         <Panel d={420} className="md:col-span-2 xl:col-span-8" title="Feedback by platform"
-          sub={<>Which platforms bring bugs, requests, complaints, praise and questions · {period}. Pick a kind to rank platforms; every mark opens those posts.</>}>
+          sub={<>Which platforms bring bugs, requests, complaints, testimonials and questions · {period}. Pick a kind to rank platforms; every mark opens those posts.</>}>
           <PlatformMatrix rows={platformRows} query={rangeQuery} kinds={MATRIX_KINDS.map((k) => ({ key: k, label: FEEDBACK_FILTERS[k].label, short: KIND_SHORT[k] }))} />
         </Panel>
         <Panel d={540} className="md:col-span-2 xl:col-span-4" title="Moving now" sub="Issues growing this week, and ones that just appeared.">

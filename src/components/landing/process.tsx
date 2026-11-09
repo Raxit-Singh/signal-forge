@@ -58,14 +58,14 @@ const AGES = ["now", "9s", "31s", "1m", "2m", "4m"];
 const READS: { kind: string; topic: string; urgency: [string, Tone | ""]; issue: string; count: number }[] = [
   { kind: "Bug report", topic: "PDF export", urgency: ["High", "neg"], issue: "PDF export crashes", count: 14 },
   { kind: "Bug report", topic: "Sync · data loss", urgency: ["Critical", "neg"], issue: "Notes lost after 1.8 sync", count: 9 },
-  { kind: "Praise", topic: "Dark mode", urgency: ["None", ""], issue: "Dark mode praise", count: 31 },
-  { kind: "Praise", topic: "Team adoption", urgency: ["None", ""], issue: "Teams switching over", count: 12 },
+  { kind: "Testimonial", topic: "Dark mode", urgency: ["None", ""], issue: "Dark mode testimonials", count: 31 },
+  { kind: "Testimonial", topic: "Team adoption", urgency: ["None", ""], issue: "Teams switching over", count: 12 },
   { kind: "Bug report", topic: "Sync", urgency: ["High", "neg"], issue: "Sync stalls on large vaults", count: 7 },
   { kind: "Feature request", topic: "Offline mode", urgency: ["Low", ""], issue: "Offline mode", count: 23 },
-  { kind: "Praise", topic: "Support", urgency: ["None", ""], issue: "Support praise", count: 18 },
+  { kind: "Testimonial", topic: "Support", urgency: ["None", ""], issue: "Support testimonials", count: 18 },
   { kind: "Bug report", topic: "PDF export", urgency: ["High", "neg"], issue: "PDF export crashes", count: 14 },
   { kind: "Question", topic: "Exports · CLI", urgency: ["Low", ""], issue: "Scripting exports", count: 5 },
-  { kind: "Praise", topic: "Time saved", urgency: ["None", ""], issue: "Time saved", count: 11 },
+  { kind: "Testimonial", topic: "Time saved", urgency: ["None", ""], issue: "Time saved", count: 11 },
 ];
 
 // The problems those mentions add up to, as the issues page ranks them: by how serious, then by how many raise them
@@ -433,7 +433,7 @@ function Panel({ head, step, k }: { head: number; step: 0 | 1 | 2; k: number }) 
 // The words beside the panel at each step: the feed, the AI's sorting, the issues, Claude.
 const HEADS: [string, string][] = [
   ["All your mentions, in one place.", "Posts, reviews and comments that name your product, gathered from each platform and checked so the feed is about you."],
-  ["Then our AI sorts each one.", "It reads every mention for sentiment, what kind of feedback it is and what it is about, and puts it with the issue it belongs to."],
+  ["Then our AI sorts each one.", "It reads every mention for sentiment and topic, then files it as a bug, a request, a complaint or a question. When someone praises your product, it becomes a testimonial."],
   ["Ranked into issues.", "Mentions of the same problem become one issue. The issues are ranked by how serious they are and how many people raise them, so you know what to fix first."],
   ["Your feedback, inside Claude.", "Connect Heardex to Claude once with our MCP connector. Your issues, the reports behind them and your product's context are there whenever you ask Claude about them."],
 ];

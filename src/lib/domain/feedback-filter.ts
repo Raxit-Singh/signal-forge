@@ -6,7 +6,7 @@ export const FEEDBACK_FILTERS = {
   bugs: { label: "Bug reports", categories: ["bug_report"] },
   features: { label: "Feature requests", categories: ["feature_request"] },
   complaints: { label: "Complaints", categories: ["complaint", "usability_complaint", "pricing_complaint", "performance_issue"] },
-  praise: { label: "Praise", categories: ["positive_review"] },
+  praise: { label: "Testimonials", categories: ["positive_review"] },
   questions: { label: "Questions", categories: ["support_question"] },
   comparisons: { label: "Competitor comparisons", categories: ["competitor_comparison"] },
   general: { label: "General discussion / other", categories: ["general_discussion", "other"] },

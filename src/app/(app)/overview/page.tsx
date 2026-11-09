@@ -27,7 +27,7 @@ const KIND_GROUP: Partial<Record<FeedbackCategory, string>> = {
 const TOPIC: Partial<Record<FeedbackCategory, { id: string; name: string }>> = {
   bug_report: { id: "bug", name: "Bugs" }, security_concern: { id: "bug", name: "Bugs" }, performance_issue: { id: "bug", name: "Bugs" },
   complaint: { id: "cmp", name: "Complaints" }, usability_complaint: { id: "cmp", name: "Complaints" }, pricing_complaint: { id: "cmp", name: "Complaints" },
-  feature_request: { id: "ftr", name: "Feature requests" }, positive_review: { id: "prs", name: "Praise" }, support_question: { id: "q", name: "Questions" },
+  feature_request: { id: "ftr", name: "Feature requests" }, positive_review: { id: "prs", name: "Testimonials" }, support_question: { id: "q", name: "Questions" },
 };
 const nameOf = (id: string) => integrationInfo(id as never)?.name.replace(/ \/ Stack Exchange$/, "").replace(/ \((Twitter|Google Search|Google News)\)$/, "") ?? id;
 const change = (cur: number, prev: number) => (prev > 0 ? cur / prev - 1 : null);

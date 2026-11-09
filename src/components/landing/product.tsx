@@ -42,15 +42,15 @@ function Window({ title, right, children, className }: { title: string; right?: 
 }
 
 const SENT: Record<string, string> = { Negative: "#e34948", Neutral: "#8f8f96", Positive: "#2a78d6" };
-const KIND: Record<string, string> = { Bug: "#e34948", Request: "#2a78d6", Complaint: "#eda100", Praise: "#1baf7a" };
+const KIND: Record<string, string> = { Bug: "#e34948", Request: "#2a78d6", Complaint: "#eda100", Testimonial: "#1baf7a" };
 
 const FEED = [
   { source: "reddit", who: "u/marta_writes", where: "r/productivity", text: "Export to PDF crashes every time my note is longer than 40 pages.", sent: "Negative", kind: "Bug" },
-  { source: "bluesky", who: "@lena.bsky.social", where: "Bluesky", text: "Nimbus search is genuinely the fastest I've used. Found a 2019 note in a second.", sent: "Positive", kind: "Praise" },
+  { source: "bluesky", who: "@lena.bsky.social", where: "Bluesky", text: "Nimbus search is genuinely the fastest I've used. Found a 2019 note in a second.", sent: "Positive", kind: "Testimonial" },
   { source: "hackernews", who: "jkl", where: "Hacker News", text: "Would switch the whole team if it had offline mode on iOS.", sent: "Neutral", kind: "Request" },
   { source: "app_store", who: "2 of 5 stars", where: "App Store", text: "Price went up again and sync is still slow. Not happy.", sent: "Negative", kind: "Complaint" },
   { source: "github", who: "devlin", where: "nimbus/desktop #412", text: "Sync stalls at 99% after the 1.8 update on Windows.", sent: "Negative", kind: "Bug" },
-  { source: "youtube", who: "Paper & Pixels", where: "YouTube comment", text: "Tried Nimbus after this video, the templates are lovely.", sent: "Positive", kind: "Praise" },
+  { source: "youtube", who: "Paper & Pixels", where: "YouTube comment", text: "Tried Nimbus after this video, the templates are lovely.", sent: "Positive", kind: "Testimonial" },
   { source: "stackexchange", who: "rk_dev", where: "Stack Overflow", text: "Nimbus API returns 429 on bulk export, any workaround?", sent: "Neutral", kind: "Bug" },
 ];
 

@@ -28,7 +28,7 @@ export async function GET() {
   const text = [
     "# Heardex",
     "",
-    "> Heardex is social listening and product intelligence for software teams. It finds public posts that mention a product across Reddit, Hacker News, GitHub, Stack Overflow, app store reviews, X, LinkedIn and more, checks each one is really about that product, sorts them into bug reports, feature requests, complaints and praise, groups posts about the same problem into issues, and ranks the issues. Teams can ask Claude about their feedback through the Heardex MCP connector.",
+    "> Heardex is social listening and product intelligence for software teams. It finds public posts that mention a product across Reddit, Hacker News, GitHub, Stack Overflow, app store reviews, X, LinkedIn and more, checks each one is really about that product, sorts them into bug reports, feature requests, complaints and testimonials, groups posts about the same problem into issues, and ranks the issues. Teams can ask Claude about their feedback through the Heardex MCP connector.",
     "",
     "Key facts:",
     "",
