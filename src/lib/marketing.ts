@@ -8,15 +8,17 @@ export const PRODUCT_PAGES = [
   { slug: "smart-monitoring", name: "Smart monitoring", line: "Busy places checked often, quiet ones less, history at setup" },
   { slug: "competitor-tracking", name: "Competitor tracking", line: "What people say about the products you compete with" },
   { slug: "buzz-analytics", name: "Buzz analytics and reports", line: "Volume, platforms, spikes and the reports in your inbox" },
-  { slug: "claude", name: "Heardex for Claude", line: "Ask Claude about your feedback and investigate issues in code" },
+  { slug: "mcp", name: "Heardex MCP", line: "Your feedback in Claude, ChatGPT, Cursor and VS Code" },
 ] as const;
 
 export type ProductSlug = (typeof PRODUCT_PAGES)[number]["slug"];
 
-export const RESOURCE_LINKS = [
-  { href: "/docs", label: "Docs" },
-  { href: "/blog", label: "Blog" },
-  { href: "/alternatives", label: "Alternatives" },
-  { href: "/#pricing", label: "Pricing" },
-  { href: "/#faq", label: "FAQ" },
-] as const;
+export interface SiteLink { href: string; label: string }
+
+/** The site's links by category. The footer and the phone menu both show these, so they can't drift apart. */
+export const SITE_SECTIONS: ReadonlyArray<{ title: string; links: readonly SiteLink[] }> = [
+  { title: "Product", links: [...PRODUCT_PAGES.map((p) => ({ href: `/product/${p.slug}`, label: p.name })), { href: "/#pricing", label: "Pricing" }] },
+  { title: "Resources", links: [{ href: "/docs", label: "Docs" }, { href: "/blog", label: "Blog" }, { href: "/alternatives", label: "Alternatives" }, { href: "/#faq", label: "FAQ" }] },
+  { title: "Support", links: [{ href: "/legal/contact", label: "Contact and support" }] },
+  { title: "Legal", links: [{ href: "/legal/terms", label: "Terms of Service" }, { href: "/legal/privacy", label: "Privacy Policy" }, { href: "/legal/refunds", label: "Refund Policy" }] },
+];

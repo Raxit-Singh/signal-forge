@@ -29,7 +29,7 @@ const SKIES: Record<string, SkyKind> = {
   "smart-monitoring": "pulse",
   "competitor-tracking": "orbits",
   "buzz-analytics": "chart",
-  claude: "mcp",
+  mcp: "mcp",
 };
 
 export default async function ProductFeaturePage({ params }: { params: Promise<{ slug: string }> }) {

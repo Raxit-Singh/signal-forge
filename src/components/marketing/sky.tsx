@@ -10,7 +10,7 @@ import { useEffect, useRef } from "react";
 //   orbits   competitor tracking: your product at the centre, competitors around it, mentions flying in
 //   chart    buzz analytics: a volume line running past, its spikes lit red
 //   trace    a signal follows a branching path from the feedback to its cause (unused for now)
-//   mcp      Claude: Claude calls the Heardex connector's tools; requests go out red, answers come back
+//   mcp      Heardex MCP: an AI app calls the Heardex connector's tools; requests go out red, answers come back
 //   lines   docs and policies: ruled lines, a red reading light running along them
 //   threads blog: conversations, threads drifting across with signals running along them
 //   venn    alternatives: two products side by side, lit red where they overlap
@@ -385,7 +385,7 @@ function trace(): Scene {
   };
 }
 
-/** Claude, on the right, calls the Heardex MCP connector's tools: a request runs out to a tool, its name lights, the answer runs back. */
+/** An AI app (Claude, ChatGPT, Cursor, VS Code in turn), on the right, calls the Heardex MCP connector's tools: a request runs out to a tool, its name lights, the answer runs back. */
 function mcp(): Scene {
   const TOOLS = [
     "get_product_context", "get_feedback_issues", "get_issue_details", "get_issue_evidence",
@@ -467,7 +467,7 @@ function mcp(): Scene {
         ctx.beginPath(); ctx.arc(x, y, k === 0 ? 2.6 : 1.6, 0, Math.PI * 2); ctx.fill();
       }
     }
-    // Claude, the client.
+    // The AI app, the client.
     const pulseA = Math.max(0, 1 - (t - hubHit) / 0.6);
     glowAt(ctx, hx, hy, 70 + pulseA * 30, red, ((light ? 0.16 : 0.22) + pulseA * 0.25) * enter);
     ctx.save();
@@ -479,7 +479,11 @@ function mcp(): Scene {
     if (!wide) { ctx.globalAlpha = 1; return; }
     ctx.textAlign = "center";
     ctx.fillStyle = rgba(ink, (light ? 0.7 : 0.65) * enter);
-    ctx.fillText("Claude", hx, hy + 26);
+    // The client's name changes every few seconds, fading through, since every MCP app connects the same way.
+    const CLIENTS = ["Claude", "ChatGPT", "Cursor", "VS Code"], SPAN = 2.6;
+    const at = t % SPAN, swap = Math.min(smooth(0, 0.35, at), 1 - smooth(SPAN - 0.35, SPAN, at));
+    ctx.fillStyle = rgba(ink, (light ? 0.7 : 0.65) * enter * swap);
+    ctx.fillText(CLIENTS[Math.floor(t / SPAN) % CLIENTS.length]!, hx, hy + 26);
     ctx.textAlign = "right";
     ctx.fillStyle = rgba(red, 0.85 * enter);
     ctx.fillText("Heardex MCP", portX + 4, top - 32);

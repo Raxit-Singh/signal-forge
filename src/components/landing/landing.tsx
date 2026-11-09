@@ -20,8 +20,8 @@ export function Landing({ signedIn, plans }: { signedIn: boolean; plans: Plan[] 
   return (
     <div className={`hx relative ${switzer.className}`}>
       <IntroLock />
-      {/* The bar stays at the top on every screen. Its logo flies off into the story (mention-flight.tsx), and the name
-          closes up where it was; at the end of the story the logo flies back (process.tsx). */}
+      {/* The bar stays at the top on every screen. Its logo flies off into the story (mention-flight.tsx) and the name
+          stays put; at the end of the story the logo flies back (process.tsx). */}
     <header className="hx-bar hx-frame fixed inset-x-0 top-0 z-50 flex h-20 items-center justify-between">
       <Link href="/" className="hx-link flex items-center gap-2.5 text-[20px] font-semibold tracking-[-0.03em]" aria-label="Heardex home">
         <span data-flight-source className="flex"><HeardexMark animated className="h-6 w-6" /></span><span className="hx-word">heardex</span>

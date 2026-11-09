@@ -148,7 +148,7 @@
    s5 at Reddit, s6 across the wire, s7 at Heardex, s8 mention risen, s9 reset. */
 .mf { container-type: inline-size; width: 100%; }
 /* The logo in flight (fixed, over the page) and the empty tray waiting for it. */
-.mf-ghost { position: fixed; left: 0; top: 0; z-index: 40; pointer-events: none; visibility: hidden; --ink: #f4f4f5; }
+.mf-ghost { position: fixed; left: 0; top: 0; z-index: 55; /* above the solid bar it leaves from */ pointer-events: none; visibility: hidden; --ink: #f4f4f5; }
 .mf-ghost.is-flying { visibility: visible; }
 .mf-mover { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-style: preserve-3d; }
 .is-waiting .is-heardex .mf-hx { visibility: hidden; }
@@ -773,10 +773,14 @@
 .dv { position: absolute; inset: 0; z-index: 15; overflow: hidden; pointer-events: none; visibility: hidden; }
 .dv.is-on { visibility: visible; }
 
-/* The bar, fixed over every screen: dark behind it so what scrolls under stays clear of it. Once its logo has flown
-   into the story, the name slides over to close the gap. */
-.hx-bar { background: linear-gradient(to bottom, rgb(5 5 6 / 0.85), rgb(5 5 6 / 0)); }
-.hx-word { transition: translate 600ms cubic-bezier(0.22, 1, 0.36, 1); }
+/* The bar, fixed over every screen: transparent, and solid only over plain black page (marketing/bar-surface.tsx), where text scrolling under it would clash with its links. While its logo is away
+   in the story the name slides over to close the gap; is-flown is set only once the flying logo is well clear of
+   the bar, and cleared as it comes near again, so the name is back in place before the logo lands. */
+.hx-bar { background: transparent; border-bottom: 1px solid transparent; transition: background-color 220ms ease, border-color 220ms ease; }
+.hx-bar.is-red { background: var(--red); }
+.hx-bar.is-red .hx-nav:not(.is-primary), .hx-bar.is-red .hx-theme, .hx-bar.is-red .hx-mnav-btn { color: var(--ink); }
+.hx-bar.is-solid, .hx-bar:has(.hx-mnav-panel[data-open]) { background: var(--ground); border-bottom-color: rgb(255 255 255 / 0.06); }
+.hx-word { transition: translate 420ms cubic-bezier(0.22, 1, 0.36, 1); }
 .hx-bar.is-flown .hx-word { translate: -34px 0; }
 
 /* The logo's flight home from Claude to the bar (process.tsx sets its place each frame). Fixed in the bar, which sits
@@ -853,10 +857,10 @@
    mark and the name are red above that line (on the black page) and black below it (on the red). */
 .hx-end { --end-ink: var(--ground); position: relative; color: var(--end-ink); background: linear-gradient(to bottom, transparent clamp(32px, 8.75vw, 145px), var(--red) 0); }
 .hx-end-name { display: flex; align-items: center; justify-content: center; gap: 0.06em; height: 1em; padding-inline: var(--margin);
-  font-size: clamp(64px, 17.5vw, 290px); font-weight: 600; line-height: 1; letter-spacing: -0.06em; user-select: none; }
+  font-size: clamp(64px, 17.5vw, 290px); font-weight: 600; line-height: 1; letter-spacing: -0.06em; user-select: none; will-change: transform; }
 .hx-end-mark { flex: none; width: 0.74em; height: 0.77em; }
 .hx-end-mark > * { fill: url(#hx-end-fill); }
-.hx-end-word { display: block; height: 1em; background: linear-gradient(to bottom, var(--red) 50%, var(--end-ink) 50%);
+.hx-end-word { display: block; height: 1em; background: linear-gradient(to bottom, var(--red) calc(50% + var(--lift, 0px)), var(--end-ink) 0);
   -webkit-background-clip: text; background-clip: text; color: transparent; }
 .hx-end-head { margin-bottom: 14px; font-size: 13px; font-weight: 600; letter-spacing: 0.02em; color: rgb(5 5 6 / 0.6); }
 .hx-end-list { display: grid; gap: 10px; font-size: 16px; font-weight: 500; }
@@ -866,6 +870,8 @@
 .hx-end-note { color: rgb(5 5 6 / 0.7); }
 .hx-end-cta { display: inline-flex; align-items: center; height: 44px; padding: 0 22px; border-radius: 999px; background: var(--end-ink); color: var(--red);
   font-weight: 500; transition: transform 150ms ease; }
+#faq { scroll-margin-top: 104px; }
+.hx-end-signin { font-size: 16px; font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
 .hx-end-cta:active { transform: scale(0.97); }
 
 /* Comparison pages (src/app/alternatives). */
@@ -888,6 +894,49 @@
 .hx-alt-list li::before { content: ""; position: absolute; left: 0; top: 0.65em; width: 8px; height: 8px; border-radius: 999px; background: var(--muted); }
 .is-us .hx-alt-list li::before { background: var(--red); }
 @media (max-width: 899px) { .hx .hx-nav-wide { display: none; } }
+
+/* The menu on phones (marketing/mobile-menu.tsx): two lines that turn into a cross, and a panel that drops from the bar. */
+.hx-mnav { display: none; }
+@media (max-width: 899px) { .hx-mnav { display: block; } }
+.hx-mnav-btn { position: relative; display: grid; place-items: center; width: 40px; height: 40px; margin-left: 2px; border-radius: 999px; color: var(--ink);
+  transition: background-color 150ms ease, transform 150ms ease; }
+.hx-mnav-btn:hover { background: var(--field-2); }
+.hx-mnav-btn:active { transform: scale(0.94); }
+.hx-mnav-btn:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+.hx-mnav-btn span { position: absolute; left: 12px; right: 12px; height: 1.6px; border-radius: 2px; background: currentColor;
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1); }
+.hx-mnav-btn span:first-child { transform: translateY(-4px); }
+.hx-mnav-btn span:last-child { transform: translateY(4px); }
+.hx-mnav-btn[aria-expanded="true"] span:first-child { transform: rotate(45deg); }
+.hx-mnav-btn[aria-expanded="true"] span:last-child { transform: rotate(-45deg); }
+/* Placed against the bar, not the screen: the bar's blur and transform make it the panel's containing block. */
+.hx-mnav-panel { position: absolute; left: 0; right: 0; top: 100%; height: calc(100dvh - 100%); z-index: 60; overflow-y: auto; padding: 10px var(--margin, 16px) calc(24px + env(safe-area-inset-bottom)); overscroll-behavior: contain; background: var(--ground);
+  opacity: 0; visibility: hidden; transform: translateY(-8px);
+  transition: opacity 200ms ease, transform 260ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s 260ms; }
+.hx-mnav-panel[data-open] { opacity: 1; visibility: visible; transform: none; transition: opacity 200ms ease, transform 260ms cubic-bezier(0.22, 1, 0.36, 1); }
+/* Each group is one big row; tapped, it opens (its height runs from 0fr to 1fr) and its links follow one after another. */
+.hx-mnav-item { border-bottom: 1px solid var(--line); }
+.hx-mnav-row { display: flex; width: 100%; min-height: 64px; align-items: center; justify-content: space-between; font-size: 24px; font-weight: 600; letter-spacing: -0.025em; color: var(--ink); text-align: left; transition: opacity 120ms ease; }
+.hx-mnav-row:active { opacity: 0.6; }
+.hx-mnav-row:focus-visible, .hx-mnav-sub a:focus-visible { outline: 2px solid var(--red); outline-offset: -2px; border-radius: 6px; }
+.hx-mnav-caret { width: 20px; height: 20px; flex: none; fill: none; stroke: var(--muted); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1), stroke 200ms ease; }
+.is-open > h2 .hx-mnav-caret { transform: rotate(180deg); stroke: var(--red); }
+.hx-mnav-sub { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 320ms cubic-bezier(0.22, 1, 0.36, 1); }
+.is-open > .hx-mnav-sub { grid-template-rows: 1fr; }
+.hx-mnav-sub ul { min-height: 0; overflow: hidden; }
+.hx-mnav-sub li { opacity: 0; transform: translateY(-8px); transition: opacity 140ms ease, transform 180ms ease; }
+.hx-mnav-sub li:last-child { padding-bottom: 12px; }
+.is-open > .hx-mnav-sub li { opacity: 1; transform: none; transition: opacity 260ms ease calc(60ms + var(--k) * 35ms), transform 320ms cubic-bezier(0.22, 1, 0.36, 1) calc(60ms + var(--k) * 35ms); }
+.hx-mnav-sub a { display: flex; min-height: 46px; align-items: center; font-size: 17px; font-weight: 500; color: var(--muted); transition: color 150ms ease; }
+.hx-mnav-sub a:hover, .hx-mnav-sub a:active { color: var(--ink); }
+/* As the panel opens, the groups rise in one after another. */
+@keyframes hx-mnav-in { from { opacity: 0; transform: translateY(14px); } }
+.hx-mnav-panel[data-open] .hx-mnav-item { animation: hx-mnav-in 420ms cubic-bezier(0.22, 1, 0.36, 1) calc(50ms + var(--i) * 45ms) both; }
+html:has(.hx-mnav-panel[data-open]) .mf-ghost { visibility: hidden; }
+@media (prefers-reduced-motion: reduce) {
+  .hx-mnav-panel, .hx-mnav-btn span, .hx-mnav-caret, .hx-mnav-sub, .hx-mnav-sub li, .is-open > .hx-mnav-sub li { transition: none; }
+  .hx-mnav-panel[data-open] .hx-mnav-item { animation: none; }
+}
 
 /* The Product menu in the top bar (marketing/product-menu.tsx). */
 .hx-menu { position: relative; }
@@ -946,8 +995,7 @@
    the eclipse rising behind the first screen, sections rising in as they scroll into view, and
    cards whose border lights up where the pointer is. There is no opening here, so it all starts at once. */
 .hx-site { --answer: 0ms; }
-.hx-site .hx-bar { animation-delay: 80ms; background: linear-gradient(to bottom, color-mix(in srgb, var(--ground) 90%, transparent), color-mix(in srgb, var(--ground) 62%, transparent));
-  -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2); border-bottom: 1px solid rgb(255 255 255 / 0.04); }
+.hx-site .hx-bar { animation-delay: 80ms; }
 .hx-title .hx-w { animation: hx-focus-in 1300ms cubic-bezier(0.22, 1, 0.36, 1) calc(120ms + var(--i) * 70ms) both; }
 .hx-hero { padding-top: clamp(48px, 10vh, 120px); }
 .hx-hero.has-sky { padding-bottom: clamp(96px, 13vh, 170px); }
@@ -1082,8 +1130,7 @@ html.light .hx {
 }
 html.light .hx .hx-panel { background: linear-gradient(180deg, #ffffff, #f8f7f4); box-shadow: 0 1px 2px rgb(0 0 0 / 0.05); }
 html.light .hx .hx-button.is-quiet { border-color: var(--line); }
-html.light .hx .hx-bar { background: linear-gradient(to bottom, rgb(246 245 242 / 0.88), rgb(246 245 242 / 0)); }
-html.light .hx.hx-site .hx-bar { background: linear-gradient(to bottom, rgb(246 245 242 / 0.9), rgb(246 245 242 / 0.62)); border-bottom-color: rgb(0 0 0 / 0.05); }
+html.light .hx .hx-bar.is-solid, html.light .hx .hx-bar:has(.hx-mnav-panel[data-open]) { border-bottom-color: rgb(0 0 0 / 0.07); }
 html.light .mf-ghost { --ink: #0c0c0d; }
 /* The mention's flight. */
 html.light .hx .mf-grid { background-image: linear-gradient(rgb(0 0 0 / 0.08) 1px, transparent 1px), linear-gradient(90deg, rgb(0 0 0 / 0.08) 1px, transparent 1px); }

@@ -4,7 +4,7 @@
   "title": "Heardex",
   "description": "Read your product's prioritised feedback issues, the public posts behind them and spike analysis.",
   "version": "1.0.0",
-  "websiteUrl": "https://www.heardex.com/docs/claude",
+  "websiteUrl": "https://www.heardex.com/docs/mcp",
   "remotes": [
     {
       "type": "streamable-http",

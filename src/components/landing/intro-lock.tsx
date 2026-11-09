@@ -6,10 +6,18 @@ import { useEffect } from "react";
 // --answer (3.9s) + the slowest word of the answer (1.6s, plus its 0.4s stagger) — keep in step with landing.css.
 const INTRO_MS = 5900;
 
-/** Holds the page at the top while the opening plays. Skipped for reduced motion, which shows the finished page. */
+/**
+ * Holds the page at the top while the opening plays. Skipped for reduced motion, which shows the finished page, and
+ * for a link to a section (/#pricing, /#faq): that visitor goes straight there, and the bar shouldn't wait for an
+ * opening they aren't watching.
+ */
 export function IntroLock() {
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (location.hash.length > 1) {
+      document.querySelector<HTMLElement>(".hx")?.style.setProperty("--answer", "0ms");
+      return;
+    }
     // A reload mid-page starts again at the top, so the opening is always seen from the start.
     history.scrollRestoration = "manual";
     window.scrollTo(0, 0);

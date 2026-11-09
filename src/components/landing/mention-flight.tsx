@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { siReddit } from "simple-icons";
 import { horizon } from "./backgrounds";
+import { clearOfBar } from "./bar-clear";
 import { HeardexMark } from "./hero";
 import { poseDive } from "./dive";
 import { Network, rounded, type RedditLink } from "./network";
@@ -30,6 +31,7 @@ const GROW_TO = 3.9;
 export const DIVE_FROM = 4.3;
 export const DIVE_TO = 5.8;
 const FOLLOW_MS = 260; // how softly the logo follows the scroll
+const HANDOVER = 0.015; // share of the first screen scrolled before the flying copy takes over from the bar's logo
 const LAND_BEAT = 700; // after the logo lands, before the post starts
 const HUB = 0.13; // Heardex's width in the network, a share of the screen's shorter side
 const LAYERS = 9; // slices that give the coin and the mark their thickness
@@ -110,6 +112,16 @@ export function MentionFlight() {
   const mover = useRef<HTMLDivElement>(null);
   const spin = useRef<HTMLDivElement>(null);
   const net = useRef<HTMLDivElement>(null);
+  // The flying logo has to pass over the solid bar, but the sticky section it renders in is a stacking context below
+  // the bar. So it lives at the page's root while mounted, and goes back before React removes it.
+  useLayoutEffect(() => {
+    const node = ghost.current;
+    const home = node?.parentElement;
+    const page = node?.closest(".hx");
+    if (!node || !home || !page) return;
+    page.appendChild(node);
+    return () => { home.appendChild(node); };
+  }, []);
   const [step, setStep] = useState(0);
   const [chars, setChars] = useState(0);
   const [landed, setLanded] = useState(false);
@@ -244,6 +256,10 @@ export function MentionFlight() {
       queued = 0;
       const dt = last ? Math.min(64, now - last) : 16;
       last = now;
+      // After a long jump (back to the top from the pricing, say) the logo is never more than a screen and a half
+      // behind, so it plays only the last of its flight, back into the bar, rather than easing down the whole page.
+      const far = innerHeight * 1.5;
+      if (at >= 0 && Math.abs(scrollY - at) > far) at = scrollY + Math.sign(at - scrollY) * far;
       at = at < 0 ? scrollY : at + (scrollY - at) * (1 - Math.exp(-dt / FOLLOW_MS));
       if (Math.abs(scrollY - at) < 0.5) at = scrollY;
 
@@ -268,13 +284,15 @@ export function MentionFlight() {
       }
       horizon.lift = 0.95 * easeInOut(smooth(0.35, 1, a));
 
-      const flying = at > 0 && b < 1;
+      // The bar keeps its own logo for the first sliver of scroll, so a nudge of the page doesn't swap it for the copy.
+      const flying = a > HANDOVER && b < 1;
       ghost.current!.classList.toggle("is-flying", flying);
       // Once the logo has come back to the bar at the end of the story (process.tsx), the bar is left as it is.
       const bar = source?.closest("header");
       if (!bar?.classList.contains("is-back")) {
-        if (source) source.style.visibility = at > 0 ? "hidden" : "";
-        bar?.classList.toggle("is-flown", at > 0);
+        if (source) source.style.visibility = a > HANDOVER ? "hidden" : "";
+        // The name slides over only once the flying logo is clear of the bar; checked below, after the logo is placed.
+        if (!flying) bar?.classList.toggle("is-flown", a > HANDOVER);
       }
       if (flying) {
         // The floor's angles before the turn (--tilt and --turn at --c 0 in landing.css).
@@ -300,8 +318,10 @@ export function MentionFlight() {
         // Part one: pops out and turns 3D, then comes from far, growing faster the nearer it gets.
         const pop = easeInOut(smooth(0, 0.22, a));
         const come = smooth(0.12, 1, a);
-        const ax = from.x + (mid.x - from.x) * easeInOut(come);
-        const ay = from.y + (mid.y - from.y) * easeInOut(come);
+        // Down first, then across: it drops away below the bar before moving over, so it never passes over the name
+        // beside it (and, scrolled back, rises straight up into its place).
+        const ax = from.x + (mid.x - from.x) * come ** 3;
+        const ay = from.y + (mid.y - from.y) * (1 - (1 - come) ** 2);
         const aScale = s0 + (big - s0) * come ** 2.2;
         const aLean = -26 * pop;
         const aYaw = 24 * pop;
@@ -321,6 +341,10 @@ export function MentionFlight() {
         const rockY = Math.cos(sec * 0.9) * 14 * air;
 
         const g = ghost.current!;
+        // Flat as it leaves the bar, so it sits exactly on the bar's logo: its slices, stacked in depth and seen from
+        // mid-screen, would otherwise fan up and to the left of it in the corner. It gains its thickness as it pops out.
+        const depth = smooth(0, 0.2, a);
+        g.querySelectorAll<HTMLElement>(".mf-hx").forEach((m) => m.style.setProperty("--step", `${(0.42 * depth).toFixed(4)}cqw`));
         g.style.left = `${box.left}px`;
         g.style.top = `${box.top}px`;
         g.style.width = `${box.width}px`;
@@ -331,6 +355,12 @@ export function MentionFlight() {
         mover.current!.style.transform = `translate3d(${x}px, ${y + bob}px, ${z}px)`;
         spin.current!.style.transform =
           `rotateX(${tilt * k}rad) rotateZ(${turn * k}rad) rotateX(${aLean * (1 - k) + rockX}deg) rotateY(${aYaw * (1 - k) + turnOnce + rockY}deg) scale(${scale})`;
+        const bar = source?.closest("header");
+        const face = g.querySelector<HTMLElement>(".is-top");
+        if (bar && source && face && !bar.classList.contains("is-back")) {
+          const word = bar.querySelector<HTMLElement>(".hx-word")?.getBoundingClientRect();
+          bar.classList.toggle("is-flown", clearOfBar(face.getBoundingClientRect(), source.getBoundingClientRect(), word));
+        }
       }
       turnTo(c, g, d);
       if ((b >= 1) !== down) {

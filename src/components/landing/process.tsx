@@ -3,6 +3,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { brandMark } from "@/components/brand-logo";
 import { HeardexMark } from "./hero";
+import { clearOfBar } from "./bar-clear";
 import { poseDiveOut, VANISH } from "./dive";
 import { DIVE_FROM, DIVE_TO } from "./mention-flight";
 
@@ -608,18 +609,21 @@ export function Process() {
       if (dive) poseDiveOut(dive, o);
       return o ? smooth(VANISH[0], VANISH[1], VANISH[1] * (1 - o)) : 1;
     };
-    // The flight home, 0..1: the mark, flat again overhead in the middle of the screen, turns once on its way up and
-    // comes down to its place in the bar; there the bar takes it back (its loop starts again) and the name opens up.
+    // The flight home, 0..1: the mark, flat again overhead in the middle of the screen, moves over under its place in
+    // the bar, tilting as it goes, and rises into it; there the bar takes it back (its loop starts again).
     const home = (r: number) => {
       from.style.visibility = r > 0 ? "hidden" : "";
-      // The name makes room just before the mark arrives; mention-flight.tsx leaves the bar alone once it is back.
+      // This flight has the bar for as long as it runs (mention-flight.tsx leaves the bar alone while it is "is-back").
       const back = r >= 1;
-      const room = r > 0.75;
+      const room = r > 0;
       if (bar && room !== bar.classList.contains("is-back")) {
         bar.classList.toggle("is-back", room);
-        bar.classList.toggle("is-flown", !room);
+        // Handing the bar back: mention-flight.tsx owns it outside this window, so let it set the bar from the scroll
+        // now. Setting it here raced that script when the page was scrolled up fast, leaving the name over the logo.
+        if (!room) dispatchEvent(new Event("scroll"));
       }
-      if (source && r > 0) source.style.visibility = back ? "" : "hidden";
+      if (bar && back) bar.classList.remove("is-flown");
+      if (source && room) source.style.visibility = back ? "" : "hidden";
       bar?.classList.toggle("is-home", back); // its loop starts again as it lands
       if (!fly || !source) return;
       fly.style.visibility = r > 0 && !back ? "visible" : "";
@@ -629,10 +633,15 @@ export function Process() {
       const start = Math.min(innerWidth, innerHeight) * HUB * (1126 / 1085);
       const go = easeInOut(r);
       const size = Math.exp(Math.log(start) + (Math.log(b.width) - Math.log(start)) * go);
-      const x = innerWidth / 2 + (b.left + b.width / 2 - innerWidth / 2) * go;
-      const y = innerHeight / 2 + (b.top + b.height / 2 - innerHeight / 2) * go - innerHeight * 0.1 * Math.sin(Math.PI * go);
+      // Across first, then up: it lines up under its place in the bar while still low on the screen, and rises into it,
+      // so it never passes over the name beside it.
+      const across = 1 - (1 - r) ** 3;
+      const x = innerWidth / 2 + (b.left + b.width / 2 - innerWidth / 2) * across;
+      const y = innerHeight / 2 + (b.top + b.height / 2 - innerHeight / 2) * go;
       fly.style.width = fly.style.height = `${b.width}px`;
       fly.style.transform = `translate(${x - b.width / 2}px, ${y - b.width / 2}px) scale(${size / b.width}) rotate(${-14 * Math.sin(Math.PI * go)}deg)`;
+      // The name slides back as the mark comes near the bar, so it is in place before the mark lands.
+      if (bar) bar.classList.toggle("is-flown", clearOfBar(fly.getBoundingClientRect(), b, bar.querySelector(".hx-word")?.getBoundingClientRect()));
       // The solid mark had no glow; the flat one gains the bar's as it goes.
       fly.style.filter = `drop-shadow(0 0 18px rgb(255 59 47 / ${(0.35 * go).toFixed(3)}))`;
     };

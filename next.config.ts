@@ -18,6 +18,13 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "256kb",
     },
   },
+  async redirects() {
+    // Heardex for Claude became Heardex MCP (it works in ChatGPT, Cursor and VS Code too).
+    return [
+      { source: "/product/claude", destination: "/product/mcp", permanent: true },
+      { source: "/docs/claude", destination: "/docs/mcp", permanent: true },
+    ];
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

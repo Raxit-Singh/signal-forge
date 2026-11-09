@@ -39,8 +39,13 @@ function eclipse(): Scene {
   let gridFor = "";
   let lx = 0.5; // where along the rim the light sits, 0..1 across the screen, eased toward the pointer
   const signals = [0.12, 0.47, 0.81].map((at, i) => ({ at, speed: 0.018 + i * 0.006 }));
+  // A few embers lift off the lit rim, mostly where the light is, sway on the air and burn out as they rise.
+  const embers: Array<{ x: number; y: number; vx: number; vy: number; age: number; life: number; size: number; seed: number }> = [];
+  let lastT = 0;
   return (ctx, w, h, t, p) => {
     ctx.clearRect(0, 0, w, h);
+    const dt = lastT ? Math.min(0.05, Math.max(0, t - lastT)) : 0;
+    lastT = t;
     const e = t - ENTER_AT;
     if (e <= 0) return;
     // The entrance, each part 0..1.
@@ -140,6 +145,44 @@ function eclipse(): Scene {
           ctx.fillRect(x - 60, y - 60, 120, 120);
         }
       }
+    }
+
+    // Embers: about two a second on a wide screen, fewer on a narrow one, once the rim has lit.
+    if (late > 0 && dt > 0) {
+      const rate = 2.2 * late * Math.min(1, w / 1200);
+      if (embers.length < 40 && Math.random() < rate * dt) {
+        const seen = span / 1.15;
+        // Near the light more often than not: a point along the rim around lx, spread by a bell curve.
+        const u = Math.min(0.98, Math.max(0.02, lx + (Math.random() + Math.random() + Math.random() - 1.5) * 0.45));
+        const a4 = -Math.PI / 2 - seen + 2 * seen * u;
+        embers.push({
+          x: cx + Math.cos(a4) * R, y: cy + Math.sin(a4) * R - 2,
+          vx: (Math.random() - 0.5) * 10, vy: -(14 + Math.random() * 22),
+          age: 0, life: 3.5 + Math.random() * 3.5, size: 0.8 + Math.random() * 1.3, seed: Math.random() * 100,
+        });
+      }
+      ctx.save();
+      ctx.shadowColor = `rgba(${RED}, 0.9)`;
+      ctx.shadowBlur = 6;
+      for (let i = embers.length - 1; i >= 0; i--) {
+        const m = embers[i]!;
+        m.age += dt;
+        if (m.age > m.life || m.y < -10) { embers.splice(i, 1); continue; }
+        m.vx += Math.sin(t * 0.9 + m.seed) * 9 * dt; // swaying on the air
+        m.vy *= 1 - 0.12 * dt; // slowing as it cools
+        m.x += m.vx * dt;
+        m.y += m.vy * dt;
+        const k = m.age / m.life; // 0 new, 1 gone
+        const flicker = 0.65 + 0.35 * Math.sin(t * 5 + m.seed * 7);
+        const alpha = Math.min(1, k * 6) * (1 - k) * flicker * late;
+        // Pale orange when new, red as it cools; deeper on the light ground so it still reads.
+        const g = Math.round(190 * (1 - k) + 60 * k);
+        ctx.fillStyle = theme.light ? `rgba(232, ${Math.round(g * 0.5)}, 30, ${alpha.toFixed(3)})` : `rgba(255, ${g}, ${Math.round(90 * (1 - k) + 40 * k)}, ${alpha.toFixed(3)})`;
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, m.size * (1 - k * 0.5), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
     }
 
     // Signals running along the rim, each a bright point with a short fading trail.

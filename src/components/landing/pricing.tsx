@@ -18,7 +18,7 @@ function lines(p: Plan) {
     Number.isInteger(years) ? `${s(years, "year")} of history` : `${n(p.historyDays)} days of history`,
     p.features.daily_reports ? "Daily and weekly reports" : p.features.weekly_reports ? "Weekly reports" : null,
     p.features.feedback_intelligence ? "AI sorting into ranked issues" : null,
-    "Claude MCP support", // the connector (src/app/api/mcp) is open to every plan
+    "MCP support", // the connector (src/app/api/mcp) is open to every plan
   ].filter((l): l is string => Boolean(l));
 }
 

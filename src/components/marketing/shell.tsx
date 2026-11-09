@@ -4,6 +4,8 @@ import { switzer } from "@/components/landing/fonts";
 import { HeardexMark } from "@/components/landing/hero";
 import { Outro } from "@/components/landing/outro";
 import { MarketingMotion } from "./motion";
+import { BarSurface } from "./bar-surface";
+import { MobileMenu } from "./mobile-menu";
 import { ProductMenu } from "./product-menu";
 import { ThemeToggle } from "./theme-toggle";
 import "@/components/landing/landing.css";
@@ -27,7 +29,7 @@ export async function MarketingShell({ children }: { children: React.ReactNode }
   );
 }
 
-/** The links in the top bar; the secondary ones hide on phones (the footer has them all). */
+/** The links in the top bar; on phones the secondary ones move into a menu (mobile-menu.tsx). */
 export function SiteNav({ start, signIn = false, theme = false }: { start: { href: string; label: string }; signIn?: boolean; theme?: boolean }) {
   return (
     <nav aria-label="Main" className="flex items-center gap-1 text-[15px] font-medium">
@@ -36,8 +38,10 @@ export function SiteNav({ start, signIn = false, theme = false }: { start: { hre
       <Link href="/blog" className="hx-nav hx-nav-wide">Blog</Link>
       <Link href="/#pricing" className="hx-nav hx-nav-wide">Pricing</Link>
       {theme && <ThemeToggle />}
-      {signIn && <Link href="/login" className="hx-nav">Sign in</Link>}
+      {signIn && <Link href="/login" className="hx-nav hx-nav-wide">Sign in</Link>}
       <Link href={start.href} className="hx-nav is-primary whitespace-nowrap">{start.label}</Link>
+      <MobileMenu signIn={start.href === "/signup"} />
+      <BarSurface />
     </nav>
   );
 }

@@ -95,7 +95,7 @@ export const POSTS: Post[] = [
           <li>Approve access for your workspace.</li>
           <li>Open Claude and ask.</li>
         </ol>
-        <p>In Claude Code, add it with one command and sign in with <code>/mcp</code>. The <A href="/docs/claude">docs</A> have the exact URL and steps for Team and Enterprise plans.</p>
+        <p>In Claude Code, add it with one command and sign in with <code>/mcp</code>. The <A href="/docs/mcp">docs</A> have the exact URL and steps for Team and Enterprise plans.</p>
 
         <h2>Questions that work well</h2>
         <ul>
@@ -111,7 +111,7 @@ export const POSTS: Post[] = [
         <p>On any issue in Heardex, &ldquo;Investigate with Claude&rdquo; opens Claude with that issue ready. In Claude Code, working in your repository, Claude reads every report, looks for the cause and suggests a fix. It asks before changing anything, and nothing is written back to Heardex.</p>
 
         <h2>Included on every plan</h2>
-        <p>The connector is on every Heardex plan, Free included. Claude usage counts toward your own Claude plan. See <A href="/product/claude">Heardex for Claude</A>.</p>
+        <p>The connector is on every Heardex plan, Free included. Claude usage counts toward your own Claude plan. See <A href="/product/mcp">Heardex MCP</A>.</p>
       </>
     ),
   },

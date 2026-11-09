@@ -259,7 +259,7 @@ export const DOCS: Doc[] = [
         <h2>Grouping into issues</h2>
         <p>Mentions that describe the same thing in different words are grouped into one issue. Each issue shows its reach (how many people), platforms, when it started, its trend and its priority.</p>
         <h2>Priority</h2>
-        <p>Priority starts from what was measured: the number of distinct people reporting it, whether it&apos;s growing, and whether it keeps coming back. What the AI inferred, such as how severe it seems and which area of the product it affects, is shown separately. Claude can read the full reasoning through the <A href="/docs/claude">connector</A>.</p>
+        <p>Priority starts from what was measured: the number of distinct people reporting it, whether it&apos;s growing, and whether it keeps coming back. What the AI inferred, such as how severe it seems and which area of the product it affects, is shown separately. Claude can read the full reasoning through the <A href="/docs/mcp">connector</A>.</p>
         <h2>Working through issues</h2>
         <p>Mark an issue acknowledged, resolved or dismissed. On any issue, “Investigate with Claude” sends it to your own Claude to look for the cause in your code.</p>
       </>
@@ -299,7 +299,7 @@ export const DOCS: Doc[] = [
     ),
   },
   {
-    slug: "claude",
+    slug: "mcp",
     group: "Insights",
     title: "Connect Claude, ChatGPT, Cursor and more (MCP)",
     description: "Connect Claude, Claude Code, ChatGPT, Cursor, VS Code or another MCP client to read your feedback and investigate issues.",
