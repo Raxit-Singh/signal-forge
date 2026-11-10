@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { RedFlow } from "./red-flow";
 
@@ -389,12 +389,6 @@ function CanvasScene({ kind, className, enterAt }: { kind: Exclude<BackgroundKin
   }, [kind, enterAt]);
 
   return <canvas ref={canvas} className={className} aria-hidden />;
-}
-
-/** The landing's eclipse for the sign-up and log-in pages: it rises as soon as the page opens, at its resting height. */
-export function AuthEclipse({ className }: { className?: string }) {
-  useLayoutEffect(() => { horizon.lift = 0; }, []);
-  return <CanvasScene kind="eclipse" enterAt={0.1} className={className} />;
 }
 
 /** Shows the background named by ?bg= (eclipse by default). */

@@ -312,7 +312,7 @@
   .hx-js .hx-rise { opacity: 1; transform: none; transition: none; }
   .hx-draw { stroke-dashoffset: 0; }
   .hx-dot, .hx-tip { opacity: 1; }
-  .hx-arrive, .hx-live, .hx-in, .hx-w, .hx-mark > *, .hx-bar, .hx-hero-cta, .hx-hero-note, .hx-auth-rise { animation: none; }
+  .hx-arrive, .hx-live, .hx-in, .hx-w, .hx-mark > *, .hx-bar, .hx-hero-cta, .hx-hero-note, .hx-auth-rise, .hx-dot-caption { animation: none; }
   .hx-q { visibility: hidden; }
   .hx-s.is-armed:not(.is-in) .hx-w { opacity: 1; }
   .mf *, .mf-stage * { animation: none; transition: none; }
@@ -1188,10 +1188,15 @@ html.light .hx .hx-menu-panel { box-shadow: 0 24px 60px -24px rgb(30 20 10 / 0.3
   --border: var(--line); --input: var(--line); --ring: var(--ink);
   --primary: var(--red-deep); --primary-foreground: #fff;
 }
-.hx-auth-main { border-left: 1px solid var(--line); }
-@media (max-width: 1023px) { .hx-auth-main { border-left: 0; } }
+/* One light for the whole page: red rising from the bottom edge, strongest in the middle (embers: auth-glow.tsx). */
+.hx-auth-glow { background:
+  radial-gradient(ellipse 70% 42% at 50% 100%, rgb(255 59 47 / 0.34), rgb(255 59 47 / 0.1) 55%, transparent 80%),
+  radial-gradient(ellipse 120% 26% at 50% 100%, rgb(255 90 40 / 0.18), transparent 70%); }
+html.light .hx-auth-glow { background:
+  radial-gradient(ellipse 70% 42% at 50% 100%, rgb(226 54 43 / 0.2), rgb(226 54 43 / 0.06) 55%, transparent 80%),
+  radial-gradient(ellipse 120% 26% at 50% 100%, rgb(255 110 60 / 0.14), transparent 70%); }
 .hx-auth-rise { animation: hx-rise-in 900ms cubic-bezier(0.22, 1, 0.36, 1) both; }
-.hx-auth-feed { height: min(560px, 68vh); overflow: hidden; mask-image: linear-gradient(to bottom, #000 80%, transparent); }
+.hx-dot-caption { animation: hx-rise-in 700ms cubic-bezier(0.22, 1, 0.36, 1) both; }
 .hx-auth h1 { font-size: 24px; font-weight: 600; line-height: 1.2; letter-spacing: -0.02em; }
 .hx-auth label { color: var(--muted); font-size: 13px; font-weight: 500; }
 .hx-auth input:not([type="hidden"]) { height: 46px; border-color: transparent; border-radius: 10px; background: var(--field-2); }
