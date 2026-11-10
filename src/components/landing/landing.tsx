@@ -48,7 +48,7 @@ export function Landing({ signedIn, plans }: { signedIn: boolean; plans: Plan[] 
             </span>
           </h1>
           <Link href={start.href} className="hx-nav is-primary hx-hero-cta mt-9">{signedIn ? start.label : "Start for free"}</Link>
-          {!signedIn && <p className="hx-hero-note mt-3 text-[14px] text-[var(--muted)]">No credit card required</p>}
+          {!signedIn && <p className="hx-hero-note mt-2.5 text-[12px] text-[var(--muted)]">No credit card required</p>}
         </section>
       </div>
       </div>
