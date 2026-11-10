@@ -256,7 +256,21 @@ body::after {
   }
   .press:active {
     transform: scale(0.97);
+    transition-duration: 150ms, 150ms, 150ms, 150ms, 90ms;
   }
+}
+
+/* Changing the theme (useThemeSwitch): the new theme spreads in a circle from the toggle. The page underneath
+   switches at once, with its own transitions held off, so the circle reveals a finished picture every time. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+  transition: none !important;
 }
 
 /* Entrances run in CSS, from first paint: content never waits for JavaScript to become visible.

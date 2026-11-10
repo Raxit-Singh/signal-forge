@@ -670,11 +670,15 @@ export function Sky({ kind, className }: { kind: SkyKind; className?: string }) 
     io.observe(el);
     const onVisible = () => { cancelAnimationFrame(raf); if (!document.hidden && visible) raf = requestAnimationFrame(frame); };
     document.addEventListener("visibilitychange", onVisible);
+    // The theme changed inside a view transition (useThemeSwitch): repaint now, so the "after" picture is already new.
+    const repaint = () => { colours(); cancelAnimationFrame(raf); frame(performance.now()); };
+    addEventListener("hx:theme", repaint);
 
     return () => {
       cancelAnimationFrame(raf); io.disconnect(); theme.disconnect();
       window.removeEventListener("resize", size); window.removeEventListener("pointermove", onPointer);
       document.removeEventListener("visibilitychange", onVisible);
+      removeEventListener("hx:theme", repaint);
     };
   }, [kind]);
 

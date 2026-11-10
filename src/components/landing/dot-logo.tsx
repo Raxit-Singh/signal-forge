@@ -179,6 +179,9 @@ export function DotLogo({ className }: { className?: string }) {
       if (!document.hidden && !still) raf = requestAnimationFrame(frame);
     };
     document.addEventListener("visibilitychange", onVisible);
+    // The theme changed inside a view transition (useThemeSwitch): repaint now, so the "after" picture is already new.
+    const repaint = () => { readColors(); cancelAnimationFrame(raf); frame(performance.now()); };
+    addEventListener("hx:theme", repaint);
     return () => {
       cancelAnimationFrame(raf);
       themeWatch.disconnect();
@@ -186,6 +189,7 @@ export function DotLogo({ className }: { className?: string }) {
       removeEventListener("pointermove", onPointer);
       document.removeEventListener("pointerleave", onLeave);
       document.removeEventListener("visibilitychange", onVisible);
+      removeEventListener("hx:theme", repaint);
     };
   }, []);
 

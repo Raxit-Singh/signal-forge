@@ -1224,3 +1224,38 @@ html.light .hx .hx-steps li span { color: var(--red-text); }
 .hx .legal td { padding: 12px 12px 12px 0; border-bottom: 1px solid var(--line); color: var(--body, #c9c9cf); vertical-align: top; }
 .hx .legal td:first-child { white-space: nowrap; }
 .hx .legal code { font-size: 0.88em; }
+
+/* Buttons: a firm, quick press that settles back softly; no lifting. */
+.hx-nav, .hx-end-cta, .hx-theme, .hx-mnav-btn, .hx-switch button, .hx-mnav-row {
+  transition: color 200ms ease, background-color 200ms ease, transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .hx .hx-nav:active, .hx .hx-end-cta:active, .hx .hx-theme:active, .hx .hx-mnav-btn:active,
+  .hx .hx-switch button:active, .hx .hx-mnav-row:active { transform: scale(0.96); transition-duration: 200ms, 200ms, 90ms; }
+}
+
+/* The main buttons, on hover: red rises up through them from below with a curved edge, like the eclipse on the
+   first screen, and a soft red glow gathers beneath. On a red ground (the footer) and on a red button (sign-in) it is
+   the ink that rises instead. Touch screens and reduced motion keep the plain colour change. */
+.hx-rise, .hx-auth form > button[type="submit"] { position: relative; isolation: isolate; overflow: hidden; --rise: var(--red); --rise-ink: #fff; --rise-glow: rgb(255 59 47 / 0.55); }
+.hx-rise::before, .hx-auth form > button[type="submit"]::before {
+  content: ""; position: absolute; z-index: -1; left: -30%; top: 100%; width: 160%; height: 260%; border-radius: 50%;
+  background: var(--rise); pointer-events: none; transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.hx-rise, .hx-auth form > button[type="submit"] { transition: color 300ms ease, background-color 200ms ease, box-shadow 500ms ease, transform 420ms cubic-bezier(0.22, 1, 0.36, 1); }
+.hx-end-cta.hx-rise { --rise: #f4f4f5; --rise-ink: #050506; --rise-glow: rgb(5 5 6 / 0.45); }
+.hx-auth form > button[type="submit"] { --rise: var(--ink); --rise-ink: var(--ground); --rise-glow: rgb(255 59 47 / 0.45); }
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .hx-rise:hover::before, .hx-auth form > button[type="submit"]:hover:not(:disabled)::before { transform: translateY(-62%); }
+  .hx .hx-rise:hover, .hx-auth form > button[type="submit"]:hover:not(:disabled) { color: var(--rise-ink); box-shadow: 0 12px 32px -12px var(--rise-glow); }
+  .hx .hx-nav.is-quiet.hx-rise:hover { border-color: transparent; }
+  html.light .hx .hx-end-cta.hx-rise:hover { color: var(--rise-ink); }
+}
+@media (hover: hover) and (prefers-reduced-motion: reduce) {
+  .hx .hx-rise:hover { background: var(--rise); color: var(--rise-ink); }
+}
+
+/* The theme toggle: sun and moon in the same place; switching turns one away as the other turns in. */
+.hx-theme svg { grid-area: 1 / 1; transition: transform 600ms cubic-bezier(0.22, 1, 0.36, 1), opacity 300ms ease; }
+.hx-theme[data-dark="true"] .hx-theme-moon, .hx-theme[data-dark="false"] .hx-theme-sun { opacity: 0; transform: rotate(-90deg) scale(0.4); }
+@media (prefers-reduced-motion: reduce) { .hx-theme svg { transition: none; } }

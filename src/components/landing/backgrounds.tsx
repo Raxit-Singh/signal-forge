@@ -379,12 +379,16 @@ function CanvasScene({ kind, className, enterAt }: { kind: Exclude<BackgroundKin
       if (!document.hidden && !still) raf = requestAnimationFrame(frame);
     };
     document.addEventListener("visibilitychange", onVisible);
+    // The theme changed inside a view transition (useThemeSwitch): repaint now, so the "after" picture is already new.
+    const repaint = () => { readTheme(); cancelAnimationFrame(raf); frame(performance.now()); };
+    addEventListener("hx:theme", repaint);
     return () => {
       cancelAnimationFrame(raf);
       themeWatch.disconnect();
       window.removeEventListener("resize", size);
       window.removeEventListener("pointermove", onPointer);
       document.removeEventListener("visibilitychange", onVisible);
+      removeEventListener("hx:theme", repaint);
     };
   }, [kind, enterAt]);
 

@@ -107,7 +107,7 @@ export function Pricing({ plans, start }: { plans: Plan[]; start: { href: string
                   <li key={l} className="flex gap-2.5"><svg viewBox="0 0 16 16" className="hx-plan-tick" aria-hidden><path d="m3.5 8.5 3 3 6-7" /></svg>{l}</li>
                 ))}
               </ul>
-              <Link href={start.href} className={`hx-nav mt-auto justify-center${p.id === lit ? " is-primary" : " is-quiet"}`}>
+              <Link href={start.href} className={`hx-nav hx-rise mt-auto justify-center${p.id === lit ? " is-primary" : " is-quiet"}`}>
                 {free ? start.label : `Choose ${p.name}`}
               </Link>
             </li>

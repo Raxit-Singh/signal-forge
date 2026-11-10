@@ -214,7 +214,10 @@ function Embers() {
       glow.drawImage(a, 0, 0);
     };
     frame = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(frame);
+    // The theme changed inside a view transition (useThemeSwitch): repaint now, so the "after" picture is already new.
+    const repaint = () => { cancelAnimationFrame(frame); draw(performance.now()); };
+    addEventListener("hx:theme", repaint);
+    return () => { cancelAnimationFrame(frame); removeEventListener("hx:theme", repaint); };
   }, []);
   return (
     <div className="px-fire" aria-hidden>

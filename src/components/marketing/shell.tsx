@@ -38,7 +38,7 @@ export function SiteNav({ start, theme = false }: { start: { href: string; label
       <Link href="/blog" className="hx-nav hx-nav-wide">Blog</Link>
       <Link href="/#pricing" className="hx-nav hx-nav-wide">Pricing</Link>
       {theme && <ThemeToggle />}
-      <Link href={start.href === "/signup" ? "/login" : start.href} className="hx-nav is-primary whitespace-nowrap">{start.href === "/signup" ? "Sign in" : start.label}</Link>
+      <Link href={start.href === "/signup" ? "/login" : start.href} className="hx-nav is-primary hx-rise whitespace-nowrap">{start.href === "/signup" ? "Sign in" : start.label}</Link>
       <MobileMenu signIn={start.href === "/signup"} />
       <BarSurface />
     </nav>

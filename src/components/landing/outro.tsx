@@ -33,7 +33,7 @@ export function Outro({ start }: { start: { href: string; label: string } }) {
               We hear what people say about your product.
             </p>
             <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-3">
-              <Link href={start.href} className="hx-end-cta">{start.label}</Link>
+              <Link href={start.href} className="hx-end-cta hx-rise">{start.label}</Link>
               {start.href === "/signup" && <Link href="/login" className="hx-end-signin">Sign in</Link>}
             </div>
           </div>

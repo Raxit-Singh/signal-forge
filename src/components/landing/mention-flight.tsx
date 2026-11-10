@@ -253,6 +253,7 @@ export function MentionFlight() {
     let at = -1; // the scroll the logo has caught up to
     let last = 0;
     const place = (now: number) => {
+      if (!ghost.current) return; // unmounted between frames (leaving the page): nothing left to place
       queued = 0;
       const dt = last ? Math.min(64, now - last) : 16;
       last = now;
@@ -286,7 +287,7 @@ export function MentionFlight() {
 
       // The bar keeps its own logo for the first sliver of scroll, so a nudge of the page doesn't swap it for the copy.
       const flying = a > HANDOVER && b < 1;
-      ghost.current!.classList.toggle("is-flying", flying);
+      ghost.current.classList.toggle("is-flying", flying);
       // Once the logo has come back to the bar at the end of the story (process.tsx), the bar is left as it is.
       const bar = source?.closest("header");
       if (!bar?.classList.contains("is-back")) {

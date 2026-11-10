@@ -74,10 +74,14 @@ export function AuthGlow() {
       if (!document.hidden) raf = requestAnimationFrame(frame);
     };
     document.addEventListener("visibilitychange", onVisible);
+    // The theme changed inside a view transition (useThemeSwitch): repaint now, so the "after" picture is already new.
+    const repaint = () => { cancelAnimationFrame(raf); frame(performance.now()); };
+    addEventListener("hx:theme", repaint);
     return () => {
       cancelAnimationFrame(raf);
       removeEventListener("resize", size);
       document.removeEventListener("visibilitychange", onVisible);
+      removeEventListener("hx:theme", repaint);
     };
   }, []);
 
