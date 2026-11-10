@@ -862,12 +862,12 @@
 .hx-end-mark > * { fill: url(#hx-end-fill); }
 .hx-end-word { display: block; height: 1em; background: linear-gradient(to bottom, var(--red) calc(50% + var(--lift, 0px)), var(--end-ink) 0);
   -webkit-background-clip: text; background-clip: text; color: transparent; }
-.hx-end-head { margin-bottom: 14px; font-size: 13px; font-weight: 600; letter-spacing: 0.02em; color: rgb(5 5 6 / 0.6); }
+.hx-end-head { margin-bottom: 14px; font-size: 13px; font-weight: 600; letter-spacing: 0.02em; color: rgb(5 5 6 / 0.85); }
 .hx-end-list { display: grid; gap: 10px; font-size: 16px; font-weight: 500; }
 .hx-end-list a { text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; transition: text-decoration-color 150ms ease; }
 .hx-end-list a:hover { text-decoration-color: currentColor; }
 .hx-end a:focus-visible { outline: 2px solid var(--end-ink); outline-offset: 3px; border-radius: 2px; }
-.hx-end-note { color: rgb(5 5 6 / 0.7); }
+.hx-end-note { color: rgb(5 5 6 / 0.9); }
 .hx-end-cta { display: inline-flex; align-items: center; height: 44px; padding: 0 22px; border-radius: 999px; background: var(--end-ink); color: var(--red);
   font-weight: 500; transition: transform 150ms ease; }
 #faq { scroll-margin-top: 104px; }
@@ -950,6 +950,7 @@ html:has(.hx-mnav-panel[data-open]) .mf-ghost { visibility: hidden; }
 .hx-menu-panel::before { content: ""; position: absolute; inset: -10px 0 auto; height: 10px; }
 .hx-menu-panel a { display: grid; gap: 2px; padding: 10px 12px; border-radius: 10px; transition: background-color 150ms ease; }
 .hx-menu-panel a:hover, .hx-menu-panel a:focus-visible { background: var(--field-2); outline: none; }
+.hx-menu-panel a:focus-visible { outline: 2px solid var(--red); outline-offset: -2px; }
 @media (prefers-reduced-motion: reduce) { .hx-menu-panel, .hx-menu-caret { transition: none; } }
 
 /* Numbered steps on the product pages. */
@@ -1121,6 +1122,7 @@ html.light .hx .hx-spot-key li > span, html.light .hx .hx-walk-cap p > span:firs
 .hx-theme svg { width: 18px; height: 18px; }
 /* In light, the footer keeps black on red: the name's top half red on the light page, its foot black on the red. */
 html.light .hx .hx-end { --ground: #0b0b0c; --end-ink: #0b0b0c; }
+html.light .hx .hx-end-cta { color: #ff3b2f; } /* red on near-black: 5.5:1 */
 
 /* The landing's scenes in light: the same pictures, the page light and the cards white. */
 html.light .hx {
@@ -1208,3 +1210,17 @@ html.light .hx-auth-glow { background:
 .hx-auth [aria-label="Social sign-in"] button:hover { background: var(--field-3); }
 .hx-auth [aria-label="Password requirements"] { display: flex; flex-wrap: wrap; gap: 4px 14px; }
 @media (max-width: 400px) { .hx-auth [aria-label="Social sign-in"] { grid-template-columns: 1fr; } }
+
+/* Red text needs to be darker on the light ground to stay readable (5.4:1 on #f6f5f2). Accents keep --red. */
+.hx { --red-text: var(--red); }
+html.light .hx { --red-text: #c1271d; }
+html.light .hx .hx-save.is-on, html.light .hx .hx-plan-off.is-on, html.light .hx .hx-alt-table thead .is-us,
+html.light .hx .hx-steps li span { color: var(--red-text); }
+
+/* Tables in the legal pages (cookie policy). */
+.hx .legal-table { overflow-x: auto; margin-top: 1rem; }
+.hx .legal table { width: 100%; border-collapse: collapse; font-size: 15px; line-height: 1.5; }
+.hx .legal th { padding: 10px 12px 10px 0; border-bottom: 1px solid var(--line); color: var(--ink); font-weight: 600; text-align: left; }
+.hx .legal td { padding: 12px 12px 12px 0; border-bottom: 1px solid var(--line); color: var(--body, #c9c9cf); vertical-align: top; }
+.hx .legal td:first-child { white-space: nowrap; }
+.hx .legal code { font-size: 0.88em; }

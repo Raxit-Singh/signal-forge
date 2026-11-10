@@ -20,5 +20,5 @@ export const SITE_SECTIONS: ReadonlyArray<{ title: string; links: readonly SiteL
   { title: "Product", links: [...PRODUCT_PAGES.map((p) => ({ href: `/product/${p.slug}`, label: p.name })), { href: "/#pricing", label: "Pricing" }] },
   { title: "Resources", links: [{ href: "/docs", label: "Docs" }, { href: "/blog", label: "Blog" }, { href: "/alternatives", label: "Alternatives" }, { href: "/#faq", label: "FAQ" }] },
   { title: "Support", links: [{ href: "/legal/contact", label: "Contact and support" }] },
-  { title: "Legal", links: [{ href: "/legal/terms", label: "Terms of Service" }, { href: "/legal/privacy", label: "Privacy Policy" }, { href: "/legal/refunds", label: "Refund Policy" }] },
+  { title: "Legal", links: [{ href: "/legal/terms", label: "Terms of Service" }, { href: "/legal/privacy", label: "Privacy Policy" }, { href: "/legal/cookies", label: "Cookie Policy" }, { href: "/legal/refunds", label: "Refund Policy" }] },
 ];

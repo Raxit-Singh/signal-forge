@@ -79,7 +79,7 @@ export function Pricing({ plans, start }: { plans: Plan[]; start: { href: string
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-[17px] font-medium">{p.name}</h3>
                 {!free && offPerMonth > 0 && (
-                  <span className={`hx-plan-off${yearly ? " is-on" : ""}`}>{usd(offPerMonth, p.currency)} off a month</span>
+                  <span className={`hx-plan-off${yearly ? " is-on" : ""}`}>{yearly ? `${usd(offPerMonth, p.currency)} off a month` : `${usd(offPerMonth, p.currency)} a month less yearly`}</span>
                 )}
               </div>
               <p className="mt-5 flex items-baseline gap-1.5">

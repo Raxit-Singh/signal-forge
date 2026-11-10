@@ -17,7 +17,7 @@ export async function DocPage({ doc }: { doc: Doc }) {
   return (
     // Keyed by page, so the title comes into focus again on every docs page, not only the first.
     <article key={doc.slug} className="max-w-[860px]">
-      <p className="hx-in text-[14px] font-medium text-[var(--red)]">{doc.group}</p>
+      <p className="hx-in text-[14px] font-medium text-[var(--red-text)]">{doc.group}</p>
       <h1 className="hx-title mt-3 text-[clamp(34px,4.4vw,60px)] font-semibold leading-[1] tracking-[-0.04em]"><Words text={doc.title} from="start" /></h1>
       <p className="hx-in mt-4 max-w-[60ch] text-[length:var(--step-lead)] leading-snug text-[var(--muted)]" style={{ ["--d" as string]: "380ms" }}>{doc.description}</p>
       <div className="hx-prose hx-in mt-[clamp(64px,9vh,104px)] max-w-[760px]" style={{ ["--d" as string]: "560ms" }}>{doc.Body({ plans, mcpUrl: resourceUrl(site()) })}</div>

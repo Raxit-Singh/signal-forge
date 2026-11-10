@@ -18,7 +18,7 @@ export function PageHero({ eyebrow, title, lede, children, sky, size = "xl", cla
   return (
     <header className={cn("hx-hero relative isolate", sky && "has-sky", className)}>
       {sky && <div aria-hidden className="hx-hero-sky"><Sky kind={sky} className="h-full w-full" /></div>}
-      {eyebrow && <p className="hx-in text-[15px] font-medium text-[var(--red)]" style={{ ["--d" as string]: "80ms" }}>{eyebrow}</p>}
+      {eyebrow && <p className="hx-in text-[15px] font-medium text-[var(--red-text)]" style={{ ["--d" as string]: "80ms" }}>{eyebrow}</p>}
       <h1 className={cn("hx-title mt-4 font-semibold tracking-[-0.05em]", size === "xl" ? "max-w-[20ch] text-[clamp(40px,6vw,104px)] leading-[0.95]" : "text-[clamp(34px,4.6vw,68px)] leading-[1]")}>
         <Words text={title} from="start" />
       </h1>

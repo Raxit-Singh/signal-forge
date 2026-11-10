@@ -72,6 +72,7 @@ export async function GET() {
     link("/legal/terms", "Terms of Service"),
     link("/legal/privacy", "Privacy Policy"),
     link("/legal/refunds", "Refund policy", `a first payment can be refunded within ${LEGAL.refundDays} days`),
+    link("/legal/cookies", "Cookie Policy", "only the cookies needed to sign in and remember settings; no tracking"),
     link("/legal/contact", "Contact", LEGAL.email),
     "",
   ].join("\n");

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { LEGAL } from "@/lib/legal";
 
 export const metadata: Metadata = { title: "Privacy Policy" };
@@ -82,10 +83,11 @@ export default function PrivacyPage() {
 
       <h2>7. Cookies</h2>
       <p>
-        {product} uses only the cookies it needs: to keep you signed in, protect sign-in and remember which workspace and
-        product you last opened. Your light or dark theme is kept in your browser&rsquo;s storage. There are no advertising,
-        analytics or tracking cookies, so there is nothing to opt out of; we treat a Do Not Track signal the same way. You
-        can block cookies in your browser, but you won&rsquo;t be able to sign in.
+        {product} uses only the cookies it needs: to keep you signed in, protect sign-in, remember which workspace and
+        product you last opened, and show times in your time zone. Your light or dark theme is kept in your browser&rsquo;s
+        storage. There are no advertising, analytics or tracking cookies, so there is nothing to opt out of; we treat a Do
+        Not Track signal the same way. You can block cookies in your browser, but you won&rsquo;t be able to sign in. The{" "}
+        <Link href="/legal/cookies">cookie policy</Link> lists each one.
       </p>
 
       <h2>8. Your rights</h2>

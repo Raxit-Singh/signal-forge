@@ -188,7 +188,7 @@ export function ClaudeClip() {
         <ol className="grid gap-2.5 p-5 font-mono text-[13px] leading-relaxed" aria-label="Claude's investigation">
           {TERMINAL.map(([m, t], i) => (
             <li key={t} className={cn("grid grid-cols-[16px_1fr] gap-2 transition-opacity duration-200", i < shown ? "opacity-100" : "opacity-0")}>
-              <span className={m === "✓" ? "text-[#1baf7a]" : m === "›" ? "text-[var(--red)]" : "text-[var(--muted)]"}>{m}</span>
+              <span className={m === "✓" ? "text-[#1baf7a]" : m === "›" ? "text-[var(--red-text)]" : "text-[var(--muted)]"}>{m}</span>
               <span className={m === "✓" ? "text-[var(--ink)]" : "text-[#c9c9cf]"}>{t}</span>
             </li>
           ))}

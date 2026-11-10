@@ -19,7 +19,7 @@ export default function AlternativesIndex() {
             <Link href={`/alternatives/${c.slug}`} className="hx-alt-card hx-glow">
               <span className="flex items-baseline justify-between gap-3">
                 <span className="text-[22px] font-semibold tracking-[-0.02em]">Heardex vs {c.name}</span>
-                <span aria-hidden className="text-[var(--red)]">→</span>
+                <span aria-hidden className="text-[var(--red-text)]">→</span>
               </span>
               <span className="mt-1 block text-[14px] text-[var(--muted)]">{c.kind}</span>
               <span className="mt-4 block text-[15px] leading-relaxed">{c.summary}</span>
