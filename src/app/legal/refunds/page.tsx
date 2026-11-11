@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { LEGAL } from "@/lib/legal";
 
 export const metadata: Metadata = { title: "Refund and Cancellation Policy" };
@@ -29,6 +30,7 @@ export default function RefundsPage() {
         <li><strong>Service problems:</strong> if {product} was unavailable or didn&rsquo;t work for a large part of a month, we will refund that month&rsquo;s share of what you paid.</li>
         <li><strong>Plan changes:</strong> moving to a cheaper paid plan or from yearly to monthly billing credits the unused difference automatically; no request is needed.</li>
         <li>Otherwise, renewals that have already started are not refunded. You can cancel so the next one doesn&rsquo;t happen.</li>
+        <li><strong>Closed for abuse:</strong> an account we close for breaking the <Link href="/legal/terms">terms</Link> (section 6), for example for fraud or misusing refunds, is not refunded.</li>
       </ul>
 
       <h2>How to ask for a refund</h2>

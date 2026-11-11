@@ -63,17 +63,31 @@ export default function TermsPage() {
         our <Link href="/legal/refunds">refund policy</Link>.
       </p>
 
-      <h2>6. Acceptable use</h2>
+      <h2>6. Acceptable use and abuse</h2>
       <p>You agree not to:</p>
       <ul>
         <li>use {product} to harass, stalk, track or build profiles of private individuals, or to discriminate against anyone;</li>
         <li>break the law, or the terms of the sources {product} searches, through your use of it;</li>
-        <li>resell or share access to {product}, or resell or publish the mentions it collects as a dataset;</li>
+        <li>open more than one free account, or spread use across several accounts or workspaces, to get around a plan&rsquo;s limits or mention allowance;</li>
+        <li>share one login between several people, or resell, sublicense or share access to {product}; invite members to a workspace instead;</li>
+        <li>resell or publish the mentions {product} collects as a dataset;</li>
+        <li>sign up with a false identity, pretend to be someone else, or create accounts automatically;</li>
+        <li>use stolen or unauthorised payment details, make chargebacks for charges you authorised, or misuse refunds, for example by subscribing and asking for a refund again and again;</li>
+        <li>use bots, scripts or the AI connector to send far more requests than normal use, or get around rate limits, scan schedules or spending limits;</li>
+        <li>probe, attack, overload or scrape {product}, get around its security, or try to reach another customer&rsquo;s workspace or data;</li>
         <li>use {product} to build a competing service, or copy, decompile or reverse engineer it, except where the law allows;</li>
-        <li>probe, overload, scrape or get around the limits and security of {product};</li>
         <li>upload anything you have no right to share, or anything harmful such as malware.</li>
       </ul>
-      <p>We may suspend an account that breaks these rules, and will tell you why unless the law prevents it.</p>
+
+      <h3>What happens if you break these rules</h3>
+      <ul>
+        <li>We may limit, suspend or close your account, end your subscription, and remove access to the workspaces you own. We decide this based on how serious the abuse is.</li>
+        <li>For serious abuse (fraud, stolen payment details, attacks on {product} or other customers, harassment, or illegal use) we may act at once, without warning. For other breaches we will usually warn you first and give you a chance to stop.</li>
+        <li>An account closed for abuse is not refunded for the period already paid, except where the law requires a refund. Amounts already owed remain due.</li>
+        <li>We may refuse new accounts from anyone whose account we closed for abuse, and close accounts, workspaces or payment methods linked to it.</li>
+        <li>We may keep the records needed to prevent the abuse happening again, and report illegal activity to the authorities.</li>
+        <li>We will tell you why, unless the law prevents it or telling you would help the abuse continue. If you think we got it wrong, email {mail} within 30 days and we will look at it again.</li>
+      </ul>
 
       <h2>7. Your data</h2>
       <p>
@@ -137,9 +151,10 @@ export default function TermsPage() {
       <h2>15. Ending the agreement</h2>
       <p>
         You can stop using {product} and delete your account at any time from Settings → Account. Deleting it removes your
-        workspaces and their data. We may end the agreement, or suspend your account, if you seriously or repeatedly break
-        these terms, or if we have to stop offering {product}; we will give you notice and a chance to export your data
-        where we can. Sections 8, 11, 14 and 17 still apply after the agreement ends.
+        workspaces and their data. We may end the agreement, or suspend your account, if you break these terms (section 6
+        explains what happens in cases of abuse), or if we have to stop offering {product}. Except after serious abuse, we
+        will give you notice and a chance to export your data where we can. Sections 6, 8, 11, 14 and 17 still apply after
+        the agreement ends.
       </p>
 
       <h2>16. Law</h2>

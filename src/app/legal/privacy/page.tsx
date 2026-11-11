@@ -79,14 +79,16 @@ export default function PrivacyPage() {
         <li>When you delete your account in Settings → Account, the workspaces you own and their data are deleted.</li>
         <li>Billing and tax records: as long as tax law requires, by us and Dodo Payments.</li>
         <li>Server logs: only as long as needed for security and fixing errors.</li>
+        <li>If we close an account for abuse (see the terms, section 6): the email address, payment reference and reason, for up to three years, only to stop the same abuse happening again.</li>
       </ul>
 
       <h2>7. Cookies</h2>
       <p>
         {product} uses only the cookies it needs: to keep you signed in, protect sign-in, remember which workspace and
-        product you last opened, and show times in your time zone. Your light or dark theme is kept in your browser&rsquo;s
-        storage. There are no advertising, analytics or tracking cookies, so there is nothing to opt out of; we treat a Do
-        Not Track signal the same way. You can block cookies in your browser, but you won&rsquo;t be able to sign in. The{" "}
+        product you last opened, and show times in your time zone. On your first visit we ask whether we may remember you
+        after you close your browser; with &ldquo;Essential only&rdquo; these cookies last only for the browser session.
+        Your light or dark theme is kept in your browser&rsquo;s storage. There are no advertising, analytics or tracking
+        cookies. You can block cookies in your browser, but you won&rsquo;t be able to sign in. The{" "}
         <Link href="/legal/cookies">cookie policy</Link> lists each one.
       </p>
 
