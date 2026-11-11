@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { CONSENT_COOKIE, parseConsent, withConsent } from "@/lib/consent";
 
 // Next.js 16 "proxy" (formerly middleware). Refreshes the Supabase session
 // cookie on every request and keeps signed-out users out of app routes.
@@ -58,7 +59,9 @@ export async function proxy(request: NextRequest) {
           for (const { name, value } of cookiesToSet) request.cookies.set(name, value);
           requestHeaders.set("cookie", request.cookies.toString());
           response = next();
-          for (const { name, value, options } of cookiesToSet) response.cookies.set(name, value, options);
+          // Kept past this browser session only if the visitor accepted all cookies (the cookie banner).
+          const consent = parseConsent(request.cookies.get(CONSENT_COOKIE)?.value);
+          for (const { name, value, options } of cookiesToSet) response.cookies.set(name, value, withConsent(options, consent));
         },
       },
     },

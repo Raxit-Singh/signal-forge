@@ -10,6 +10,7 @@ import { failure, invalid, logServerError, type ActionState } from "@/lib/server
 import {
   AuthorizationError, PRODUCT_COOKIE, WORKSPACE_COOKIE, getUser, requireWorkspaceRole,
 } from "@/lib/server/session";
+import { rememberOptions } from "@/lib/server/consent";
 
 const COOKIE_OPTS = { httpOnly: true, sameSite: "lax" as const, secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 24 * 365 };
 
@@ -27,7 +28,7 @@ export async function createWorkspaceAction(_: ActionState, formData: FormData):
     return failure("Couldn't create the workspace. Try again.");
   }
   const store = await cookies();
-  store.set(WORKSPACE_COOKIE, String(data), COOKIE_OPTS);
+  store.set(WORKSPACE_COOKIE, String(data), await rememberOptions(COOKIE_OPTS));
   store.delete(PRODUCT_COOKIE);
   redirect("/onboarding/product");
 }
@@ -41,7 +42,7 @@ export async function switchWorkspaceAction(formData: FormData): Promise<void> {
     redirect("/overview");
   }
   const store = await cookies();
-  store.set(WORKSPACE_COOKIE, id.data, COOKIE_OPTS);
+  store.set(WORKSPACE_COOKIE, id.data, await rememberOptions(COOKIE_OPTS));
   store.delete(PRODUCT_COOKIE);
   redirect("/overview");
 }
@@ -53,7 +54,7 @@ export async function switchProductAction(formData: FormData): Promise<void> {
     // RLS: the lookup only succeeds for products in workspaces the user belongs to.
     const supabase = await createClient();
     const { data } = await supabase.from("products").select("id").eq("id", id.data).maybeSingle();
-    if (data) (await cookies()).set(PRODUCT_COOKIE, id.data, COOKIE_OPTS);
+    if (data) (await cookies()).set(PRODUCT_COOKIE, id.data, await rememberOptions(COOKIE_OPTS));
   }
   redirect(back || "/overview");
 }

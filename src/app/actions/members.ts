@@ -13,6 +13,7 @@ import { site } from "@/lib/server/agent/http";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/server/email/send";
 import { invitationEmail } from "@/lib/email/templates";
+import { rememberOptions } from "@/lib/server/consent";
 
 const COOKIE_OPTS = { httpOnly: true, sameSite: "lax" as const, secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 24 * 365 };
 const ROLES = ["admin", "member", "viewer"] as const;
@@ -134,7 +135,7 @@ export async function acceptInvitationAction(_: ActionState, formData: FormData)
   }
   if (!uuidSchema.safeParse(ws).success) return failure("Couldn't accept the invitation.");
   const store = await cookies();
-  store.set(WORKSPACE_COOKIE, String(ws), COOKIE_OPTS);
+  store.set(WORKSPACE_COOKIE, String(ws), await rememberOptions(COOKIE_OPTS));
   store.delete(PRODUCT_COOKIE);
   redirect("/overview");
 }

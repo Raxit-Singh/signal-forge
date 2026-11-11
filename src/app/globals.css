@@ -369,8 +369,40 @@ html.theme-switching *::after {
 .legal { font-size: 16px; line-height: 1.65; }
 .legal h1 { font-size: clamp(30px, 5vw, 40px); font-weight: 600; letter-spacing: -0.03em; line-height: 1.1; }
 .legal h2 { margin-top: 2.5rem; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+.legal h3 { margin-top: 1.75rem; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
 .legal h1 + p { margin-top: 0.5rem; color: var(--muted-foreground); font-size: 14px; }
 .legal p, .legal ul { margin-top: 0.9rem; }
 .legal ul { list-style: disc; padding-left: 1.25rem; display: grid; gap: 0.4rem; }
 .legal a { color: var(--accent-foreground); text-decoration: underline; text-underline-offset: 3px; }
 .legal strong { font-weight: 600; }
+
+/* The cookie banner (components/cookie-banner.tsx): a small card at the foot of the screen, in either theme. The two
+   choices are given the same weight. */
+.cookie-banner {
+  position: fixed; z-index: 70; left: 50%; bottom: max(16px, env(safe-area-inset-bottom));
+  width: min(640px, calc(100vw - 32px)); translate: -50% 0;
+  display: flex; align-items: center; gap: 16px; padding: 16px 16px 16px 20px;
+  border: 1px solid var(--border); border-radius: 16px;
+  background: color-mix(in srgb, var(--background) 92%, transparent); backdrop-filter: blur(16px);
+  color: var(--foreground); font-size: 14px; line-height: 1.5;
+  box-shadow: 0 18px 50px -20px rgb(0 0 0 / 0.45);
+  animation: cookie-in 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.cookie-banner p { color: var(--muted-foreground); }
+.cookie-banner a { color: var(--foreground); text-decoration: underline; text-underline-offset: 3px; }
+.cookie-banner-actions { display: flex; flex: none; gap: 8px; }
+.cookie-banner-actions button {
+  height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--foreground); color: var(--background); font-size: 14px; font-weight: 500; white-space: nowrap;
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+.cookie-banner-actions button:hover { opacity: 0.88; }
+.cookie-banner-actions button:active { transform: scale(0.97); }
+.cookie-banner-actions button:disabled { opacity: 0.6; }
+.cookie-banner-actions button:focus-visible, .cookie-banner a:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+@keyframes cookie-in { from { opacity: 0; translate: -50% 16px; } }
+@media (max-width: 560px) {
+  .cookie-banner { flex-direction: column; align-items: stretch; }
+  .cookie-banner-actions button { flex: 1; }
+}
+@media (prefers-reduced-motion: reduce) { .cookie-banner { animation: none; } }

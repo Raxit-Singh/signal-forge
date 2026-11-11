@@ -688,11 +688,15 @@ export function Process() {
     queue();
     addEventListener("scroll", queue, { passive: true });
     addEventListener("resize", queue);
+    // A jump to a section (section-links.tsx): be there at once, without playing the flight between.
+    const jump = () => { at = -1; last = 0; queue(); };
+    addEventListener("hx:jump", jump);
     return () => {
       cancelAnimationFrame(queued);
       clearTimeout(wait);
       removeEventListener("scroll", queue);
       removeEventListener("resize", queue);
+      removeEventListener("hx:jump", jump);
       bar?.classList.remove("is-back", "is-home");
     };
   }, []);

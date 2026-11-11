@@ -28,7 +28,9 @@ export function TimeZoneSync({ current }: { current: string }) {
   useEffect(() => {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     if (tz && tz !== current) {
-      document.cookie = `sf_tz=${encodeURIComponent(tz)}; path=/; max-age=31536000; samesite=lax`;
+      // Kept for a year only if the visitor accepted all cookies; otherwise for this browser session (src/lib/consent.ts).
+      const keep = /(?:^|; )hx_consent=all(?:;|$)/.test(document.cookie);
+      document.cookie = `sf_tz=${encodeURIComponent(tz)}; path=/;${keep ? " max-age=31536000;" : ""} samesite=lax`;
       router.refresh();
     }
   }, [current, router]);

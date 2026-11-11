@@ -15,6 +15,7 @@ import {
 } from "@/lib/server/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { syncOptimizedQueries } from "@/lib/server/collection/query-sync";
+import { rememberOptions } from "@/lib/server/consent";
 
 /** Rebuilds a product's per-platform query groups (after the caller's authorization check). */
 async function resyncQueries(productId: string) {
@@ -73,7 +74,7 @@ export async function createProductAction(_: ActionState, formData: FormData): P
     .single();
   if (error) return productWriteError(error, "createProduct");
 
-  (await cookies()).set(PRODUCT_COOKIE, data.id as string, COOKIE_OPTS);
+  (await cookies()).set(PRODUCT_COOKIE, data.id as string, await rememberOptions(COOKIE_OPTS));
   redirect(`/onboarding/${data.id}/keywords`);
 }
 

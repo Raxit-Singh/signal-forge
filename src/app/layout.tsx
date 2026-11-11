@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
+import { CookieBanner } from "@/components/cookie-banner";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TimeZoneProvider } from "@/components/time";
 import { getTimeZone } from "@/lib/server/timezone";
@@ -45,6 +46,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         </a>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange nonce={nonce}>
           <TimeZoneProvider tz={tz}>{children}</TimeZoneProvider>
+          <CookieBanner />
         </ThemeProvider>
       </body>
     </html>

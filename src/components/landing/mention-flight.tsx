@@ -377,12 +377,16 @@ export function MentionFlight() {
     queue();
     addEventListener("scroll", queue, { passive: true });
     addEventListener("resize", queue);
+    // A jump to a section (section-links.tsx): be there at once, without playing the flight between.
+    const jump = () => { at = -1; last = 0; queue(); };
+    addEventListener("hx:jump", jump);
     return () => {
       io.disconnect();
       cancelAnimationFrame(frame);
       cancelAnimationFrame(queued);
       removeEventListener("scroll", queue);
       removeEventListener("resize", queue);
+      removeEventListener("hx:jump", jump);
       if (source) source.style.visibility = "";
       if (copy) copy.style.cssText = "";
       if (copyNext) copyNext.style.opacity = "";

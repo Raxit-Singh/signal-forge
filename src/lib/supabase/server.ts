@@ -2,6 +2,7 @@ import "server-only";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { publicEnv } from "@/lib/env";
+import { CONSENT_COOKIE, parseConsent, withConsent } from "@/lib/consent";
 
 /**
  * Supabase client acting as the signed-in user. All reads/writes go through
@@ -17,7 +18,9 @@ export async function createClient() {
       },
       setAll(cookiesToSet) {
         try {
-          for (const { name, value, options } of cookiesToSet) cookieStore.set(name, value, options);
+          // Kept past this browser session only if the visitor accepted all cookies (the cookie banner).
+          const consent = parseConsent(cookieStore.get(CONSENT_COOKIE)?.value);
+          for (const { name, value, options } of cookiesToSet) cookieStore.set(name, value, withConsent(options, consent));
         } catch {
           // Called from a Server Component: cookies are read-only there. The
           // proxy refreshes the session, so this is safe to ignore.
