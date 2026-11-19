@@ -37,7 +37,8 @@ export function CookieBanner() {
     <div role="region" aria-label="Cookie choice" className="cookie-banner">
       <p>
         Heardex uses cookies to keep you signed in and to remember your workspace and time zone. Choose whether we
-        remember you after you close your browser. No tracking or ads, either way.{" "}
+        remember you after you close your browser, and whether, when something breaks, we may keep a replay of it with
+        all text hidden so we can fix it. No ads or tracking across sites, either way.{" "}
         <Link href="/legal/cookies">Cookie policy</Link>
       </p>
       <div className="cookie-banner-actions">

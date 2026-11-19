@@ -58,6 +58,7 @@ export default function PrivacyPage() {
         <li><strong>Vercel</strong>: hosts the website and app; handles requests and server logs.</li>
         <li><strong>Dodo Payments</strong>: merchant of record; checkout, subscriptions, invoices and tax. Receives your email, name, billing address and payment details.</li>
         <li><strong>Google (Gemini API)</strong>: sorts and summarises mentions; receives the text of mentions and your product&rsquo;s name and description.</li>
+        <li><strong>Sentry</strong>: tells us when the site or app breaks or is slow, so we can fix it. Receives the error, the server&rsquo;s own warnings, how long pages took, the page address (without its query string), and your browser and device type. If you chose Accept all in the cookie banner, also a replay of the moments before an error, with every text, typed value and image hidden. Never your cookies, what you typed, or your account details.</li>
         <li><strong>Resend</strong>: sends account and report emails; receives your email address and the email&rsquo;s content.</li>
         <li><strong>Search providers and source APIs</strong> (such as API Direct, Serper, TikHub, the GitHub, Stack Exchange, YouTube and Hacker News APIs): receive your keywords, not your account details, to search public sites.</li>
         <li><strong>Your own AI provider</strong> (Anthropic, OpenAI or Google), only if you add your own key: mentions are sorted under your account with that provider, and its terms apply.</li>

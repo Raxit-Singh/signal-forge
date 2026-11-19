@@ -4,10 +4,17 @@
 // someone clicked something. The dev server ticks itself instead, through the
 // same authenticated endpoint. Turn off with DEV_SCHEDULER=off.
 
+import * as Sentry from "@sentry/nextjs";
+
+// Server errors (pages, route handlers, server actions, the proxy) go to Sentry: src/lib/sentry.ts.
+export const onRequestError = Sentry.captureRequestError;
+
 const EVERY_MS = 120_000;
 const FIRST_AFTER_MS = 15_000;
 
-export function register() {
+export async function register() {
+  if (process.env.NEXT_RUNTIME === "nodejs") await import("./sentry.server.config");
+  if (process.env.NEXT_RUNTIME === "edge") await import("./sentry.edge.config");
   if (process.env.NEXT_RUNTIME !== "nodejs" || process.env.NODE_ENV !== "development") return;
   if (process.env.DEV_SCHEDULER === "off") return;
   const g = globalThis as { __signalforgeDevScheduler?: boolean };

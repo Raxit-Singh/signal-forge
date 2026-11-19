@@ -1,5 +1,6 @@
 "use client";
 
+import * as Sentry from "@sentry/nextjs";
 import { useEffect } from "react";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,8 @@ import { Card } from "@/components/ui/primitives";
 export default function AppError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
     console.error(error);
+    // Server errors (with a digest) were already reported by src/instrumentation.ts.
+    if (!error.digest) Sentry.captureException(error);
   }, [error]);
   return (
     <Card className="flex flex-col items-center gap-3 px-6 py-14 text-center" role="alert">

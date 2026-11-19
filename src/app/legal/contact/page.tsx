@@ -5,7 +5,7 @@ import { LEGAL } from "@/lib/legal";
 export const metadata: Metadata = { title: "Contact" };
 
 export default function ContactPage() {
-  const { product, operator, country, email, replyDays } = LEGAL;
+  const { product, operator, country, address, email, replyDays } = LEGAL;
   return (
     <article>
       <h1>Contact</h1>
@@ -30,6 +30,7 @@ export default function ContactPage() {
 
       <h2>Who runs {product}</h2>
       <p>{product} is operated by {operator}, {country}.</p>
+      {address && <address className="not-italic">{address}</address>}
     </article>
   );
 }

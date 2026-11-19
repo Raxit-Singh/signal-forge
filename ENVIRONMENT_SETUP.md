@@ -298,3 +298,26 @@ Dodo Payments is the merchant of record: it sells to the customer, handles sales
 1. Create a Resend account, add and verify a sending domain (DNS records), create an API key with sending access → `RESEND_API_KEY`.
 2. `EMAIL_FROM="SignalForge <reports@your-verified-domain>"`.
 3. Restart. Without both, emails are recorded as "skipped" in `email_log` and nothing is sent. Supabase Auth emails (sign-up, password reset) are separate: configure custom SMTP in Supabase (Resend provides SMTP) before real users.
+
+## Error reporting (Sentry)
+
+Crashes on the live site (pages, server actions, route handlers, the browser) are sent to Sentry, with 1 in 10 page
+and request timings and the server's own warnings and errors. Visitors who chose "Accept all" in the cookie banner also
+get an error-only Session Replay with every text, input and image masked. What is sent is set in `src/lib/sentry.ts`
+and `src/instrumentation-client.ts`: no cookies, headers, request bodies, query strings, user details or local
+variables. Browser reports go through `/api/sentry-tunnel` so ad-blockers don't drop them.
+
+The project is `heardex/heardex` (Next.js) in the Heardex Sentry organization.
+
+1. Create a free account at sentry.io and a **Next.js** project.
+2. Vercel → Settings → Environment Variables (Production): `NEXT_PUBLIC_SENTRY_DSN` = the project's DSN.
+3. Optional, for real file names and line numbers: `SENTRY_ORG`, `SENTRY_PROJECT` and `SENTRY_AUTH_TOKEN`
+   (Sentry → Settings → Auth Tokens, with the project:releases and org:read scopes).
+4. Redeploy. Sentry emails you on each new kind of error (Alerts → default issue alert).
+
+Nothing is sent while the DSN is empty, or in development unless `NEXT_PUBLIC_SENTRY_DEV=1`.
+
+## Uptime monitor
+
+`GET /api/health` returns 200 when the site is up and can reach the database, 503 when it can't. Point a free
+monitor (UptimeRobot, Better Stack) at `https://www.heardex.com/api/health` every 5 minutes, with an email alert.

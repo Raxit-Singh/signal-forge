@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs/config";
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -30,4 +31,16 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Error reporting (src/lib/sentry.ts). With SENTRY_AUTH_TOKEN, SENTRY_ORG and SENTRY_PROJECT set on Vercel, the build
+// uploads source maps so reports show the real file and line; without them it builds as normal and uploads nothing.
+const uploadSourceMaps = Boolean(process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT);
+
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: !process.env.CI,
+  telemetry: false,
+  widenClientFileUpload: true,
+  sourcemaps: { disable: !uploadSourceMaps },
+});

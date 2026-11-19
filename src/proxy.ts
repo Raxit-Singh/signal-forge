@@ -28,6 +28,8 @@ function contentSecurityPolicy(nonce: string): string {
     "img-src 'self' blob: data: https:",
     "font-src 'self' data:",
     `connect-src 'self' ${supabase} ${supabaseWs}`,
+    // Sentry's error replay compresses recordings in a worker it starts from a blob.
+    "worker-src 'self' blob:",
     "frame-src 'none'",
     "object-src 'none'",
     "base-uri 'self'",
@@ -98,7 +100,7 @@ export const config = {
   matcher: [
     // Skip static assets and the scheduler endpoint (authenticated by its own secret).
     // Also skipped: the MCP server, OAuth endpoints and discovery documents (bearer-token or
-    // public; no browser session), and the development-only routine stand-in.
-    "/((?!_next/static|_next/image|favicon.ico|api/jobs|api/mcp|api/agent/queue|api/oauth|api/dev/mock-routine|api/dev/mock-github|api/dodo/webhook|api/email/unsubscribe|\\.well-known|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml)$).*)",
+    // public; no browser session), the error-report tunnel, the uptime check, and the development-only routine stand-in.
+    "/((?!_next/static|_next/image|favicon.ico|api/jobs|api/mcp|api/agent/queue|api/oauth|api/dev/mock-routine|api/dev/mock-github|api/dodo/webhook|api/email/unsubscribe|api/sentry-tunnel|api/health|\\.well-known|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml)$).*)",
   ],
 };

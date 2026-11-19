@@ -7,7 +7,8 @@ export const metadata: Metadata = { title: "Cookie Policy" };
 
 // Every cookie and browser-storage item the site sets. Keep in step with the code that sets them:
 // Supabase sign-in (src/lib/supabase), sf_ws and sf_product (src/app/actions/workspace.ts, product.ts, members.ts),
-// sf_tz (src/components/time.tsx), hx_consent (src/app/actions/consent.ts) and the theme (next-themes).
+// sf_tz (src/components/time.tsx), hx_consent (src/app/actions/consent.ts), the theme (next-themes) and Sentry's replay
+// session (src/instrumentation-client.ts).
 // "How long" follows the visitor's choice (src/lib/consent.ts): with Essential only, the remembering cookies last for the
 // browser session.
 const COOKIES: { name: string; why: string; kept: string }[] = [
@@ -48,7 +49,8 @@ export default function CookiesPage() {
       <h2>2. Your choice</h2>
       <ul>
         <li><strong>Accept all:</strong> you stay signed in, and your workspace, product and time zone are remembered, for the times in the table.</li>
-        <li><strong>Essential only:</strong> everything still works, but these cookies last only until you close your browser; next time you sign in again.</li>
+        <li><strong>Accept all</strong> also lets us keep a replay of the moments before an error, to fix it (see below).</li>
+        <li><strong>Essential only:</strong> everything still works, but these cookies last only until you close your browser; next time you sign in again. No replays are kept.</li>
       </ul>
       <p>Signing in always needs a cookie while you use the app; the choice is how long it lasts. You can change it at any time:</p>
       <p><CookieSettingsButton className="hx-nav is-quiet" /></p>
@@ -57,6 +59,12 @@ export default function CookiesPage() {
       <p>
         Your choice of light or dark theme is kept in your browser&rsquo;s local storage under <code>theme</code>. It never
         leaves your device.
+      </p>
+      <p>
+        If you chose Accept all, Sentry, which tells us when the site breaks, keeps <code>sentryReplaySession</code> in
+        your browser&rsquo;s session storage until you close the tab. It lets Sentry keep a replay of the moments before an
+        error. Every text, typed value and image in it is hidden: it shows where you clicked, not what you read or typed.
+        Nothing is sent unless an error happens.
       </p>
 
       <h2>4. Other sites</h2>
