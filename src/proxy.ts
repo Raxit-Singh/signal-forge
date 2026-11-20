@@ -1,13 +1,14 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { CONSENT_COOKIE, parseConsent, withConsent } from "@/lib/consent";
+import { hasEarlyAccess } from "@/lib/early-access";
 
 // Next.js 16 "proxy" (formerly middleware). Refreshes the Supabase session
 // cookie on every request and keeps signed-out users out of app routes.
 // Authorization is NOT decided here: every page and action re-checks the user
 // and workspace membership on the server, and RLS enforces it again in Postgres.
 
-const PUBLIC_PREFIXES = ["/login", "/signup", "/forgot-password", "/auth", "/legal", "/alternatives", "/docs", "/blog", "/product",
+const PUBLIC_PREFIXES = ["/login", "/signup", "/early-access", "/forgot-password", "/auth", "/legal", "/alternatives", "/docs", "/blog", "/product",
   // Design samples: sample data only, and the page returns 404 in production.
   ...(process.env.NODE_ENV === "production" ? [] : ["/prototypes"])];
 
@@ -82,6 +83,15 @@ export async function proxy(request: NextRequest) {
     url.pathname = "/login";
     url.search = "";
     url.searchParams.set("next", path + request.nextUrl.search);
+    return NextResponse.redirect(url);
+  }
+
+  // Private testing: signed-in people not on EARLY_ACCESS_EMAILS can't reach the
+  // app, onboarding or invitations (pages and the actions posted to them).
+  if (user && !isPublic && !hasEarlyAccess(user.email)) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/early-access";
+    url.search = "";
     return NextResponse.redirect(url);
   }
 

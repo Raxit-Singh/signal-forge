@@ -7,6 +7,7 @@ import { publicEnv } from "@/lib/env";
 import { safeRedirectPath } from "@/lib/domain/urls";
 import { emailRedirectTo, isOAuthProvider, oauthRedirectTo } from "@/lib/auth/flow";
 import { getAuthProviders } from "@/lib/server/auth-providers";
+import { hasEarlyAccess } from "@/lib/early-access";
 import {
   newPasswordSchema, resetRequestSchema, signInSchema, signUpSchema,
 } from "@/lib/validation/schemas";
@@ -60,6 +61,9 @@ export async function signUpAction(_: ActionState, formData: FormData): Promise<
   const parsed = signUpSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return invalid(parsed.error);
 
+  if (!hasEarlyAccess(parsed.data.email)) {
+    return failure("Heardex is in private testing and isn't taking new accounts yet. Sign-ups open soon.");
+  }
   const next = safeRedirectPath(String(formData.get("next") ?? ""), "/onboarding");
   const supabase = await createClient();
   const { error } = await supabase.auth.signUp({

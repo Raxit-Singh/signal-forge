@@ -321,3 +321,12 @@ Nothing is sent while the DSN is empty, or in development unless `NEXT_PUBLIC_SE
 
 `GET /api/health` returns 200 when the site is up and can reach the database, 503 when it can't. Point a free
 monitor (UptimeRobot, Better Stack) at `https://www.heardex.com/api/health` every 5 minutes, with an email alert.
+
+## Private testing (invite-only)
+
+Set `EARLY_ACCESS_EMAILS` in Vercel (Production) to a comma-separated list of
+addresses, then redeploy. Only those addresses can create an account or use the
+app; anyone else who signs in (including with Google or GitHub) sees
+"Heardex isn't open yet" with a sign-out button. The landing, pricing, docs,
+blog and legal pages stay public. Delete the variable (or empty it) and
+redeploy to open sign-ups to everyone.

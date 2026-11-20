@@ -5,6 +5,7 @@ import { AuthNoticeBanner } from "../auth-notice";
 import { ProviderButtons } from "../provider-buttons";
 import { safeRedirectPath } from "@/lib/domain/urls";
 import { getAuthProviders } from "@/lib/server/auth-providers";
+import { earlyAccessList } from "@/lib/early-access";
 
 export const metadata: Metadata = { title: "Create account" };
 
@@ -18,6 +19,11 @@ export default async function SignUpPage({ searchParams }: { searchParams: Promi
         <h1 className="text-xl font-semibold tracking-tight">Create your account</h1>
         <p className="text-muted-foreground">Track where people talk about your product. Free plan, no card needed.</p>
       </div>
+      {earlyAccessList() && (
+        <p role="status" className="rounded-md border px-3 py-2.5 text-[13px] text-muted-foreground">
+          Heardex is in private testing. Only invited addresses can create an account right now; sign-ups open soon.
+        </p>
+      )}
       <AuthNoticeBanner code={sp.error} provider={sp.provider} next={next} />
       <ProviderButtons providers={providers} next={next} />
       <SignUpForm next={next === "/onboarding" ? undefined : next} />
