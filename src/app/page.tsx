@@ -5,10 +5,18 @@ import { planFromRow, type PlanRow } from "@/lib/domain/plans";
 import { Landing } from "@/components/landing/landing";
 import { INDEXED } from "@/lib/marketing";
 
+// Search title (about 50 characters, so Google shows it whole) leads with what people search for; the
+// description stays under 155 characters.
+const TITLE = "Heardex – Product Mention & User Feedback Tracking";
+const DESCRIPTION = "Track what people say about your product on Reddit, Hacker News, GitHub and app stores. Heardex sorts every mention into bugs, requests and praise.";
+
 export const metadata: Metadata = {
-  title: { absolute: "Heardex · Heard. Indexed. Fixed." },
+  title: { absolute: TITLE },
+  description: DESCRIPTION,
   robots: INDEXED,
-  description: "Heardex finds what people say about your product across Reddit, Hacker News, GitHub, app stores and more, and ranks it into bugs, requests and complaints.",
+  alternates: { canonical: "/" },
+  openGraph: { type: "website", url: "/", siteName: "Heardex", title: TITLE, description: DESCRIPTION },
+  twitter: { card: "summary", site: "@heardexhq", title: TITLE, description: DESCRIPTION },
 };
 
 export default async function Home() {

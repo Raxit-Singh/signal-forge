@@ -1,13 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <style>.l{fill:#0b0b0c}@media (prefers-color-scheme:dark){.l{fill:#f4f4f5}}</style>
-  <svg x="1" y="1" width="30" height="30" viewBox="423 403 1085 1126">
-    <g class="l">
-      <path d="M423 589a186 186 0 0 1 372 0v309a45 45 0 0 1-45 45H468a45 45 0 0 1-45-45z"/>
-      <rect x="818" y="564" width="294" height="382" rx="45"/>
-      <path d="M1137 575a371 371 0 0 1 371 371h-371z"/>
-      <path d="M423 985h372v372A372 372 0 0 1 423 985z"/>
-      <rect x="818" y="985" width="287" height="382" rx="45"/>
-      <path d="M1182 989h281a45 45 0 0 1 45 45v309a186 186 0 0 1-372 0v-309a45 45 0 0 1 46-45z"/>
-    </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <rect width="48" height="48" rx="11" fill="#0b0b0c"/>
+  <svg x="9" y="9" width="30" height="30" viewBox="423 403 1085 1126" fill="#f4f4f5">
+    <path d="M423 589a186 186 0 0 1 372 0v309a45 45 0 0 1-45 45H468a45 45 0 0 1-45-45z"/>
+    <rect x="818" y="564" width="294" height="382" rx="45"/>
+    <path d="M1137 575a371 371 0 0 1 371 371h-371z"/>
+    <path d="M423 985h372v372A372 372 0 0 1 423 985z"/>
+    <rect x="818" y="985" width="287" height="382" rx="45"/>
+    <path d="M1182 989h281a45 45 0 0 1 45 45v309a186 186 0 0 1-372 0v-309a45 45 0 0 1 46-45z"/>
   </svg>
 </svg>
