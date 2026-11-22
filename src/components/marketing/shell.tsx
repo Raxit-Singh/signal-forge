@@ -9,10 +9,11 @@ import { MobileMenu } from "./mobile-menu";
 import { ProductMenu } from "./product-menu";
 import { ThemeToggle } from "./theme-toggle";
 import "@/components/landing/landing.css";
+import { signedOutStart } from "@/lib/early-access";
 
 /** Public pages other than the landing: its look, its top bar and motion, and the red footer. */
 export async function MarketingShell({ children }: { children: React.ReactNode }) {
-  const start = (await getUser()) ? { href: "/overview", label: "Open dashboard" } : { href: "/signup", label: "Start free" };
+  const start = (await getUser()) ? { href: "/overview", label: "Open dashboard" } : signedOutStart();
   return (
     // --answer is when the landing's opening hands over; here there is no opening, so everything enters at once.
     <div className={`hx hx-site relative min-h-dvh ${switzer.className}`}>
@@ -38,8 +39,8 @@ export function SiteNav({ start, theme = false }: { start: { href: string; label
       <Link href="/blog" className="hx-nav hx-nav-wide">Blog</Link>
       <Link href="/#pricing" className="hx-nav hx-nav-wide">Pricing</Link>
       {theme && <ThemeToggle />}
-      <Link href={start.href === "/signup" ? "/login" : start.href} className="hx-nav is-primary hx-rise whitespace-nowrap">{start.href === "/signup" ? "Sign in" : start.label}</Link>
-      <MobileMenu signIn={start.href === "/signup"} />
+      <Link href={start.href === "/overview" ? start.href : "/login"} className="hx-nav is-primary hx-rise hx-fill whitespace-nowrap">{start.href === "/overview" ? start.label : "Sign in"}</Link>
+      <MobileMenu signIn={start.href !== "/overview"} />
       <BarSurface />
     </nav>
   );

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { POSTS, formatPostDate, postBySlug } from "@/content/blog";
 import { PageHero } from "@/components/marketing/page-hero";
+import { signedOutStart } from "@/lib/early-access";
 
 export function generateStaticParams() {
   return POSTS.map((p) => ({ slug: p.slug }));
@@ -29,7 +30,7 @@ export default async function BlogPost({ params }: { params: Promise<{ slug: str
         </PageHero>
         <div className="hx-prose hx-rise relative z-10">{p.Body()}</div>
         <div className="mt-14 flex flex-wrap gap-2">
-          <Link href="/signup" className="hx-nav is-primary">Start free</Link>
+          <Link href={signedOutStart().href} className="hx-nav is-primary">{signedOutStart().label}</Link>
           <Link href="/docs" className="hx-nav is-quiet">Read the docs</Link>
         </div>
       </div>

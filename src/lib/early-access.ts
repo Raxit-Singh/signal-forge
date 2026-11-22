@@ -16,3 +16,8 @@ export function hasEarlyAccess(email: string | null | undefined): boolean {
   if (!list) return true;
   return Boolean(email) && list.has(email!.trim().toLowerCase());
 }
+
+/** The main call to action for signed-out visitors: early access while sign-ups are closed, sign-up once they open. */
+export function signedOutStart(): { href: string; label: string } {
+  return earlyAccessList() ? { href: "/early-access", label: "Get early access" } : { href: "/signup", label: "Start free" };
+}

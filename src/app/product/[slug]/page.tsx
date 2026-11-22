@@ -6,9 +6,10 @@ import { planFromRow, type PlanRow } from "@/lib/domain/plans";
 import { PRODUCT, productPage } from "@/content/product";
 import { PRODUCT_PAGES } from "@/lib/marketing";
 import { PageHero } from "@/components/marketing/page-hero";
-import { Shot } from "@/components/marketing/shot";
+import { DemoDashboard, type DemoKind } from "@/components/marketing/demo-dashboard";
 import { ClaudeClip, FeedClip, SortClip, SpikeClip, VoiceClip } from "@/components/landing/product";
 import type { SkyKind } from "@/components/marketing/sky";
+import { signedOutStart } from "@/lib/early-access";
 
 const CLIPS = { sort: SortClip, feed: FeedClip, voice: VoiceClip, spike: SpikeClip, claude: ClaudeClip };
 
@@ -22,6 +23,15 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const p = productPage((await params).slug);
   return p ? { title: { absolute: `${p.eyebrow} · Heardex` }, description: p.lede } : {};
 }
+
+// The demo Heardex screen each product page opens with.
+const DEMO: Record<string, DemoKind> = {
+  "feedback-intelligence": "mentions",
+  "smart-monitoring": "monitoring",
+  "competitor-tracking": "competitors",
+  "buzz-analytics": "trends",
+  mcp: "claude",
+};
 
 // Each product page has its own background, drawn from what that product does.
 const SKIES: Record<string, SkyKind> = {
@@ -45,12 +55,12 @@ export default async function ProductFeaturePage({ params }: { params: Promise<{
     <article className="hx-frame mx-auto max-w-[1560px] pb-[clamp(96px,14vh,160px)]">
       <PageHero sky={SKIES[p.slug] ?? "pulse"} eyebrow={p.eyebrow} title={p.title} lede={p.lede}>
         <div className="flex flex-wrap gap-2">
-          <Link href="/signup" className="hx-nav is-primary">Start free</Link>
+          <Link href={signedOutStart().href} className="hx-nav is-primary">{signedOutStart().label}</Link>
           <Link href={p.docs.href} className="hx-nav is-quiet">Read the docs</Link>
         </div>
       </PageHero>
 
-      <Shot shot={p.shot} className="is-wide relative z-10 -mt-[clamp(40px,8vh,96px)]" priority caption="Heardex as it is today, in our own workspace that tracks Starlink." />
+      <DemoDashboard kind={DEMO[p.slug] ?? "mentions"} className="relative z-10 -mt-[clamp(40px,8vh,96px)]" />
 
       <ul className="hx-glow-group mt-[clamp(64px,10vh,120px)] grid gap-3 md:grid-cols-2">
         {p.blocks.map((b, i) => (

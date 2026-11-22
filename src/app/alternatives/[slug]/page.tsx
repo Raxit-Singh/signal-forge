@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { formatPrice, intervalPrice, planFromRow, type Plan, type PlanRow } from "@/lib/domain/plans";
 import { CHECKED, COMPETITORS, competitor } from "@/lib/alternatives";
 import { PageHero } from "@/components/marketing/page-hero";
+import { signedOutStart } from "@/lib/early-access";
 
 export function generateStaticParams() {
   return COMPETITORS.map((c) => ({ slug: c.slug }));
@@ -102,7 +103,7 @@ export default async function AlternativePage({ params }: { params: Promise<{ sl
           <div><dt className="text-[15px] text-[var(--muted)]">Choose Heardex if</dt><dd className="mt-2 text-[20px] leading-snug">{c.pickUs}</dd></div>
         </dl>
         <div className="mt-10 flex flex-wrap gap-2">
-          <Link href="/signup" className="hx-nav is-primary">Start free</Link>
+          <Link href={signedOutStart().href} className="hx-nav is-primary">{signedOutStart().label}</Link>
           <Link href="/#pricing" className="hx-nav is-quiet">See pricing</Link>
         </div>
       </section>

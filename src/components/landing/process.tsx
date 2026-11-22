@@ -37,18 +37,18 @@ const GROWN = 2400; // ms after the switch when the picked mention has grown int
 type Tone = "neg" | "pos" | "mid";
 type Mention = { source: string; where: string; user: string; text: string; tone: Tone };
 
-// Sample mentions of the made-up app the page follows (Notewise), as they would come in.
+// Sample mentions of the made-up app the page follows (Acme), as they would come in.
 const FEED: Mention[] = [
-  { source: "reddit", where: "r/productivity", user: "u/maya_writes", text: "Is it just me, or does Notewise crash every time I export a PDF?", tone: "neg" },
+  { source: "reddit", where: "r/productivity", user: "u/maya_sample", text: "Is it just me, or does Acme crash every time I export a PDF?", tone: "neg" },
   { source: "app_store", where: "App Store · ★★☆☆☆", user: "dan_k", text: "Lost two weeks of notes after the 1.8 update. Please fix sync.", tone: "neg" },
-  { source: "x", where: "X", user: "@priya.codes", text: "Notewise dark mode is genuinely the nicest I've used", tone: "pos" },
-  { source: "hackernews", where: "Ask HN", user: "mwrites", text: "We moved our whole team's docs to Notewise last month. AMA.", tone: "pos" },
-  { source: "github", where: "notewise/desktop", user: "maya-w", text: "Sync stalls at 99% on large vaults since 1.8", tone: "neg" },
-  { source: "youtube", where: "Notewise vs Notion", user: "@tomreviews", text: "Would love a proper offline mode before I switch for good", tone: "mid" },
+  { source: "x", where: "X", user: "@priya_sample", text: "Acme dark mode is genuinely the nicest I've used", tone: "pos" },
+  { source: "hackernews", where: "Ask HN", user: "maya_s", text: "We moved our whole team's docs to Acme last month. AMA.", tone: "pos" },
+  { source: "github", where: "acme/desktop", user: "maya-sample", text: "Sync stalls at 99% on large vaults since 1.8", tone: "neg" },
+  { source: "youtube", where: "Acme vs Rival Notes", user: "@tom_sample", text: "Would love a proper offline mode before I switch for good", tone: "mid" },
   { source: "trustpilot", where: "Trustpilot · ★★★★☆", user: "Alex R.", text: "Support replied within the hour and sorted my billing.", tone: "pos" },
   { source: "google_play", where: "Google Play · ★☆☆☆☆", user: "Sam O.", text: "PDF export button does nothing on my Pixel", tone: "neg" },
-  { source: "stackexchange", where: "Stack Overflow", user: "j.lee", text: "How do I script a Notewise export from the command line?", tone: "mid" },
-  { source: "linkedin", where: "LinkedIn", user: "Rina Patel", text: "Notewise saves our design team hours a week. Recommended.", tone: "pos" },
+  { source: "stackexchange", where: "Stack Overflow", user: "j.lee", text: "How do I script a Acme export from the command line?", tone: "mid" },
+  { source: "linkedin", where: "LinkedIn", user: "Rina P.", text: "Acme saves our design team hours a week. Recommended.", tone: "pos" },
 ];
 
 const TONE: Record<Tone, string> = { neg: "Negative", pos: "Positive", mid: "Neutral" };
@@ -396,7 +396,7 @@ function Panel({ head, step, k }: { head: number; step: 0 | 1 | 2; k: number }) 
         <HeardexMark className="px-hx" />
         <span className="px-strong"><Roll texts={["Mentions", "Heardex AI", "Issues"]} at={step} step={35} /></span>
         <span className="px-live"><i /><Roll texts={[`${3 + head} new`, "Classifying", "Ranked"]} at={step} delay={150} step={35} /></span>
-        <span className="px-dim ml-auto"><Roll texts={["Notewise", `${(1284 + k).toLocaleString("en-US")} sorted today`, "This week"]} at={step} delay={300} step={25} /></span>
+        <span className="px-dim ml-auto"><Roll texts={["Acme", `${(1284 + k).toLocaleString("en-US")} sorted today`, "This week"]} at={step} delay={300} step={25} /></span>
       </div>
       <div className="px-tabs-wrap">
         <div className="px-tabs">

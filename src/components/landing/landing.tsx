@@ -12,11 +12,12 @@ import { Pricing } from "./pricing";
 import { Scenario } from "./scenario";
 import { Words } from "./words";
 import "./landing.css";
+import { signedOutStart } from "@/lib/early-access";
 
 
 
 export function Landing({ signedIn, plans }: { signedIn: boolean; plans: Plan[] }) {
-  const start = signedIn ? { href: "/overview", label: "Open dashboard" } : { href: "/signup", label: "Start free" };
+  const start = signedIn ? { href: "/overview", label: "Open dashboard" } : signedOutStart();
 
   return (
     <div className={`hx relative ${switzer.className}`}>
@@ -49,8 +50,8 @@ export function Landing({ signedIn, plans }: { signedIn: boolean; plans: Plan[] 
               <Words text="We hear what people say about your product." breakAfter={4} />
             </span>
           </h1>
-          <Link href={start.href} className="hx-nav is-primary hx-rise hx-hero-cta mt-9">{signedIn ? start.label : "Start for free"}</Link>
-          {!signedIn && <p className="hx-hero-note mt-2.5 text-[12px] text-[var(--muted)]">No credit card required</p>}
+          <Link href={start.href} className="hx-nav is-primary hx-fill hx-hero-cta mt-9">{start.label}</Link>
+          {!signedIn && <p className="hx-hero-note mt-2.5 text-[12px] text-[var(--muted)]">{start.href === "/signup" ? "No credit card required" : "In private testing · opening soon"}</p>}
         </section>
       </div>
       </div>

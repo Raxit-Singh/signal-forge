@@ -51,7 +51,7 @@ export function Walkthrough({ src, w, h, alt, steps, priority }: { src: string; 
         </div>
         <div className="relative overflow-hidden">
           <div className="hx-walk-cam" style={{ transform: `scale(${zoom})`, transformOrigin: `${cx}% ${cy}%` }}>
-            <Image src={src} width={w} height={h} alt={alt} sizes="(min-width: 1280px) 900px, 100vw" priority={priority} className="block h-auto w-full" />
+            <Image src={src} width={w} height={h} alt={alt} sizes="(min-width: 1280px) 900px, 100vw" quality={90} priority={priority} className="block h-auto w-full" />
             {cur && <span key={`r${i}`} className="hx-walk-ring" style={{ left: `${cx}%`, top: `${cy}%` }} aria-hidden />}
             <span className="hx-walk-cursor" style={{ left: `${cx}%`, top: `${cy}%`, ["--z" as string]: 1 / zoom }} aria-hidden>
               <svg viewBox="0 0 24 24"><path d="M5 3l14 8.2-6.1 1.3 3.6 6.6-2.7 1.5-3.6-6.6L5.8 18z" /></svg>

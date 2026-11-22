@@ -35,7 +35,8 @@ export function Shot({ shot, spots = [], caption, className, priority }: {
       <div className="hx-shot-frame">
         <div className="hx-shot-bar" aria-hidden><span /><span /><span /></div>
         <div className="relative">
-          <Image src={s.src} width={s.w} height={s.h} alt={s.alt} sizes="(min-width: 1280px) 900px, 100vw" priority={priority} className="block h-auto w-full" />
+          <Image src={s.src} width={s.w} height={s.h} alt={s.alt} quality={90} priority={priority} className="block h-auto w-full"
+            sizes={className?.includes("is-wide") ? "(min-width: 1560px) 1480px, 100vw" : "(min-width: 1280px) 900px, 100vw"} />
           {spots.map((p, i) => (
             <span key={p.label} className="hx-spot" style={{ left: `${p.x}%`, top: `${p.y}%`, ["--d" as string]: `${300 + i * 120}ms` }} aria-hidden>{i + 1}</span>
           ))}

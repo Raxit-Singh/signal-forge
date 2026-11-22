@@ -15,6 +15,12 @@ export type ProductSlug = (typeof PRODUCT_PAGES)[number]["slug"];
 
 export interface SiteLink { href: string; label: string }
 
+/** Heardex's own social profiles, linked from the footer. */
+export const SOCIAL_LINKS = [
+  { href: "https://www.instagram.com/heardexhq/", label: "Instagram" },
+  { href: "https://x.com/heardexhq", label: "X" },
+] as const;
+
 /** The site's links by category. The footer and the phone menu both show these, so they can't drift apart. */
 export const SITE_SECTIONS: ReadonlyArray<{ title: string; links: readonly SiteLink[] }> = [
   { title: "Product", links: [...PRODUCT_PAGES.map((p) => ({ href: `/product/${p.slug}`, label: p.name })), { href: "/#pricing", label: "Pricing" }] },

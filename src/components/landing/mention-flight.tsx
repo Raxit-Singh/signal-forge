@@ -9,7 +9,7 @@ import { poseDive } from "./dive";
 import { Network, rounded, type RedditLink } from "./network";
 
 // One mention's journey, on a loop: typed on Reddit, sent down into Reddit, carried along the wire, risen in Heardex.
-const POST = "Is it just me, or does Notewise crash every time I export a PDF?";
+const POST = "Is it just me, or does Acme crash every time I export a PDF?";
 const TYPE_AT = 400;
 const CHAR_MS = 36;
 // Each step starts at this time (ms into the loop); the classes are cumulative, s1 … s9:
@@ -430,7 +430,7 @@ export function MentionFlight() {
                 <span className="mf-caret" />
               </p>
               <div className="mf-post-foot">
-                <span className="mf-dim">u/maya_writes</span>
+                <span className="mf-dim">u/maya_sample</span>
                 <span className="mf-send">Post</span>
               </div>
               <span className="mf-scan" />
@@ -469,7 +469,7 @@ export function MentionFlight() {
               <div className="mf-mention-src">
                 <span className="mf-badge"><Mark path={siReddit.path} /></span>
                 <span className="mf-strong">r/productivity</span>
-                <span className="mf-dim">· u/maya_writes</span>
+                <span className="mf-dim">· u/maya_sample</span>
               </div>
               <p className="mf-mention-text">{POST}</p>
               <div className="mf-chips">

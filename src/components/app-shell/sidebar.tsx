@@ -25,12 +25,12 @@ export interface ShellPlan { name: string; used: number; allowance: number; upgr
 
 const isActive = (pathname: string, href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
-/** The Heardex mark in the app shell: the upright sword with a soft red glow behind the blade. */
+/** The Heardex mark in the app shell, with a soft red glow behind it. */
 export function Mark({ className }: { className?: string }) {
   return (
-    <span className={cn("relative flex h-8 w-5 shrink-0 items-center justify-center", className)} aria-hidden>
-      <span className="breathe absolute inset-x-1 inset-y-0 rounded-full bg-signal/50 blur-md" />
-      <HeardexMark className="relative h-8" />
+    <span className={cn("relative flex h-7 w-7 shrink-0 items-center justify-center", className)} aria-hidden>
+      <span className="breathe absolute inset-1 rounded-full bg-signal/40 blur-md" />
+      <HeardexMark className="relative h-6 w-6" />
     </span>
   );
 }

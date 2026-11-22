@@ -1,0 +1,48 @@
+/* The demo Heardex screens on the product pages (demo-dashboard.tsx). Always the app's dark look, whatever the
+   site theme, since it is a picture of the app. */
+.dd-box { position: relative; overflow: hidden; background: #08080a; }
+.dd {
+  --dd-red: #ff3b2f;
+  position: absolute; left: 0; top: 0; transform-origin: 0 0; display: flex; color: #f4f4f5; color-scheme: dark;
+  background: radial-gradient(900px 500px at 75% -10%, rgb(255 59 47 / 0.07), transparent 70%), #08080a;
+  font-size: 14px; line-height: 1.35; text-align: left;
+}
+.dd-side { display: flex; flex-direction: column; width: 232px; flex: none; padding: 22px 14px 18px; border-right: 1px solid #1c1c20; background: #0b0b0d; }
+.dd-main { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.dd-top { display: flex; align-items: center; gap: 18px; height: 56px; padding: 0 28px; border-bottom: 1px solid #1c1c20; }
+.dd-page { flex: 1; overflow: hidden; padding: 28px 32px; }
+.dd-card { border: 1px solid #222226; border-radius: 16px; background: linear-gradient(180deg, #121215, #0e0e10); }
+.dd-card.is-sel { border-color: #4a4a52; box-shadow: inset 0 0 0 1px #4a4a52; }
+.dd-pill { border: 1px solid #222226; border-radius: 999px; background: #0f0f12; }
+.dd-btn { border-radius: 999px; background: var(--dd-red); padding: 10px 18px; font-size: 14px; font-weight: 500; box-shadow: 0 10px 28px -12px rgb(255 59 47 / 0.8); }
+.dd-nav { position: relative; display: flex; align-items: center; gap: 11px; border-radius: 10px; padding: 8px 12px; font-size: 14px; color: #a1a1a8; }
+.dd-nav.is-on { background: #18181b; color: #f4f4f5; box-shadow: inset 0 0 0 1px #222226; }
+.dd-nav.is-on::before { content: ""; position: absolute; left: -14px; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--dd-red); }
+.dd-live { display: inline-block; width: 7px; height: 7px; border-radius: 999px; background: #2fb56b; box-shadow: 0 0 0 3px rgb(47 181 107 / 0.18); }
+.dd-glow { position: absolute; inset: 4px; border-radius: 999px; background: rgb(255 59 47 / 0.45); filter: blur(9px); }
+.dd-bar { background: linear-gradient(180deg, #f4f4f5, #5b5b62); opacity: 0.9; }
+.dd-donut { transform: rotate(-90deg); }
+.dd-line { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Entrance, once the figure scrolls into view (.is-in, from MarketingMotion). Without script, or with reduced
+   motion, everything is simply there. --dd orders the pieces. */
+@media (prefers-reduced-motion: no-preference) {
+  .hx-js .hx-shot .dd-in-side { opacity: 0; transform: translateX(-24px); }
+  .hx-js .hx-shot .dd-in-top { opacity: 0; transform: translateY(-12px); }
+  .hx-js .hx-shot .dd-in { opacity: 0; transform: translateY(18px); filter: blur(6px); }
+  .hx-js .hx-shot .dd-bar { transform: scaleY(0); transform-origin: 50% 100%; }
+  .hx-js .hx-shot .dd-grow { transform: scaleX(0); transform-origin: 0 50%; }
+  .hx-js .hx-shot .dd-line { stroke-dasharray: 1; stroke-dashoffset: 1; }
+  .hx-js .hx-shot .dd-area, .hx-js .hx-shot .dd-pop, .hx-js .hx-shot .dd-donut { opacity: 0; }
+  .hx-js .hx-shot .dd-donut { transform: rotate(-200deg) scale(0.85); }
+
+  .hx-js .hx-shot.is-in .dd-in-side, .hx-js .hx-shot.is-in .dd-in-top { opacity: 1; transform: none; transition: opacity 700ms ease 250ms, transform 900ms cubic-bezier(0.22, 1, 0.36, 1) 250ms; }
+  .hx-js .hx-shot.is-in .dd-in { opacity: 1; transform: none; filter: none;
+    transition: opacity 600ms ease, transform 800ms cubic-bezier(0.22, 1, 0.36, 1), filter 600ms ease; transition-delay: calc(350ms + var(--dd, 0ms)); }
+  .hx-js .hx-shot.is-in .dd-bar { transform: none; transition: transform 900ms cubic-bezier(0.22, 1, 0.36, 1) calc(350ms + var(--dd, 0ms)); }
+  .hx-js .hx-shot.is-in .dd-grow { transform: none; transition: transform 1100ms cubic-bezier(0.22, 1, 0.36, 1) calc(800ms + var(--dd, 0ms)); }
+  .hx-js .hx-shot.is-in .dd-line { stroke-dashoffset: 0; transition: stroke-dashoffset 1800ms cubic-bezier(0.65, 0, 0.35, 1) calc(700ms + var(--dd, 0ms)); }
+  .hx-js .hx-shot.is-in .dd-area { opacity: 1; transition: opacity 900ms ease 1700ms; }
+  .hx-js .hx-shot.is-in .dd-pop { opacity: 1; transition: opacity 400ms ease 2300ms; }
+  .hx-js .hx-shot.is-in .dd-donut { opacity: 1; transform: rotate(-90deg); transition: opacity 500ms ease 900ms, transform 1400ms cubic-bezier(0.22, 1, 0.36, 1) 900ms; }
+}

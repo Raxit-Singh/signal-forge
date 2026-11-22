@@ -12,6 +12,8 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
+  // 90 for the app screenshots on product and docs pages, where small text must stay sharp.
+  images: { qualities: [75, 90] },
   experimental: {
     serverActions: {
       // Server actions reject cross-origin POSTs by default (CSRF protection).

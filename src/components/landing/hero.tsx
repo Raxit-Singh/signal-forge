@@ -23,13 +23,13 @@ const FEED = [
   { source: "reddit", where: "r/productivity", when: "2m", text: "Export to PDF crashes every time my note is longer than 40 pages." },
   { source: "app_store", where: "App Store · 2★", when: "9m", text: "Lost an hour of work when export froze the app." },
   { source: "hackernews", where: "Hacker News", when: "24m", text: "Search is instant, but the PDF export still falls over on big docs." },
-  { source: "github", where: "nimbus/desktop #412", when: "1h", text: "Sync stalls at 99% after the 1.8 update." },
+  { source: "github", where: "acme/desktop #412", when: "1h", text: "Sync stalls at 99% after the 1.8 update." },
 ];
 
 const RANKED = [
   { kind: "Bug", tone: "bg-[var(--red)]", title: "PDF export crashes on long notes", people: 38 },
   { kind: "Request", tone: "bg-[#2a78d6]", title: "Offline mode on mobile", people: 21 },
-  { kind: "Competitor", tone: "bg-[#eda100]", title: "“Switched to Inkwell for sync”", people: 9 },
+  { kind: "Competitor", tone: "bg-[#eda100]", title: "“Switched to Rival Notes for sync”", people: 9 },
 ];
 
 export function Hero({ signedIn, start, platforms }: {
@@ -70,7 +70,7 @@ export function Hero({ signedIn, start, platforms }: {
         {/* What it hears: the mentions feed as the dashboard shows it. */}
         <div data-ui className="hx-tile hx-in flex flex-col overflow-hidden bg-[var(--field-1)] p-5 [--d:80ms] md:p-6">
           <div className="flex items-center justify-between text-[14px] text-[var(--muted)]">
-            <span className="font-medium text-[var(--ink)]">Mentions of Nimbus</span>
+            <span className="font-medium text-[var(--ink)]">Mentions of Acme</span>
             <span className="flex items-center gap-2"><span className="hx-pip hx-live" aria-hidden />Live</span>
           </div>
           <ul className="mt-4 grid gap-2">

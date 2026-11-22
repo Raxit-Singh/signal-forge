@@ -45,13 +45,13 @@ const SENT: Record<string, string> = { Negative: "#e34948", Neutral: "#8f8f96", 
 const KIND: Record<string, string> = { Bug: "#e34948", Request: "#2a78d6", Complaint: "#eda100", Testimonial: "#1baf7a" };
 
 const FEED = [
-  { source: "reddit", who: "u/marta_writes", where: "r/productivity", text: "Export to PDF crashes every time my note is longer than 40 pages.", sent: "Negative", kind: "Bug" },
-  { source: "bluesky", who: "@lena.bsky.social", where: "Bluesky", text: "Nimbus search is genuinely the fastest I've used. Found a 2019 note in a second.", sent: "Positive", kind: "Testimonial" },
+  { source: "reddit", who: "u/marta_sample", where: "r/productivity", text: "Export to PDF crashes every time my note is longer than 40 pages.", sent: "Negative", kind: "Bug" },
+  { source: "bluesky", who: "@lena.example.com", where: "Bluesky", text: "Acme search is genuinely the fastest I've used. Found a 2019 note in a second.", sent: "Positive", kind: "Testimonial" },
   { source: "hackernews", who: "jkl", where: "Hacker News", text: "Would switch the whole team if it had offline mode on iOS.", sent: "Neutral", kind: "Request" },
   { source: "app_store", who: "2 of 5 stars", where: "App Store", text: "Price went up again and sync is still slow. Not happy.", sent: "Negative", kind: "Complaint" },
-  { source: "github", who: "devlin", where: "nimbus/desktop #412", text: "Sync stalls at 99% after the 1.8 update on Windows.", sent: "Negative", kind: "Bug" },
-  { source: "youtube", who: "Paper & Pixels", where: "YouTube comment", text: "Tried Nimbus after this video, the templates are lovely.", sent: "Positive", kind: "Testimonial" },
-  { source: "stackexchange", who: "rk_dev", where: "Stack Overflow", text: "Nimbus API returns 429 on bulk export, any workaround?", sent: "Neutral", kind: "Bug" },
+  { source: "github", who: "dev_sample", where: "acme/desktop #412", text: "Sync stalls at 99% after the 1.8 update on Windows.", sent: "Negative", kind: "Bug" },
+  { source: "youtube", who: "Sample Channel", where: "YouTube comment", text: "Tried Acme after this video, the templates are lovely.", sent: "Positive", kind: "Testimonial" },
+  { source: "stackexchange", who: "rk_dev", where: "Stack Overflow", text: "Acme API returns 429 on bulk export, any workaround?", sent: "Neutral", kind: "Bug" },
 ];
 
 function Chip({ label, color }: { label: string; color: string }) {
@@ -99,7 +99,7 @@ export function SortClip() {
   return (
     <div ref={ref} className="grid gap-4">
       <div className="hx-panel grid gap-3 p-5">
-        <p className="flex items-center gap-3 text-[13px] text-[var(--muted)]"><PlatformMark source="reddit" size={28} /><span><span className="font-medium text-[var(--ink)]">u/marta_writes</span> · r/productivity</span></p>
+        <p className="flex items-center gap-3 text-[13px] text-[var(--muted)]"><PlatformMark source="reddit" size={28} /><span><span className="font-medium text-[var(--ink)]">u/marta_sample</span> · r/productivity</span></p>
         <p className="text-[19px] leading-snug">“Export to PDF crashes every time my note is longer than 40 pages. Third time this week.”</p>
       </div>
       <ol className="grid gap-2" aria-label="What the AI decided">
@@ -109,7 +109,7 @@ export function SortClip() {
               <span className={cn("grid size-6 place-items-center rounded-full text-[12px] font-semibold", i < shown ? "bg-[var(--red)] text-white" : "bg-[var(--field-3)] text-[var(--muted)]")}>{i + 1}</span>
               {s}
             </span>
-            <span className="text-[13px] text-[var(--muted)]">{["Relevant, not another Nimbus", "Frustrated", "Crash on export", "PDF export crashes on long notes"][i]}</span>
+            <span className="text-[13px] text-[var(--muted)]">{["Relevant, not another Acme", "Frustrated", "Crash on export", "PDF export crashes on long notes"][i]}</span>
           </li>
         ))}
       </ol>
@@ -183,7 +183,7 @@ export function ClaudeClip() {
       <div className="hx-panel overflow-hidden bg-[#0a0a0b]">
         <div className="flex h-10 items-center gap-2 border-b border-[var(--line)] px-4 text-[12px] text-[var(--muted)]">
           <span className="size-2.5 rounded-full bg-[#3a3a40]" /><span className="size-2.5 rounded-full bg-[#3a3a40]" /><span className="size-2.5 rounded-full bg-[#3a3a40]" />
-          <span className="ml-2">Claude Code · nimbus</span>
+          <span className="ml-2">Claude Code · acme</span>
         </div>
         <ol className="grid gap-2.5 p-5 font-mono text-[13px] leading-relaxed" aria-label="Claude's investigation">
           {TERMINAL.map(([m, t], i) => (
@@ -199,8 +199,8 @@ export function ClaudeClip() {
 }
 
 const VOICE = [
-  { name: "Nimbus (you)", share: 46, color: "var(--red)" },
-  { name: "Inkwell", share: 31, color: "#6250d6" },
+  { name: "Acme (you)", share: 46, color: "var(--red)" },
+  { name: "Rival Notes", share: 31, color: "#6250d6" },
   { name: "Paperlane", share: 23, color: "#1baf7a" },
 ];
 
@@ -219,7 +219,7 @@ export function VoiceClip() {
               </span>
             </div>
           ))}
-          <p className="border-t border-[var(--line)] pt-4 text-[13px] text-[var(--muted)]">Inkwell mentions up 40% after their sync launch. 9 people said they switched.</p>
+          <p className="border-t border-[var(--line)] pt-4 text-[13px] text-[var(--muted)]">Rival Notes mentions up 40% after their sync launch. 9 people said they switched.</p>
         </div>
       </Window>
     </div>

@@ -1,5 +1,5 @@
 /* Heardex landing. It speaks the dashboard's language: near-black ground, quiet panels with a
-   hairline border, Geist, one red. The 3D sword opens it; everything after is the product. */
+   hairline border, Geist, one red. */
 
 .hx {
   --ground: #050506;
@@ -30,14 +30,6 @@
 .hx p { text-wrap: pretty; }
 .hx-frame { padding-inline: var(--margin); }
 .hx-h2 { font-size: var(--step-head); font-weight: 600; line-height: 1.02; letter-spacing: -0.045em; }
-
-/* The dashboard's panel: a soft top-lit surface with a hairline border. */
-.hx-panel {
-  background: linear-gradient(180deg, #121214, #0c0c0e);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-}
 
 .hx-button {
   display: inline-flex; align-items: center; justify-content: center; gap: 10px;
@@ -107,23 +99,6 @@
 /* Kept from the keyword preview: a field and a small bullet. */
 .hx-cut { border-radius: 12px; border: 1px solid var(--line); }
 .hx-bullet { display: inline-block; width: 8px; height: 8px; flex: none; border-radius: 999px; background: var(--red); }
-
-/* The opening stage: pinned, one screen tall, the canvas behind a sideways track. */
-.hx-story { height: 100svh; overflow: hidden; }
-.hx-track { height: 100svh; width: max-content; z-index: 1; }
-.hx-scene { height: 100svh; }
-.hx-line { background: linear-gradient(90deg, #ff3b2f, #ff3b2f 85%, rgba(255, 59, 47, 0.25)); box-shadow: 0 0 14px rgba(255, 59, 47, 0.7); transform: scaleX(0); }
-.hx-story .hx-panel { background: rgba(14, 14, 16, 0.86); backdrop-filter: blur(6px); }
-
-/* Without motion the story stacks: the mark stays in the name, whole and lit. */
-.hx-story.is-still { height: auto; overflow: visible; }
-.hx-story.is-still .hx-stage { position: absolute; height: 100svh; }
-.hx-story.is-still .hx-track { flex-direction: column; width: auto; height: auto; }
-.hx-story.is-still .hx-scene { width: auto; height: auto; min-height: 60svh; padding-block: 64px; }
-.hx-story.is-still .hx-scene:first-child { height: 100svh; }
-.hx-story.is-still .hx-line { display: none; }
-.hx-story.is-still .hx-hero-claim { display: none; }
-.hx-story.is-still .hx-scene > div { overflow-x: auto; }
 
 /* Clips. */
 @keyframes hx-arrive { from { opacity: 0; transform: translateY(-14px); background: rgba(255, 59, 47, 0.08); } to { opacity: 1; transform: none; background: transparent; } }
@@ -1036,7 +1011,7 @@ html:has(.hx-mnav-panel[data-open]) .mf-ghost { visibility: hidden; }
 .hx-spot-key strong { color: var(--ink); font-weight: 600; }
 /* On a product page the picture is the hero's: wide, and tilted back a little until it is in view. */
 .hx-shot.is-wide { margin: 0; perspective: 1600px; }
-.hx-js .hx-shot.is-wide .hx-shot-frame { transform: rotateX(14deg) scale(0.94); transform-origin: 50% 0; opacity: 0.4; }
+.hx-js .hx-shot.is-wide .hx-shot-frame { transform: translateY(48px) rotateX(16deg) scale(0.94); transform-origin: 50% 0; opacity: 0; }
 .hx-js .hx-shot.is-wide.is-in .hx-shot-frame { transform: none; opacity: 1; transition: transform 1400ms cubic-bezier(0.22, 1, 0.36, 1), opacity 900ms ease; }
 
 /* The policies, in the same frame. */
@@ -1130,7 +1105,6 @@ html.light .hx {
   --card-line: #e0ded8;
   --card-shadow: 0 18px 40px -18px rgb(30 20 10 / 0.28);
 }
-html.light .hx .hx-panel { background: linear-gradient(180deg, #ffffff, #f8f7f4); box-shadow: 0 1px 2px rgb(0 0 0 / 0.05); }
 html.light .hx .hx-button.is-quiet { border-color: var(--line); }
 html.light .hx .hx-bar.is-solid, html.light .hx .hx-bar:has(.hx-mnav-panel[data-open]) { border-bottom-color: rgb(0 0 0 / 0.07); }
 html.light .mf-ghost { --ink: #0c0c0d; }
@@ -1237,22 +1211,22 @@ html.light .hx .hx-steps li span { color: var(--red-text); }
 /* The main buttons, on hover: red rises up through them from below with a curved edge, like the eclipse on the
    first screen, and a soft red glow gathers beneath. On a red ground (the footer) and on a red button (sign-in) it is
    the ink that rises instead. Touch screens and reduced motion keep the plain colour change. */
-.hx-rise, .hx-auth form > button[type="submit"] { position: relative; isolation: isolate; overflow: hidden; --rise: var(--red); --rise-ink: #fff; --rise-glow: rgb(255 59 47 / 0.55); }
-.hx-rise::before, .hx-auth form > button[type="submit"]::before {
+.hx-fill, .hx-auth form > button[type="submit"] { position: relative; isolation: isolate; overflow: hidden; --rise: var(--red); --rise-ink: #fff; --rise-glow: rgb(255 59 47 / 0.55); }
+.hx-fill::before, .hx-auth form > button[type="submit"]::before {
   content: ""; position: absolute; z-index: -1; left: -30%; top: 100%; width: 160%; height: 260%; border-radius: 50%;
   background: var(--rise); pointer-events: none; transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
 }
-.hx-rise, .hx-auth form > button[type="submit"] { transition: color 300ms ease, background-color 200ms ease, box-shadow 500ms ease, transform 420ms cubic-bezier(0.22, 1, 0.36, 1); }
-.hx-end-cta.hx-rise { --rise: #f4f4f5; --rise-ink: #050506; --rise-glow: rgb(5 5 6 / 0.45); }
+.hx-fill, .hx-auth form > button[type="submit"] { transition: color 300ms ease, background-color 200ms ease, box-shadow 500ms ease, transform 420ms cubic-bezier(0.22, 1, 0.36, 1); }
+.hx-end-cta.hx-fill { --rise: #f4f4f5; --rise-ink: #050506; --rise-glow: rgb(5 5 6 / 0.45); }
 .hx-auth form > button[type="submit"] { --rise: var(--ink); --rise-ink: var(--ground); --rise-glow: rgb(255 59 47 / 0.45); }
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
-  .hx-rise:hover::before, .hx-auth form > button[type="submit"]:hover:not(:disabled)::before { transform: translateY(-62%); }
-  .hx .hx-rise:hover, .hx-auth form > button[type="submit"]:hover:not(:disabled) { color: var(--rise-ink); box-shadow: 0 12px 32px -12px var(--rise-glow); }
-  .hx .hx-nav.is-quiet.hx-rise:hover { border-color: transparent; }
-  html.light .hx .hx-end-cta.hx-rise:hover { color: var(--rise-ink); }
+  .hx-fill:hover::before, .hx-auth form > button[type="submit"]:hover:not(:disabled)::before { transform: translateY(-62%); }
+  .hx .hx-fill:hover, .hx-auth form > button[type="submit"]:hover:not(:disabled) { color: var(--rise-ink); box-shadow: 0 12px 32px -12px var(--rise-glow); }
+  .hx .hx-nav.is-quiet.hx-fill:hover { border-color: transparent; }
+  html.light .hx .hx-end-cta.hx-fill:hover { color: var(--rise-ink); }
 }
 @media (hover: hover) and (prefers-reduced-motion: reduce) {
-  .hx .hx-rise:hover { background: var(--rise); color: var(--rise-ink); }
+  .hx .hx-fill:hover { background: var(--rise); color: var(--rise-ink); }
 }
 
 /* The theme toggle: sun and moon in the same place; switching turns one away as the other turns in. */

@@ -28,7 +28,7 @@ const KIND: Record<string, string> = {
  */
 export function KeywordPreview({ platforms }: { platforms: { id: string; name: string }[] }) {
   const id = useId();
-  const [name, setName] = useState("Nimbus Notes");
+  const [name, setName] = useState("Acme Notes");
   const terms = useMemo(() => suggestAliases({ name }).slice(0, 6), [name]);
   return (
     <div className="grid gap-5">
