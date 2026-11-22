@@ -18,8 +18,8 @@ export type DemoKind = "mentions" | "monitoring" | "competitors" | "trends" | "c
 const W = 1280;
 const PRODUCT = "Acme Notes";
 
-const NAV: { group: string; items: { label: string; icon: typeof LayoutGrid; kind?: DemoKind }[] }[] = [
-  { group: "General", items: [{ label: "Overview", icon: LayoutGrid }, { label: "Mentions", icon: MessageSquareText, kind: "mentions" }, { label: "Issues", icon: BarChart3 }] },
+const NAV: { group: string; items: { label: string; icon: typeof LayoutGrid; kind?: DemoKind | "overview" }[] }[] = [
+  { group: "General", items: [{ label: "Overview", icon: LayoutGrid, kind: "overview" }, { label: "Mentions", icon: MessageSquareText, kind: "mentions" }, { label: "Issues", icon: BarChart3 }] },
   { group: "Insights", items: [{ label: "Trends", icon: Waves, kind: "trends" }, { label: "Competitors", icon: Swords, kind: "competitors" }, { label: "Insights", icon: Lightbulb }] },
   { group: "Other", items: [{ label: "Monitoring", icon: Gauge, kind: "monitoring" }, { label: "Reports", icon: FileText }] },
 ];
@@ -27,6 +27,8 @@ const TITLE: Record<DemoKind, string> = { mentions: "Mentions", monitoring: "Mon
 
 /** Stagger helper: the order an element appears in, as a CSS delay. */
 const d = (i: number) => ({ ["--dd" as string]: `${i * 70}ms` });
+
+export { PRODUCT, d };
 
 export function DemoDashboard({ kind, className }: { kind: DemoKind; className?: string }) {
   const box = useRef<HTMLDivElement>(null);
@@ -68,19 +70,19 @@ export function DemoDashboard({ kind, className }: { kind: DemoKind; className?:
   );
 }
 
-function Sidebar({ kind }: { kind: DemoKind }) {
+export function Sidebar({ kind, owner }: { kind: DemoKind | "overview"; owner?: boolean }) {
   return (
     <aside className="dd-side dd-in-side">
       <div className="flex items-center gap-2.5 px-2 pt-1 text-[19px] font-semibold tracking-[-0.03em]">
         <span className="relative grid size-7 place-items-center"><span className="dd-glow" /><HeardexMark className="relative h-6 w-6" /></span>heardex
       </div>
-      <div className="dd-card mt-6 flex items-center gap-3 px-3 py-2.5">
+      <div data-spot="product" className="dd-card mt-6 flex items-center gap-3 px-3 py-2.5">
         <span className="grid size-7 place-items-center rounded-md bg-white text-[13px] font-semibold text-black">A</span>
         <span className="grid leading-tight"><span className="text-[14px]">{PRODUCT}</span><span className="text-[11px] text-[#7d7d85]">Product</span></span>
         <ChevronDown className="ml-auto size-4 text-[#7d7d85]" />
       </div>
       {NAV.map((g) => (
-        <div key={g.group} className="mt-6">
+        <div key={g.group} className="mt-6" data-spot={`nav-${g.group.toLowerCase()}`}>
           <p className="px-3 text-[10px] font-medium tracking-[0.14em] text-[#6b6b72] uppercase">{g.group}</p>
           <ul className="mt-2 grid gap-0.5">
             {g.items.map((it) => {
@@ -94,23 +96,30 @@ function Sidebar({ kind }: { kind: DemoKind }) {
           </ul>
         </div>
       ))}
-      <div className="dd-card mt-auto px-3.5 py-3">
+      <div data-spot="plan" className="dd-card mt-auto px-3.5 py-3">
         <p className="flex justify-between text-[13px]"><span>Pro plan</span><span className="text-[#7d7d85]">38%</span></p>
         <div className="mt-2 h-1.5 rounded-full bg-[#26262b]"><div className="dd-grow h-full rounded-full bg-[var(--dd-red)]" style={{ width: "38%" }} /></div>
         <p className="mt-2 text-[11px] text-[#7d7d85]">3,840 of 10,000 mentions this period</p>
       </div>
       <p className={`dd-nav mt-3${kind === "claude" ? " is-on" : ""}`}><Settings className="size-[17px]" strokeWidth={1.6} />Settings</p>
+      {owner && (
+        <div className="mt-3 flex items-center gap-3 px-2">
+          <span className="grid size-8 place-items-center rounded-full bg-[#2a2a30] text-[12px] font-semibold">A</span>
+          <span className="grid leading-tight"><span className="text-[14px]">Acme team</span><span className="text-[11px] text-[#7d7d85]">Owner</span></span>
+          <ChevronDown className="ml-auto size-4 text-[#7d7d85]" />
+        </div>
+      )}
     </aside>
   );
 }
 
-function Topbar({ title }: { title: string }) {
+export function Topbar({ title }: { title: string }) {
   return (
     <header className="dd-top dd-in-top">
       <p className="text-[13px] text-[#8f8f96]">{PRODUCT} <span className="mx-1.5 text-[#55555c]">/</span><span className="text-[#f4f4f5]">{title}</span></p>
-      <div className="dd-pill mx-auto flex w-[380px] items-center gap-2 px-3.5 py-2 text-[13px] text-[#6b6b72]"><Search className="size-4" />Search mentions, issues or jump to…<span className="ml-auto rounded border border-[#2a2a30] px-1.5 text-[10px]">⌘K</span></div>
+      <div data-spot="search" className="dd-pill mx-auto flex w-[380px] items-center gap-2 px-3.5 py-2 text-[13px] text-[#6b6b72]"><Search className="size-4" />Search mentions, issues or jump to…<span className="ml-auto rounded border border-[#2a2a30] px-1.5 text-[10px]">⌘K</span></div>
       <span className="flex items-center gap-1.5 text-[12px] text-[#8f8f96]"><i className="dd-live" />Live</span>
-      <span className="dd-pill flex items-center gap-2 px-3.5 py-2 text-[13px]"><Calendar className="size-4" />Last 30 days</span>
+      <span data-spot="range" className="dd-pill flex items-center gap-2 px-3.5 py-2 text-[13px]"><Calendar className="size-4" />Last 30 days</span>
       <Bell className="size-[18px] text-[#b4b4ba]" />
       <span className="grid size-8 place-items-center rounded-full bg-[#1f1f23] text-[12px] font-semibold">A</span>
     </header>

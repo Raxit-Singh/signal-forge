@@ -3,7 +3,6 @@
 import Link from "next/link";
 import type { Plan } from "@/lib/domain/plans";
 import type { ProductSlug } from "@/lib/marketing";
-import type { SHOTS } from "@/components/marketing/shot";
 
 const n = (v: number) => v.toLocaleString("en-US");
 const every = (m: number) => (m >= 10080 ? "once a week" : m >= 1440 ? "once a day" : m >= 60 ? `every ${m / 60} hours` : `every ${m} minutes`);
@@ -18,8 +17,6 @@ export interface ProductPage {
   plans: (plans: Plan[]) => string[];
   limits: string[];
   docs: { href: string; label: string };
-  /** A real screenshot of the app for the hero. */
-  shot: keyof typeof SHOTS;
   /** The landing's animated clip (sample data) that shows the idea. */
   clip: "sort" | "feed" | "voice" | "spike" | "claude";
 }
@@ -50,7 +47,6 @@ export const PRODUCT: ProductPage[] = [
       "Issues need a few reports before they mean much; a single post stays a single post.",
     ],
     docs: { href: "/docs/issues", label: "How issues are built and ranked" },
-    shot: "mentions",
     clip: "sort",
   },
   {
@@ -75,7 +71,6 @@ export const PRODUCT: ProductPage[] = [
       "Paid platforms pause when your mentions for the month run out, and pick up again when the allowance renews.",
     ],
     docs: { href: "/docs/platforms", label: "Every platform, what's searched and how far back" },
-    shot: "monitoring",
     clip: "feed",
   },
   {
@@ -99,7 +94,6 @@ export const PRODUCT: ProductPage[] = [
     },
     limits: ["A competitor takes keywords from your plan's total; a product needs at least one keyword of its own."],
     docs: { href: "/docs/keywords", label: "Keywords and competitors" },
-    shot: "competitors",
     clip: "voice",
   },
   {
@@ -124,7 +118,6 @@ export const PRODUCT: ProductPage[] = [
     ],
     limits: ["Spike detection needs a few days of monitoring before it can call anything confirmed."],
     docs: { href: "/docs/analytics", label: "Analytics, spikes and reports" },
-    shot: "trends",
     clip: "spike",
   },
   {
@@ -146,7 +139,6 @@ export const PRODUCT: ProductPage[] = [
     plans: () => ["Included on every plan, Free included."],
     limits: ["The AI app's usage counts toward your own plan with that app, not Heardex's."],
     docs: { href: "/docs/mcp", label: "Connect Claude, ChatGPT, Cursor or VS Code" },
-    shot: "claude",
     clip: "claude",
   },
 ];

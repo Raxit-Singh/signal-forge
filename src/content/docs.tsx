@@ -83,12 +83,12 @@ export const DOCS: Doc[] = [
         <h2>Find your way around</h2>
         <p>Every page of the app has the same frame: the sidebar on the left, the search and date range along the top.</p>
         <Shot shot="overview" priority spots={[
-          { x: 16.2, y: 10, at: [8, 10], label: "Product switcher.", text: "Pick which product you're looking at; every page follows it." },
-          { x: 16.2, y: 22.7, at: [6, 18.8], label: "Sidebar.", text: "Overview, Mentions and Issues; Trends, Competitors and Insights; Monitoring and Reports." },
-          { x: 69.6, y: 2.8, at: [52, 2.8], label: "Search.", text: "Find a mention or an issue, or jump to any page (⌘K)." },
-          { x: 87, y: 7.4, at: [87.5, 2.8], label: "Date range.", text: "The period every number and chart on the page covers." },
-          { x: 33.4, y: 41.3, at: [22, 48], label: "Platform cards.", text: "Mentions per platform for the period, each with its trend." },
-          { x: 16.2, y: 72.5, at: [8, 77], label: "Plan usage.", text: "How much of this month's mention allowance is used." },
+          { x: 8, y: 11, at: [8, 11], label: "Product switcher.", text: "Pick which product you're looking at; every page follows it." },
+          { x: 5.8, y: 24.3, at: [5.8, 24.3], label: "Sidebar.", text: "Overview, Mentions and Issues; Trends, Competitors and Insights; Monitoring and Reports." },
+          { x: 53.9, y: 2.9, at: [53.9, 2.9], label: "Search.", text: "Find a mention or an issue, or jump to any page (⌘K)." },
+          { x: 87.5, y: 2.9, at: [87.5, 2.9], label: "Date range.", text: "The period every number and chart on the page covers." },
+          { x: 25.9, y: 49.4, at: [25.9, 49.4], label: "Platform cards.", text: "Mentions per platform for the period, each with its trend." },
+          { x: 8, y: 83.5, at: [8, 83.5], label: "Plan usage.", text: "How much of this month's mention allowance is used." },
         ]} />
         <div className="hx-alt-table">
           <table>
@@ -123,11 +123,11 @@ export const DOCS: Doc[] = [
         <p>Heardex searches each platform for your keywords and keeps every public post that&apos;s about your product. How far back it can reach depends on what each platform allows; partial coverage is labelled in the app rather than hidden.</p>
         <p>The Monitoring page shows which platforms are being searched for a product, how many mentions each brings in and when each is checked next.</p>
         <Shot shot="monitoring" spots={[
-          { x: 35.2, y: 40.3, at: [23, 42], label: "Scan status.", text: "Whether scanning is live; stop and resume it here." },
-          { x: 52.8, y: 33, at: [64, 38.5], label: "Last and next scan.", text: "When the product was last searched and when it will be next." },
-          { x: 64.1, y: 46.5, at: [41.5, 63], label: "Keyword performance.", text: "Mentions per keyword and the platforms they came from." },
-          { x: 97.7, y: 46.5, at: [72, 63], label: "Where mentions come from.", text: "Each platform's share of the period's mentions." },
-          { x: 97.7, y: 84.3, at: [59, 93.5], label: "Scan schedule.", text: "When each platform is checked over the next 24 hours." },
+          { x: 27.2, y: 41.9, at: [27.2, 41.9], label: "Scan status.", text: "Whether scanning is live; stop and resume it here." },
+          { x: 68.6, y: 38, at: [68.6, 38], label: "Last and next scan.", text: "When the product was last searched and when it will be next." },
+          { x: 41.5, y: 60.4, at: [41.5, 60.4], label: "Keyword performance.", text: "Mentions per keyword and the platforms they came from." },
+          { x: 81.8, y: 60.4, at: [81.8, 60.4], label: "Where mentions come from.", text: "Each platform's share of the period's mentions." },
+          { x: 58.1, y: 87.1, at: [58.1, 87.1], label: "Scan schedule.", text: "When each platform is checked over the next 24 hours." },
         ]} />
         <h2>On every plan</h2>
         <PlatformTable rows={FREE_PLATFORMS} />
@@ -162,16 +162,16 @@ export const DOCS: Doc[] = [
         <h2>Where to change them</h2>
         <p>Open Settings → Products and choose Keywords next to a product. Your product&apos;s name is always searched; add the other names people use, and switch them on or off.</p>
         <Shot shot="keywords" spots={[
-          { x: 32.2, y: 41.2, at: [12, 41], label: "Your product's name.", text: "Always monitored." },
-          { x: 82.8, y: 33.6, at: [80, 41], label: "Needs context.", text: "For a name that's also a common word: a post counts only when a context term appears too." },
-          { x: 84.2, y: 89.5, at: [44, 94], label: "Add a keyword.", text: "A short form, a handle or a common misspelling." },
+          { x: 11.8, y: 37.3, at: [11.8, 37.3], label: "Your product's name.", text: "Always monitored." },
+          { x: 83.2, y: 37.3, at: [83.2, 37.3], label: "Needs context.", text: "For a name that's also a common word: a post counts only when a context term appears too." },
+          { x: 30, y: 82.3, at: [30, 82.3], label: "Add a keyword.", text: "A short form, a handle or a common misspelling." },
         ]} />
         <p>Competitors are added on the Competitors page. Each one uses a keyword from the same total, and can fetch its last 30 days when you add it.</p>
         <Shot shot="competitors" spots={[
-          { x: 29.9, y: 31.8, at: [24, 34.5], label: "Add competitor.", text: "Opens the form below." },
-          { x: 44.8, y: 65, at: [32, 67.5], label: "Name and website.", text: "The name is always searched; up to two extra keywords are optional." },
-          { x: 19.8, y: 73.5, at: [25, 76.5], label: "Also fetch the last 30 days.", text: "Without it, the comparison starts today." },
-          { x: 52.8, y: 10, at: [69.5, 23], label: "The comparison.", text: "Share of voice, volume and sentiment appear here once a competitor is added." },
+          { x: 23.9, y: 37.7, at: [23.9, 37.7], label: "Add competitor.", text: "Opens the form below." },
+          { x: 32.4, y: 73.3, at: [32.4, 73.3], label: "Name and website.", text: "The name is always searched; up to two extra keywords are optional." },
+          { x: 21.9, y: 81.3, at: [21.9, 81.3], label: "Also fetch the last 30 days.", text: "Without it, the comparison starts today." },
+          { x: 77.7, y: 25.3, at: [77.7, 25.3], label: "The comparison.", text: "Share of voice, volume and sentiment appear here once a competitor is added." },
         ]} />
         <h2>Choosing good keywords</h2>
         <ul>
@@ -216,11 +216,11 @@ export const DOCS: Doc[] = [
         <h2>The Mentions page</h2>
         <p>Every mention lands on the Mentions page. Matches Heardex isn&apos;t sure about wait for review there: mark each one Relevant or Not relevant.</p>
         <Shot shot="mentions" spots={[
-          { x: 33, y: 38.3, at: [26.5, 41], label: "Review matches.", text: "Go through the posts waiting for a decision." },
-          { x: 44.4, y: 45.9, at: [57, 50], label: "Platforms.", text: "Pick one to see only its mentions." },
-          { x: 51.5, y: 63.3, at: [34.5, 65.6], label: "Quick views.", text: "All, needs review, negative and positive." },
-          { x: 57.5, y: 69.9, at: [38, 71.8], label: "Filters.", text: "Platform, type, sentiment and relevance; duplicates and reposts are hidden unless you ask." },
-          { x: 74.2, y: 63.5, at: [83, 65.6], label: "Search.", text: "Find mentions by their text." },
+          { x: 24, y: 41.5, at: [24, 41.5], label: "Review matches.", text: "Go through the posts waiting for a decision." },
+          { x: 38, y: 53.8, at: [38, 53.8], label: "Platforms.", text: "Pick one to see only its mentions." },
+          { x: 29.8, y: 66.4, at: [29.8, 66.4], label: "Quick views.", text: "All, needs review, negative and positive." },
+          { x: 31.3, y: 73.3, at: [31.3, 73.3], label: "Filters.", text: "Platform, type, sentiment and relevance; duplicates and reposts are hidden unless you ask." },
+          { x: 80, y: 66.4, at: [80, 66.4], label: "Search.", text: "Find mentions by their text." },
         ]} />
         <h2>What counts</h2>
         <ul>
@@ -275,11 +275,11 @@ export const DOCS: Doc[] = [
         <h2>Trends</h2>
         <p>The Trends page shows mention volume, sentiment and platforms over any date range. Every chart is built from stored mentions, so you can open any point to see the posts behind it. Periods that weren&apos;t fully monitored are labelled. Times are shown in your own time zone.</p>
         <Shot shot="trends" spots={[
-          { x: 32.6, y: 25.3, at: [25, 27], label: "The period's mentions.", text: "Duplicates and reposts not counted, with unique authors and engagement." },
-          { x: 52.8, y: 16.3, at: [69, 31], label: "Compared with before.", text: "Today, the last 24 hours, 7 days and 30 days against the period before." },
-          { x: 34.2, y: 55.3, at: [26.5, 57], label: "Activity.", text: "All activity or one platform." },
-          { x: 54.9, y: 55.3, at: [44, 57], label: "Range.", text: "24 hours, 7, 30 or 90 days, or your own dates." },
-          { x: 69.4, y: 73.7, at: [46, 72], label: "Mentions over time.", text: "By publication day; open it as a table." },
+          { x: 24.3, y: 26.9, at: [24.3, 26.9], label: "The period's mentions.", text: "Duplicates and reposts not counted, with unique authors and engagement." },
+          { x: 78.5, y: 25.5, at: [78.5, 25.5], label: "Compared with before.", text: "Today, the last 24 hours, 7 days and 30 days against the period before." },
+          { x: 27.5, y: 56.3, at: [27.5, 56.3], label: "Activity.", text: "All activity or one platform." },
+          { x: 46.1, y: 56.3, at: [46.1, 56.3], label: "Range.", text: "24 hours, 7, 30 or 90 days, or your own dates." },
+          { x: 58.1, y: 74.5, at: [58.1, 74.5], label: "Mentions over time.", text: "By publication day; open it as a table." },
         ]} />
         <h2>Spikes</h2>
         <p>Each day and hour is compared with its own baseline of fully monitored periods, allowing for normal weekday and time-of-day patterns. There&apos;s no fixed mention threshold: a spike is judged against your product&apos;s usual level.</p>
@@ -314,9 +314,9 @@ export const DOCS: Doc[] = [
         <pre><code>{mcpUrl}</code></pre>
         <h2>Claude on the web and the desktop app</h2>
         <Shot shot="claude" spots={[
-          { x: 34.9, y: 66.3, at: [26.5, 69], label: "Settings → Claude.", text: "Where the connector lives." },
-          { x: 46, y: 45, at: [42, 47], label: "Connect Claude.", text: "Three steps: copy Heardex's address, add it in Claude as a custom connector, approve access." },
-          { x: 96.3, y: 51.7, at: [76, 61], label: "Things to ask.", text: "Examples written for your own product." },
+          { x: 26.7, y: 66.4, at: [26.7, 66.4], label: "Settings → Claude.", text: "Where the connector lives." },
+          { x: 43.3, y: 51.1, at: [43.3, 51.1], label: "Connect Claude.", text: "Three steps: copy Heardex's address, add it in Claude as a custom connector, approve access." },
+          { x: 81.8, y: 66.4, at: [81.8, 66.4], label: "Things to ask.", text: "Examples written for your own product." },
         ]} />
         <ol>
           <li>In Heardex, open Settings → Claude and click Connect Claude. Copy the address it shows, add it in Claude as a custom connector, then approve access for your workspace.</li>

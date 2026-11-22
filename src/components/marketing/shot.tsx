@@ -5,15 +5,16 @@ import { Walkthrough, type WalkStep } from "./walkthrough";
 /** A part of a screenshot: x/y place it in percent; `at` is where the cursor clicks, if not there. */
 export type Spot = WalkStep;
 
-/** Real screenshots of the app (public/docs), taken from a live workspace; the size is the file's own. */
+/** Pictures of the app (public/docs), drawn from sample data about a made-up notes app (doc-screens.tsx, rendered by
+ * scripts/docs-shots.mjs at twice this size); w and h are the layout size. */
 export const SHOTS = {
-  overview: { src: "/docs/overview.webp", w: 1440, h: 950, alt: "The Overview page in Heardex: mention total, where the conversation is, platform cards and the mentions chart" },
-  mentions: { src: "/docs/mentions.webp", w: 1440, h: 830, alt: "The Mentions page in Heardex: mention total, daily bars, platform cards, filters and the first mention" },
-  trends: { src: "/docs/trends.webp", w: 1440, h: 950, alt: "The Trends page in Heardex: mentions, unique authors, period comparisons and mentions over time" },
-  competitors: { src: "/docs/competitors.webp", w: 1440, h: 800, alt: "The Competitors page in Heardex with the form to add a competitor" },
-  monitoring: { src: "/docs/monitoring.webp", w: 1440, h: 950, alt: "The Monitoring page in Heardex: scan status, keyword performance, where mentions come from and the scan schedule" },
-  claude: { src: "/docs/claude.webp", w: 1440, h: 700, alt: "Settings → Claude in Heardex, with the Connect Claude button" },
-  keywords: { src: "/docs/keywords.webp", w: 912, h: 410, alt: "A product's keywords in Heardex settings, each with a Needs context switch" },
+  overview: { src: "/docs/app-overview.webp", w: 1440, h: 950, alt: "The Overview page in Heardex: mention total, where the conversation is, platform cards and the mentions chart" },
+  mentions: { src: "/docs/app-mentions.webp", w: 1440, h: 830, alt: "The Mentions page in Heardex: mention total, daily bars, platform cards, filters and the first mention" },
+  trends: { src: "/docs/app-trends.webp", w: 1440, h: 950, alt: "The Trends page in Heardex: mentions, unique authors, period comparisons and mentions over time" },
+  competitors: { src: "/docs/app-competitors.webp", w: 1440, h: 800, alt: "The Competitors page in Heardex with the form to add a competitor" },
+  monitoring: { src: "/docs/app-monitoring.webp", w: 1440, h: 950, alt: "The Monitoring page in Heardex: scan status, keyword performance, where mentions come from and the scan schedule" },
+  claude: { src: "/docs/app-claude.webp", w: 1440, h: 700, alt: "Settings → Claude in Heardex, with the Connect Claude button" },
+  keywords: { src: "/docs/app-keywords.webp", w: 912, h: 410, alt: "A product's keywords in Heardex settings, each with a Needs context switch" },
 } as const;
 
 /**

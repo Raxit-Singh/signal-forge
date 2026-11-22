@@ -13,7 +13,7 @@ const ZOOM = 1.75;
 /**
  * A screenshot of the app played like a short screen recording: a cursor moves to each part in turn, clicks it, the view
  * closes in on it and the caption says what it is; then it pulls back out and starts again. It plays only while in view,
- * and never on its own with reduced motion (the step buttons still work). The picture itself is the real app.
+ * and never on its own with reduced motion (the step buttons still work). The picture is the app drawn with sample data.
  */
 export function Walkthrough({ src, w, h, alt, steps, priority }: { src: string; w: number; h: number; alt: string; steps: WalkStep[]; priority?: boolean }) {
   const root = useRef<HTMLElement>(null);
@@ -51,7 +51,8 @@ export function Walkthrough({ src, w, h, alt, steps, priority }: { src: string; 
         </div>
         <div className="relative overflow-hidden">
           <div className="hx-walk-cam" style={{ transform: `scale(${zoom})`, transformOrigin: `${cx}% ${cy}%` }}>
-            <Image src={src} width={w} height={h} alt={alt} sizes="(min-width: 1280px) 900px, 100vw" quality={90} priority={priority} className="block h-auto w-full" />
+            {/* Sized for the zoomed-in view (ZOOM × the ~900 px column), so close-ups stay sharp. */}
+            <Image src={src} width={w} height={h} alt={alt} sizes="(min-width: 1280px) 1600px, 175vw" quality={90} priority={priority} className="block h-auto w-full" />
             {cur && <span key={`r${i}`} className="hx-walk-ring" style={{ left: `${cx}%`, top: `${cy}%` }} aria-hidden />}
             <span className="hx-walk-cursor" style={{ left: `${cx}%`, top: `${cy}%`, ["--z" as string]: 1 / zoom }} aria-hidden>
               <svg viewBox="0 0 24 24"><path d="M5 3l14 8.2-6.1 1.3 3.6 6.6-2.7 1.5-3.6-6.6L5.8 18z" /></svg>
