@@ -5,7 +5,8 @@
 // authorization-server metadata, Dynamic Client Registration (RFC 7591), S256 PKCE,
 // rotating refresh tokens for public clients, form-encoded token requests, and a
 // 401 with a resource_metadata pointer. Redirect URIs are limited to the known
-// callbacks of the MCP clients we support (Claude, ChatGPT, Cursor, VS Code) and
+// callbacks of the MCP clients we support (Claude, ChatGPT, Gemini, Perplexity, Le Chat,
+// Cursor, VS Code, Amazon Quick, n8n cloud) and
 // loopback callbacks on this computer (port-agnostic), so a registered client can
 // only send its codes to one of those apps.
 
@@ -34,10 +35,23 @@ export const CLIENT_CALLBACKS = [
   // VS Code (GitHub Copilot) on the desktop and the web.
   "https://vscode.dev/redirect",
   "https://insiders.vscode.dev/redirect",
+  // Perplexity (personal and Enterprise).
+  "https://www.perplexity.ai/rest/connections/oauth_callback",
+  "https://enterprise.perplexity.ai/rest/connections/oauth_callback",
+  // Mistral Le Chat.
+  "https://callback.mistral.ai/v1/integrations_auth/oauth2_callback",
+  // Amazon Quick.
+  "https://quick.aws.com/sn/oauthcallback",
+  // n8n cloud.
+  "https://oauth.n8n.cloud/oauth2/callback",
 ];
 
 /** ChatGPT's per-app callback, https://chatgpt.com/connector/oauth/<id>. */
 const CHATGPT_APP_CALLBACK = /^https:\/\/chatgpt\.com\/connector\/oauth\/[A-Za-z0-9_-]{1,100}$/;
+
+/** Gemini's per-user callbacks: Google's oauth-redirect hosts, /r/ or /a/, then user_bound_custom-mcp-<id>.
+ *  Gemini registers all six host/path forms at once, so each must pass. */
+const GEMINI_CALLBACK = /^https:\/\/oauth-redirect(?:-sandbox|-test)?\.googleusercontent\.com\/[ra]\/user_bound_custom-mcp-[A-Za-z0-9_-]{1,200}$/;
 
 /** Loopback redirect used by desktop clients (any port). */
 function loopback(uri: string): { host: string; path: string } | null {
@@ -53,7 +67,7 @@ function loopback(uri: string): { host: string; path: string } | null {
 
 /** Redirect URIs a client may register. */
 export function isAllowedRedirect(uri: string): boolean {
-  if (CLIENT_CALLBACKS.includes(uri) || CHATGPT_APP_CALLBACK.test(uri)) return true;
+  if (CLIENT_CALLBACKS.includes(uri) || CHATGPT_APP_CALLBACK.test(uri) || GEMINI_CALLBACK.test(uri)) return true;
   const l = loopback(uri);
   // Any path on a loopback address (RFC 8252 §7.3): Claude Code and Cursor use /callback, VS Code /,
   // MCP Inspector /oauth/callback. The code only ever reaches a program on the user's own computer.
@@ -71,6 +85,11 @@ export function appForRedirect(uri: string): string {
   if (uri === "https://chatgpt.com/connector_platform_oauth_redirect" || CHATGPT_APP_CALLBACK.test(uri)) return "ChatGPT";
   if (uri.startsWith("cursor://") || uri.startsWith("https://www.cursor.com/")) return "Cursor";
   if (uri.startsWith("https://vscode.dev/") || uri.startsWith("https://insiders.vscode.dev/")) return "VS Code";
+  if (GEMINI_CALLBACK.test(uri)) return "Gemini";
+  if (uri.startsWith("https://www.perplexity.ai/") || uri.startsWith("https://enterprise.perplexity.ai/")) return "Perplexity";
+  if (uri.startsWith("https://callback.mistral.ai/")) return "Le Chat";
+  if (uri.startsWith("https://quick.aws.com/")) return "Amazon Quick";
+  if (uri.startsWith("https://oauth.n8n.cloud/")) return "n8n";
   return "an app on your computer";
 }
 
@@ -160,7 +179,7 @@ export function validateRegistration(body: unknown): { ok: true; name: string; r
     return { ok: false, err: { error: "invalid_client_metadata", error_description: "Only the code response type is supported." } };
   }
   const bad = d.redirect_uris.find((u) => !isAllowedRedirect(u));
-  if (bad) return { ok: false, err: { error: "invalid_redirect_uri", error_description: "Heardex's MCP server only accepts the callback URLs of supported apps (Claude, ChatGPT, Cursor, VS Code) or a loopback address on this computer." } };
+  if (bad) return { ok: false, err: { error: "invalid_redirect_uri", error_description: "Heardex's MCP server only accepts the callback URLs of supported apps (Claude, ChatGPT, Gemini, Perplexity, Le Chat, Cursor, VS Code, Amazon Quick, n8n) or a loopback address on this computer." } };
   return { ok: true, name: d.client_name ?? "MCP client", redirectUris: [...new Set(d.redirect_uris)] };
 }
 

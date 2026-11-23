@@ -31,6 +31,12 @@ test("redirects: supported apps' callbacks and loopback (any port, any path)", (
     "https://vscode.dev/redirect", "https://insiders.vscode.dev/redirect",
     "http://localhost:3118/callback", "http://127.0.0.1:50000/callback", "http://localhost:8787/callback",
     "http://127.0.0.1:33418/", "http://127.0.0.1:33418", "http://localhost:6274/oauth/callback",
+    "https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-52daa21ec0e98956d5f21956",
+    "https://oauth-redirect.googleusercontent.com/a/user_bound_custom-mcp-52daa21ec0e98956d5f21956",
+    "https://oauth-redirect-sandbox.googleusercontent.com/r/user_bound_custom-mcp-52daa21ec0e98956d5f21956",
+    "https://oauth-redirect-test.googleusercontent.com/a/user_bound_custom-mcp-52daa21ec0e98956d5f21956",
+    "https://www.perplexity.ai/rest/connections/oauth_callback", "https://enterprise.perplexity.ai/rest/connections/oauth_callback",
+    "https://callback.mistral.ai/v1/integrations_auth/oauth2_callback", "https://quick.aws.com/sn/oauthcallback", "https://oauth.n8n.cloud/oauth2/callback",
   ]) assert.ok(isAllowedRedirect(good), good);
   for (const bad of [
     "https://evil.example/cb", "http://claude.ai/api/mcp/auth_callback", "https://localhost:3118/callback", "https://claude.ai/api/mcp/auth_callback/x",
@@ -38,6 +44,11 @@ test("redirects: supported apps' callbacks and loopback (any port, any path)", (
     "https://chatgpt.com/connector/oauth/", "https://chatgpt.com/connector/oauth/a/b", "https://chatgpt.com.evil.example/connector/oauth/a",
     "https://chatgpt.com/connector/oauth/a?x=1", "cursor://anysphere.cursor-mcp/oauth/other", "https://vscode.dev/redirect/x", "http://vscode.dev/redirect",
     "http://192.168.1.2:1/callback", "https://cursor.com/agents/mcp/oauth/callback",
+    "https://oauth-redirect.googleusercontent.com/r/other", "https://oauth-redirect.googleusercontent.com/x/user_bound_custom-mcp-1",
+    "https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-1/x", "https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-1?x=1",
+    "https://oauth-redirect-evil.googleusercontent.com/r/user_bound_custom-mcp-1", "https://oauth-redirect.googleusercontent.com.evil.example/r/user_bound_custom-mcp-1",
+    "http://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-1", "https://perplexity.ai/rest/connections/oauth_callback",
+    "https://www.perplexity.ai/rest/connections/oauth_callback/x",
   ]) assert.equal(isAllowedRedirect(bad), false, bad);
   assert.ok(redirectMatches(["http://localhost/callback"], "http://localhost:4567/callback"), "loopback port-agnostic");
   assert.ok(redirectMatches(["http://127.0.0.1:33418/"], "http://127.0.0.1:40000/"), "VS Code loopback port-agnostic");
@@ -49,6 +60,9 @@ test("redirects: supported apps' callbacks and loopback (any port, any path)", (
   assert.equal(appForRedirect("https://chatgpt.com/connector/oauth/a1"), "ChatGPT");
   assert.equal(appForRedirect("cursor://anysphere.cursor-mcp/oauth/callback"), "Cursor");
   assert.equal(appForRedirect("https://vscode.dev/redirect"), "VS Code");
+  assert.equal(appForRedirect("https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-1"), "Gemini");
+  assert.equal(appForRedirect("https://www.perplexity.ai/rest/connections/oauth_callback"), "Perplexity");
+  assert.equal(appForRedirect("https://callback.mistral.ai/v1/integrations_auth/oauth2_callback"), "Le Chat");
   assert.equal(appForRedirect("http://localhost:1/callback"), "an app on your computer");
   assert.ok(isLocalRedirect("http://127.0.0.1:33418/") && isLocalRedirect("cursor://anysphere.cursor-mcp/oauth/callback"));
   assert.equal(isLocalRedirect("https://chatgpt.com/connector/oauth/a1"), false);
