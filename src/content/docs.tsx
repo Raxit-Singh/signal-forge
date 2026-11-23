@@ -301,8 +301,8 @@ export const DOCS: Doc[] = [
   {
     slug: "mcp",
     group: "Insights",
-    title: "Connect Claude, ChatGPT, Cursor and more (MCP)",
-    description: "Connect Claude, Claude Code, ChatGPT, Cursor, VS Code or another MCP client to read your feedback and investigate issues.",
+    title: "Connect Claude, ChatGPT, Gemini and more (MCP)",
+    description: "Connect Claude, Claude Code, ChatGPT, Gemini, Cursor, VS Code or another MCP client to read your feedback and investigate issues.",
     Body: ({ mcpUrl }) => {
       const cursorConfig = btoa(JSON.stringify({ url: mcpUrl }));
       const cursorInstall = `https://cursor.com/en/install-mcp?name=heardex&config=${encodeURIComponent(cursorConfig)}`;
@@ -331,6 +331,12 @@ export const DOCS: Doc[] = [
           <li>In ChatGPT, open Settings → Apps &amp; Connectors → Advanced settings and turn on Developer mode. This needs a paid ChatGPT plan, and on Business and Enterprise plans an admin may have to allow it.</li>
           <li>Back in Apps &amp; Connectors, click Create. Name it Heardex, paste the address above, choose OAuth, and save.</li>
           <li>Sign in to Heardex when asked and approve your workspace. In a new chat, add Heardex from the + menu.</li>
+        </ol>
+        <h2>Gemini</h2>
+        <ol>
+          <li>In the Gemini web app, open Connected Apps and add a custom app (MCP server).</li>
+          <li>Name it Heardex and paste the address above. Leave the Client ID and Client secret empty: Gemini registers itself.</li>
+          <li>Sign in to Heardex when asked and approve your workspace. The app then also appears in Gemini on your phone.</li>
         </ol>
         <h2>Cursor</h2>
         <p><a href={cursorInstall}>Add Heardex to Cursor</a>, or add it to <code>~/.cursor/mcp.json</code> yourself:</p>

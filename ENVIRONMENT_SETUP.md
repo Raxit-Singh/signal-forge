@@ -330,3 +330,15 @@ app; anyone else who signs in (including with Google or GitHub) sees
 "Heardex isn't open yet" with a sign-out button. The landing, pricing, docs,
 blog and legal pages stay public. Delete the variable (or empty it) and
 redeploy to open sign-ups to everyone.
+
+## App directories (Claude, ChatGPT, Gemini)
+
+Listing kits and the order of steps are in `directory/README.md`. ChatGPT and Gemini check that you own the
+domain: paste the token each portal shows into Vercel (Production) and redeploy.
+
+- `OPENAI_APPS_CHALLENGE`: served as plain text at `https://www.heardex.com/.well-known/openai-apps-challenge`.
+- `GOOGLE_CONNECTED_APPS_TOKENS`: served as `{"verification_tokens": [...]}` at
+  `https://www.heardex.com/.well-known/google-connected-apps` (comma-separated for several).
+
+Both return 404 while unset.
+

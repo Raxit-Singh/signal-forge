@@ -1,0 +1,18 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "heardex": {
+      "type": "streamable-http",
+      "url": "https://www.heardex.com/api/mcp",
+      "extensions": {
+        "com.openai": {
+          "auth": {
+            "type": "oauth",
+            "client": { "mode": "dcr" },
+            "registrationUrl": "https://www.heardex.com/api/oauth/register"
+          }
+        }
+      }
+    }
+  }
+}

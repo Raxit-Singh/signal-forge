@@ -62,7 +62,7 @@ export default function PrivacyPage() {
         <li><strong>Resend</strong>: sends account and report emails; receives your email address and the email&rsquo;s content.</li>
         <li><strong>Search providers and source APIs</strong> (such as API Direct, Serper, TikHub, the GitHub, Stack Exchange, YouTube and Hacker News APIs): receive your keywords, not your account details, to search public sites.</li>
         <li><strong>Your own AI provider</strong> (Anthropic, OpenAI or Google), only if you add your own key: mentions are sorted under your account with that provider, and its terms apply.</li>
-        <li><strong>AI apps you connect</strong> (such as Claude, ChatGPT, Cursor or VS Code), only if you connect them: the app reads the workspace you approve through the {product} connector, under your own account with that app and its provider&rsquo;s terms (Anthropic, OpenAI, Cursor, Microsoft or GitHub). It can&rsquo;t change your settings or data; it can only send back reports and progress for developer-agent tasks you start.</li>
+        <li><strong>AI apps you connect</strong> (such as Claude, ChatGPT, Gemini, Cursor or VS Code), only if you connect them: the app reads the workspace you approve through the {product} connector, under your own account with that app and its provider&rsquo;s terms (Anthropic, OpenAI, Google, Cursor, Microsoft or GitHub). It can&rsquo;t change your settings or data; it can only send back reports and progress for developer-agent tasks you start.</li>
       </ul>
       <p>We may also disclose data where the law requires it, or to protect our rights or someone&rsquo;s safety.</p>
 

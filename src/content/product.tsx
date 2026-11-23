@@ -124,12 +124,12 @@ export const PRODUCT: ProductPage[] = [
     slug: "mcp",
     eyebrow: "Heardex MCP",
     title: "Ask your AI what users think, then let it find the fix.",
-    lede: "Connect Heardex once to Claude, ChatGPT, Cursor or VS Code, and it can read your product's feedback and issues. Ask questions in plain words, or send an issue to Claude to look for the cause in your code.",
+    lede: "Connect Heardex once to Claude, ChatGPT, Gemini, Cursor or VS Code, and it can read your product's feedback and issues. Ask questions in plain words, or send an issue to Claude to look for the cause in your code.",
     blocks: [
       { title: "Ask in plain words", body: "“What are the top complaints this week?” “Summarize the bug reports and where they come from.” “Which platforms talk about us the most?” The app answers from your real data, with links to the posts." },
       { title: "Investigate in your code", body: "“Investigate with Claude” on an issue gives Claude the issue, every report and its priority. In Claude Code it can then search your repository for the cause and suggest a fix. It asks before changing anything." },
       { title: "Read-only and revocable", body: "The app sees only the workspace you approve and can't change your settings or data; it only sends back reports for tasks you start. You can see every connected account and revoke access at once." },
-      { title: "One address, every app", body: "Heardex speaks the open Model Context Protocol (MCP). Claude on the web, the desktop app and Claude Code, ChatGPT, Cursor and VS Code all connect to the same address and sign in to Heardex the same way." },
+      { title: "One address, every app", body: "Heardex speaks the open Model Context Protocol (MCP). Claude on the web, the desktop app and Claude Code, ChatGPT, Gemini, Cursor and VS Code all connect to the same address and sign in to Heardex the same way." },
     ],
     steps: [
       "Add Heardex's MCP address in your AI app (in Claude, Settings → Claude in Heardex does it for you).",
@@ -138,7 +138,7 @@ export const PRODUCT: ProductPage[] = [
     ],
     plans: () => ["Included on every plan, Free included."],
     limits: ["The AI app's usage counts toward your own plan with that app, not Heardex's."],
-    docs: { href: "/docs/mcp", label: "Connect Claude, ChatGPT, Cursor or VS Code" },
+    docs: { href: "/docs/mcp", label: "Connect Claude, ChatGPT, Gemini, Cursor or VS Code" },
     clip: "claude",
   },
 ];

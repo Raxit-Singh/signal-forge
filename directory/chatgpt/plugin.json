@@ -1,0 +1,85 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "heardex",
+  "version": "1.0.0",
+  "description": "Heardex collects what people say about your product on Reddit, Hacker News, GitHub, app stores and more, and sorts it into ranked bugs, feature requests and complaints. Connect it to ask about your feedback in plain words.",
+  "author": { "name": "Heardex", "email": "support@heardex.com", "url": "https://www.heardex.com" },
+  "homepage": "https://www.heardex.com/product/mcp",
+  "keywords": ["feedback", "product", "bugs", "feature requests", "mentions"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Heardex",
+        "shortDescription": "Your product feedback, ranked",
+        "longDescription": "Heardex watches Reddit, Hacker News, GitHub, the App Store, Google Play and other public places for posts about your product, and groups them into issues: bugs, feature requests, complaints and praise, ranked by how many people raise them and how fast they are growing.\n\nConnect Heardex and ask ChatGPT about your feedback in plain words: what the top issues are this week, which posts are behind a bug, why an issue is marked critical, or whether mentions spiked and why. Every answer links back to the public posts it comes from.\n\nHeardex shows only the workspace you approve when you sign in. It can't change your settings or delete anything. You need a Heardex account with at least one product set up.",
+        "developerName": "Heardex",
+        "category": "Productivity",
+        "capabilities": [
+          "List your products and the competitors Heardex tracks for them",
+          "Rank feedback issues by priority: bugs, feature requests, complaints",
+          "Show the public posts behind an issue, with links",
+          "Explain how an issue's priority was decided",
+          "Explain recent spikes in mentions"
+        ],
+        "websiteURL": "https://www.heardex.com",
+        "supportURL": "https://www.heardex.com/legal/contact",
+        "privacyPolicyURL": "https://www.heardex.com/legal/privacy",
+        "termsOfServiceURL": "https://www.heardex.com/legal/terms",
+        "defaultPrompt": [
+          "What are the top issues people are raising about my product this week?",
+          "Show me the posts behind my most reported bug.",
+          "Did mentions of my product spike recently, and why?"
+        ],
+        "brandColor": "#FF3B2F",
+        "composerIcon": "./assets/composer-icon.png",
+        "logo": "./assets/logo.png"
+      },
+      "review": {
+        "test_cases": {
+          "positive": [
+            {
+              "description": "Lists the highest-priority issues for the reviewer's product.",
+              "prompt": "What are the top issues for my product right now?",
+              "tools_triggered": ["get_product_context", "get_feedback_issues"],
+              "expected_behavior": "Names the product, then lists the top issues with their category, number of reports and priority, highest first."
+            },
+            {
+              "description": "Shows the public posts behind an issue.",
+              "prompt": "Show me the posts behind the most reported bug.",
+              "tools_triggered": ["get_feedback_issues", "get_issue_evidence"],
+              "expected_behavior": "Finds the bug report with the most reports and quotes or summarises its posts with links to the original pages."
+            },
+            {
+              "description": "Explains why an issue got its priority.",
+              "prompt": "Why is the top complaint marked critical?",
+              "tools_triggered": ["get_feedback_issues", "get_issue_priority"],
+              "expected_behavior": "Explains the priority from measured facts (number of reporters, trend, recurrence) and states separately what was inferred by AI."
+            },
+            {
+              "description": "Reports recent spikes in mentions.",
+              "prompt": "Did mentions of my product spike in the last 30 days?",
+              "tools_triggered": ["get_product_context", "get_spike_analysis"],
+              "expected_behavior": "Says whether there were spikes, when, and the explanation for each if one exists; says plainly if there were none."
+            },
+            {
+              "description": "Gives the details of one feature request.",
+              "prompt": "Tell me more about the top feature request: where it comes from and since when.",
+              "tools_triggered": ["get_feedback_issues", "get_issue_details"],
+              "expected_behavior": "Gives the feature request's platforms, first and last dates, number of reports and summary."
+            }
+          ],
+          "negative": [
+            { "description": "General question unrelated to product feedback; Heardex should not be called.", "prompt": "What's the weather in London tomorrow?" },
+            { "description": "Asks to delete data; Heardex is read-only for feedback, so no tool should run and ChatGPT should say it can't.", "prompt": "Delete all the complaints about my product in Heardex." },
+            { "description": "Creative writing with no product context; Heardex should not be called.", "prompt": "Write a short poem about autumn." }
+          ]
+        },
+        "demo_recording_url": "",
+        "commerce": false
+      },
+      "publication": {
+        "release_notes": "First release: read your Heardex products, ranked feedback issues, their evidence, priority reasoning and mention spikes."
+      }
+    }
+  }
+}

@@ -385,7 +385,7 @@ function trace(): Scene {
   };
 }
 
-/** An AI app (Claude, ChatGPT, Cursor, VS Code in turn), on the right, calls the Heardex MCP connector's tools: a request runs out to a tool, its name lights, the answer runs back. */
+/** An AI app (Claude, ChatGPT, Gemini, Cursor, VS Code in turn), on the right, calls the Heardex MCP connector's tools: a request runs out to a tool, its name lights, the answer runs back. */
 function mcp(): Scene {
   const TOOLS = [
     "get_product_context", "get_feedback_issues", "get_issue_details", "get_issue_evidence",
@@ -480,7 +480,7 @@ function mcp(): Scene {
     ctx.textAlign = "center";
     ctx.fillStyle = rgba(ink, (light ? 0.7 : 0.65) * enter);
     // The client's name changes every few seconds, fading through, since every MCP app connects the same way.
-    const CLIENTS = ["Claude", "ChatGPT", "Cursor", "VS Code"], SPAN = 2.6;
+    const CLIENTS = ["Claude", "ChatGPT", "Gemini", "Cursor", "VS Code"], SPAN = 2.6;
     const at = t % SPAN, swap = Math.min(smooth(0, 0.35, at), 1 - smooth(SPAN - 0.35, SPAN, at));
     ctx.fillStyle = rgba(ink, (light ? 0.7 : 0.65) * enter * swap);
     ctx.fillText(CLIENTS[Math.floor(t / SPAN) % CLIENTS.length]!, hx, hy + 26);

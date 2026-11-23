@@ -8,7 +8,7 @@ export const PRODUCT_PAGES = [
   { slug: "smart-monitoring", name: "Smart monitoring", line: "Busy places checked often, quiet ones less, history at setup" },
   { slug: "competitor-tracking", name: "Competitor tracking", line: "What people say about the products you compete with" },
   { slug: "buzz-analytics", name: "Buzz analytics and reports", line: "Volume, platforms, spikes and the reports in your inbox" },
-  { slug: "mcp", name: "Heardex MCP", line: "Your feedback in Claude, ChatGPT, Cursor and VS Code" },
+  { slug: "mcp", name: "Heardex MCP", line: "Your feedback in Claude, ChatGPT, Gemini, Cursor and VS Code" },
 ] as const;
 
 export type ProductSlug = (typeof PRODUCT_PAGES)[number]["slug"];
