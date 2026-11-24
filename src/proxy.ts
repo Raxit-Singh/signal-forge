@@ -2,15 +2,15 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { CONSENT_COOKIE, parseConsent, withConsent } from "@/lib/consent";
 import { hasEarlyAccess } from "@/lib/early-access";
+import { apiNotFound, isApiPath, isAppPath, isPublicPath, notFoundMarkdown, prefersMarkdown } from "@/lib/routes";
 
 // Next.js 16 "proxy" (formerly middleware). Refreshes the Supabase session
 // cookie on every request and keeps signed-out users out of app routes.
 // Authorization is NOT decided here: every page and action re-checks the user
 // and workspace membership on the server, and RLS enforces it again in Postgres.
 
-const PUBLIC_PREFIXES = ["/login", "/signup", "/early-access", "/forgot-password", "/auth", "/legal", "/alternatives", "/docs", "/blog", "/product",
-  // Design samples: sample data only, and the page returns 404 in production.
-  ...(process.env.NODE_ENV === "production" ? [] : ["/prototypes"])];
+// Design samples: sample data only, and the page returns 404 in production.
+const PROTOTYPES = process.env.NODE_ENV !== "production";
 
 /**
  * Content Security Policy with a fresh nonce per request: only Next's own scripts
@@ -41,6 +41,30 @@ function contentSecurityPolicy(nonce: string): string {
 }
 
 export async function proxy(request: NextRequest) {
+  const path = request.nextUrl.pathname;
+  const isPublic = isPublicPath(path, { prototypes: PROTOTYPES });
+  const isApp = isAppPath(path);
+  const markdown = !isApiPath(path) && prefersMarkdown(request.headers.get("accept"));
+
+  // Paths that don't exist get a real 404, not a sign-in redirect. Unknown API paths reach the API's JSON 404
+  // (src/app/api/[...path]); agents asking for Markdown get a Markdown 404 here; browsers get the not-found page.
+  if (!isPublic && !isApp) {
+    if (markdown) {
+      return new NextResponse(notFoundMarkdown(path, request.nextUrl.origin), {
+        status: 404,
+        headers: { "content-type": "text/markdown; charset=utf-8", vary: "Accept", "cache-control": "no-store" },
+      });
+    }
+    if (path === "/api") return NextResponse.json(apiNotFound(path, request.nextUrl.origin), { status: 404, headers: { "cache-control": "no-store" } });
+  }
+
+  // The home page in Markdown, for agents (the same text as /llms.txt).
+  if (path === "/" && markdown) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/index.md";
+    return NextResponse.rewrite(url);
+  }
+
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const csp = contentSecurityPolicy(nonce);
   // Next reads the nonce from the request's CSP header and applies it to its scripts.
@@ -75,10 +99,7 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const path = request.nextUrl.pathname;
-  const isPublic = path === "/" || PUBLIC_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`));
-
-  if (!user && !isPublic) {
+  if (!user && isApp) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
@@ -88,7 +109,7 @@ export async function proxy(request: NextRequest) {
 
   // Private testing: signed-in people not on EARLY_ACCESS_EMAILS can't reach the
   // app, onboarding or invitations (pages and the actions posted to them).
-  if (user && !isPublic && !hasEarlyAccess(user.email)) {
+  if (user && isApp && !hasEarlyAccess(user.email)) {
     const url = request.nextUrl.clone();
     url.pathname = "/early-access";
     url.search = "";

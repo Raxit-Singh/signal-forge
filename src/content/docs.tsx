@@ -301,7 +301,7 @@ export const DOCS: Doc[] = [
   {
     slug: "mcp",
     group: "Insights",
-    title: "Connect Claude, ChatGPT, Gemini and more (MCP)",
+    title: "Heardex MCP server: Claude, ChatGPT, Gemini",
     description: "Connect Claude, Claude Code, ChatGPT, Gemini, Cursor, VS Code or another MCP client to read your feedback and investigate issues.",
     Body: ({ mcpUrl }) => {
       const cursorConfig = btoa(JSON.stringify({ url: mcpUrl }));
@@ -368,6 +368,50 @@ export const DOCS: Doc[] = [
         </ul>
         <h2>Revoking access</h2>
         <p>Settings → Claude lists every app approved for the workspace. Revoke one, or disconnect, and access stops at once.</p>
+      </>
+      );
+    },
+  },
+  {
+    slug: "api",
+    group: "Insights",
+    title: "Heardex API and OpenAPI spec",
+    description: "The Heardex HTTP API: OAuth sign-in, the MCP server endpoint, error formats and the OpenAPI 3.1 spec, for developers and AI agents.",
+    Body: ({ mcpUrl }) => {
+      const base = mcpUrl.replace(/\/api\/mcp$/, "");
+      return (
+      <>
+        <p>Heardex&apos;s data (your products, ranked issues, the posts behind them and spike analysis) is reached through the <A href="/docs/mcp">Heardex MCP server</A>, one endpoint that AI apps and agents call with JSON-RPC. The rest of the API is how an app signs a person in to it. There are no API keys: every app signs in with OAuth and only sees the one workspace the person approves.</p>
+        <p>The whole API is described in an OpenAPI 3.1 spec, which code generators and agents can read directly:</p>
+        <pre><code>{`${base}/openapi.json`}</code></pre>
+        <h2>Endpoints</h2>
+        <ul>
+          <li><code>POST /api/mcp</code>: the MCP server (Streamable HTTP, JSON-RPC 2.0). Needs a bearer token.</li>
+          <li><code>POST /api/oauth/register</code>: register an app (dynamic client registration, RFC 7591). Public clients only.</li>
+          <li><code>GET /oauth/authorize</code>: the page where a person signs in and approves a workspace (PKCE with S256).</li>
+          <li><code>POST /api/oauth/token</code>: exchange the code, or a refresh token, for an access token. Refresh tokens rotate.</li>
+          <li><code>POST /api/oauth/revoke</code>: revoke a token (RFC 7009).</li>
+          <li><code>GET /.well-known/oauth-protected-resource</code> and <code>GET /.well-known/oauth-authorization-server</code>: discovery, so MCP clients find all of the above on their own.</li>
+          <li><code>GET /api/health</code>: 200 when the service is up.</li>
+        </ul>
+        <h2>Signing in</h2>
+        <ol>
+          <li>Call the MCP server without a token. It answers 401 with a <code>WWW-Authenticate</code> header pointing to the discovery document.</li>
+          <li>Register the app, then open the authorization page in the person&apos;s browser with a PKCE challenge. Redirect URIs must be the callback of a supported app or a loopback address on the person&apos;s computer.</li>
+          <li>Exchange the code at the token endpoint and call the MCP server with <code>Authorization: Bearer</code> and the token. Access tokens last an hour.</li>
+        </ol>
+        <p>Most MCP clients (Claude, ChatGPT, Gemini, Cursor, VS Code) do all of this for you when you paste the server address.</p>
+        <h2>Calling a tool</h2>
+        <pre><code>{`curl ${mcpUrl} \\
+  -H "Authorization: Bearer $TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -H "Accept: application/json, text/event-stream" \\
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_feedback_issues","arguments":{}}}'`}</code></pre>
+        <p>The tools are listed on the <A href="/docs/mcp">MCP server page</A>; <code>tools/list</code> returns each one&apos;s input schema.</p>
+        <h2>Errors</h2>
+        <p>Every error is JSON. OAuth endpoints use the standard OAuth shape, <code>{`{"error": "invalid_grant", "error_description": "…"}`}</code>. Other endpoints answer with an <code>error</code> object holding a <code>code</code>, a <code>message</code> and a <code>hint</code> saying what to do next. The MCP server reports tool errors inside the JSON-RPC result.</p>
+        <h2>For AI agents</h2>
+        <p><a href="/llms.txt">/llms.txt</a> describes Heardex for AI models, including when to use it and how to call it. The home page also answers in Markdown to requests that ask for <code>text/markdown</code>.</p>
       </>
       );
     },
