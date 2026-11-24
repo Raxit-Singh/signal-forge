@@ -4,6 +4,7 @@ import { switzer } from "@/components/landing/fonts";
 import { HeardexMark } from "@/components/landing/hero";
 import { Outro } from "@/components/landing/outro";
 import { MarketingMotion } from "./motion";
+import { ScrollMagnet } from "./scroll-magnet";
 import { BarSurface } from "./bar-surface";
 import { MobileMenu } from "./mobile-menu";
 import { ProductMenu } from "./product-menu";
@@ -18,6 +19,7 @@ export async function MarketingShell({ children }: { children: React.ReactNode }
     // --answer is when the landing's opening hands over; here there is no opening, so everything enters at once.
     <div className={`hx hx-site relative min-h-dvh ${switzer.className}`}>
       <MarketingMotion />
+      <ScrollMagnet />
       <header className="hx-bar hx-frame fixed inset-x-0 top-0 z-50 flex h-20 items-center justify-between">
         <Link href="/" className="hx-link flex items-center gap-2.5 text-[20px] font-semibold tracking-[-0.03em]" aria-label="Heardex home">
           <HeardexMark animated className="h-6 w-6" />heardex

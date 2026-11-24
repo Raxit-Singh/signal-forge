@@ -8,6 +8,9 @@ import { CONSENT_COOKIE, parseConsent, type Consent } from "@/lib/consent";
 // The visitor's choice, read from its cookie; "unknown" on the server, so nothing shows until the page is in the browser.
 const CHANGED = "hx:consent";
 const OPEN = "hx:cookie-settings";
+const INTRO = "hx:intro"; // the landing's opening starts or ends (landing/intro-lock.tsx)
+const subscribeIntro = (fn: () => void) => { addEventListener(INTRO, fn); return () => removeEventListener(INTRO, fn); };
+const readIntro = () => document.documentElement.dataset.intro === "playing";
 const subscribe = (fn: () => void) => { addEventListener(CHANGED, fn); return () => removeEventListener(CHANGED, fn); };
 const readChoice = () => parseConsent(document.cookie.match(new RegExp(`(?:^|; )${CONSENT_COOKIE}=([^;]*)`))?.[1]) ?? "none";
 
@@ -21,12 +24,14 @@ export function CookieBanner() {
   const choice = useSyncExternalStore(subscribe, readChoice, () => "unknown");
   const [reopened, setReopened] = useState(false);
   const [pending, start] = useTransition();
+  // On the landing, the banner waits until the opening has played, so it doesn't cover it (then eases in, globals.css).
+  const intro = useSyncExternalStore(subscribeIntro, readIntro, () => false);
   useEffect(() => {
     const open = () => setReopened(true);
     addEventListener(OPEN, open);
     return () => removeEventListener(OPEN, open);
   }, []);
-  if (choice === "unknown" || (choice !== "none" && !reopened)) return null;
+  if (choice === "unknown" || intro || (choice !== "none" && !reopened)) return null;
 
   const choose = (c: Consent) => start(async () => {
     await setCookieConsentAction(c);

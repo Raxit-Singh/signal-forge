@@ -5,6 +5,8 @@ import { useEffect } from "react";
 // The opening plays out before the page can be scrolled: until the answer is sharp and the bar and eclipse are in.
 // --answer (1.7s) + the slowest word of the answer (1.2s, plus its 0.3s stagger) — keep in step with landing.css.
 const INTRO_MS = 3300;
+/** Fired when the opening starts and when it has played (<html data-intro="playing"> meanwhile); the cookie banner waits for it. */
+export const INTRO_EVENT = "hx:intro";
 
 /**
  * Holds the page at the top while the opening plays. Skipped for reduced motion, which shows the finished page, and
@@ -25,9 +27,14 @@ export function IntroLock() {
     root.style.scrollbarGutter = "stable"; // where scrollbars take space, the page does not jump when it unlocks
     root.style.overflow = "hidden";
     document.body.style.overflow = "hidden"; // iOS Safari needs both
+    root.dataset.intro = "playing";
+    dispatchEvent(new Event(INTRO_EVENT));
     const release = () => {
       root.style.overflow = "";
       document.body.style.overflow = "";
+      if (root.dataset.intro !== "playing") return;
+      delete root.dataset.intro;
+      dispatchEvent(new Event(INTRO_EVENT));
     };
     const timer = window.setTimeout(release, INTRO_MS);
     return () => {

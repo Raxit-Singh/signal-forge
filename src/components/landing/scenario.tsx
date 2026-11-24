@@ -28,7 +28,13 @@ export function Scenario() {
   return (
     // A tall track: the section pins to the top while the logo comes down into the tray, the story plays, and the scene
     // turns to face you, and the wires grow out to every platform (mention-flight.tsx).
-    <div data-flight-track className="relative h-[1560svh]">
+    // data-snap: where the track's scenes are at rest (screen heights from its top; keep in step with mention-flight.tsx
+    // and process.tsx): the story in the tray, the network, the feed, the sorting, the ranked issues, Claude's answer,
+    // and the pricing just after the track, once the logo is back in the bar. It's a zone: wherever the scroll stops inside the
+    // track, ScrollMagnet carries it on to the next scene, so no scene is left half played. data-snap-free: from the network
+    // to the feed (the dive into Heardex) the scroll is left to the visitor. data-snap-slow: from Claude's answer to the
+    // pricing (the logo's flight back to the bar) the glide is 2.2 times slower than the others.
+    <div data-flight-track data-snap="1.2 4.1 6.55 7.85 9.35 10.6 15.6" data-snap-radius="0.5" data-snap-slow="10.6 15.6 2.2" data-snap-free="4.1 6.55" data-snap-zone className="relative h-[1560svh]">
     <section ref={section} className="hx-s hx-frame sticky top-0 grid min-h-[100svh] content-center items-center gap-14 py-24 text-left lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-10" aria-labelledby="scenario">
       <div data-scenario-copy className="grid max-w-[21ch] gap-[0.5em] text-[clamp(28px,3.4vw,56px)] font-semibold leading-[1.05] tracking-[-0.035em]">
         <p className="hx-s1 text-[var(--muted)]"><Words text="Say someone mentions your app on Reddit." from="start" /></p>

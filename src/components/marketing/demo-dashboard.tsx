@@ -45,7 +45,9 @@ export function DemoDashboard({ kind, className }: { kind: DemoKind; className?:
   const h = kind === "claude" ? 700 : 780;
 
   return (
-    <figure className={`hx-shot hx-rise is-wide not-prose ${className ?? ""}`}>
+    // Plays once it is well up the screen (MarketingMotion), not while it peeks in under the page's heading; scrolling
+    // near glides it into place (ScrollMagnet), just under the top bar.
+    <figure data-snap="-0.12" data-snap-radius="0.5" className={`hx-shot hx-rise is-wide not-prose ${className ?? ""}`}>
       <div className="hx-shot-frame">
         <div className="hx-shot-bar" aria-hidden><span /><span /><span /><span className="ml-auto text-[11px] text-[#6b6b72]">heardex.com</span></div>
         <div ref={box} className="dd-box" style={{ aspectRatio: `${W} / ${h}` }} role="img"

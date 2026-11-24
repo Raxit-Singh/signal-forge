@@ -22,7 +22,7 @@ export function Walkthrough({ src, w, h, alt, steps, priority }: { src: string; 
   const [seen, setSeen] = useState(false);
 
   useEffect(() => {
-    const io = new IntersectionObserver(([e]) => setSeen(!!e?.isIntersecting), { threshold: 0.45 });
+    const io = new IntersectionObserver(([e]) => setSeen(!!e?.isIntersecting), { threshold: 0.3 });
     if (root.current) io.observe(root.current);
     return () => io.disconnect();
   }, []);

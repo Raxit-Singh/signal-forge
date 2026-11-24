@@ -10,6 +10,7 @@ import { SectionLinks } from "./section-links";
 import { Outro } from "./outro";
 import { Pricing } from "./pricing";
 import { Scenario } from "./scenario";
+import { ScrollMagnet } from "@/components/marketing/scroll-magnet";
 import { Words } from "./words";
 import "./landing.css";
 import { signedOutStart } from "@/lib/early-access";
@@ -22,6 +23,7 @@ export function Landing({ signedIn, plans }: { signedIn: boolean; plans: Plan[] 
   return (
     <div className={`hx relative ${switzer.className}`}>
       <IntroLock />
+      <ScrollMagnet />
       <SectionLinks />
       {/* The bar stays at the top on every screen. Its logo flies off into the story (mention-flight.tsx) and the name
           stays put; at the end of the story the logo flies back (process.tsx). */}

@@ -4,7 +4,9 @@ import { useEffect } from "react";
 
 /**
  * The landing's motion on every other public page, once for the whole shell:
- * - `.hx-rise` rises in the first time it scrolls into view, including on pages reached by client navigation;
+ * - `.hx-rise` rises in the first time it scrolls into view, including on pages reached by client navigation; a wide
+ *   screenshot or demo dashboard (`.hx-shot.is-wide`) waits until its top is up in the top 60% of the screen, so its
+ *   entrance plays where it can be watched rather than while it only peeks in at the bottom;
  * - cards in a `.hx-glow-group` light their border where the pointer is (--mx/--my on each `.hx-glow`), like the pricing cards.
  * Without script everything is simply visible; with reduced motion the CSS keeps it still.
  */
@@ -15,8 +17,11 @@ export function MarketingMotion() {
     const io = new IntersectionObserver((entries) => {
       for (const e of entries) if (e.isIntersecting) { e.target.classList.add("is-in"); io.unobserve(e.target); }
     }, { rootMargin: "0px 0px -6% 0px" });
+    const wide = new IntersectionObserver((entries) => {
+      for (const e of entries) if (e.isIntersecting) { e.target.classList.add("is-in"); wide.unobserve(e.target); }
+    }, { rootMargin: "0px 0px -40% 0px" });
     const seen = new WeakSet<Element>();
-    const scan = () => document.querySelectorAll(".hx-rise:not(.is-in)").forEach((el) => { if (!seen.has(el)) { seen.add(el); io.observe(el); } });
+    const scan = () => document.querySelectorAll(".hx-rise:not(.is-in)").forEach((el) => { if (!seen.has(el)) { seen.add(el); (el.matches(".hx-shot.is-wide") ? wide : io).observe(el); } });
     scan();
     const mo = new MutationObserver(scan);
     mo.observe(document.body, { childList: true, subtree: true });
@@ -40,7 +45,7 @@ export function MarketingMotion() {
     document.addEventListener("pointerout", away);
 
     return () => {
-      io.disconnect(); mo.disconnect();
+      io.disconnect(); wide.disconnect(); mo.disconnect();
       document.removeEventListener("pointermove", track); document.removeEventListener("pointerout", away);
       root.classList.remove("hx-js");
     };
