@@ -82,14 +82,14 @@ select t.throws(
 
 select t.throws(
   format($$select public.replace_product_aliases(%L, '[{"term":"FocusFlow","kind":"exact_name"},{"term":"focusflow.example","kind":"domain"}]')$$, (select v from ids where k = 'p_a')),
-  'free plan allows 1 active keyword', 'includes 1 active keyword');
+  'free plan allows 1 active keyword', 'includes 1 keyword');
 select t.ok(public.replace_product_aliases((select v from ids where k = 'p_a'),
   '[{"term":"FocusFlow","kind":"exact_name"},
     {"term":"focusflow.example","kind":"domain","enabled":false},
     {"term":"Flow","kind":"abbreviation","is_ambiguous":true,"context_terms":["pomodoro","timer"],"enabled":false}]') = 3,
   'replace_product_aliases inserts valid aliases (inactive keywords do not count toward the allowance)');
 select t.throws($$update public.product_aliases set enabled = true where term = 'Flow'$$,
-  'enabling a keyword beyond the allowance is refused', 'includes 1 active keyword');
+  'enabling a keyword beyond the allowance is refused', 'includes 1 keyword');
 select t.ok(public.replace_product_aliases((select v from ids where k = 'p_a'),
   '[{"term":"FocusFlow","kind":"exact_name"}]') = 1, 'replace_product_aliases replaces, not appends');
 select t.ok((select count(*) from public.product_aliases) = 1, 'alias count after replace');
@@ -145,8 +145,8 @@ reset role;
 -- ===================================================================== anon
 select set_config('request.jwt.claims', '{"role":"anon"}', false);
 set role anon;
-select t.ok((select string_agg(id || ':' || price_cents_monthly, ',' order by sort_order) from public.plans) = 'free:0,pro:10000,scale:30000',
-  'anon can read public plans: Free $0, Pro $100, Scale $300 (retired Starter/Business hidden)');
+select t.ok((select string_agg(id || ':' || price_cents_monthly, ',' order by sort_order) from public.plans) = 'free:0,starter:7000,pro:12000,scale:35000',
+  'anon can read public plans: Free $0, Starter $70, Pro $120, Scale $350 (retired Business hidden)');
 select t.throws($$select * from public.products$$, 'anon cannot read products', 'permission denied');
 select t.throws($$select * from public.workspaces$$, 'anon cannot read workspaces', 'permission denied');
 select t.throws($$select public.create_workspace('anon ws')$$, 'anon cannot create workspaces', 'permission denied');
@@ -572,10 +572,10 @@ select t.ok((select billed_period_start from public.mentions where external_id =
 -- Upgrade raises the allowance at once and resumes paid scheduling; downgrade lowers it.
 update public.subscriptions set plan_id = 'pro' where workspace_id = (select ws from bw);
 select private.lock_usage_period((select ws from bw));
-select t.ok((public.svc_workspace_usage((select ws from bw)) ->> 'mention_allowance')::int = 15000
+select t.ok((public.svc_workspace_usage((select ws from bw)) ->> 'mention_allowance')::int = 10000
   and (select exhausted_at from public.mention_usage_periods where workspace_id = (select ws from bw)) is null
   and private.allowance_exhausted_until((select ws from bw)) is null,
-  'upgrade: Pro allowance (15,000) applies immediately in the same period');
+  'upgrade: Pro allowance (10,000) applies immediately in the same period');
 update public.subscriptions set plan_id = 't_tiny' where workspace_id = (select ws from bw);
 select t.ok((private.lock_usage_period((select ws from bw))).exhausted_at is not null, 'downgrade below consumption: allowance exhausted, nothing deleted');
 update public.subscriptions set plan_id = 'pro' where workspace_id = (select ws from bw);
@@ -1059,9 +1059,9 @@ select v, 'pro', 'internal_testing', 'rls_test' from ids where k = 'ws_d';
 select t.ok(private.effective_plan_id((select v from ids where k = 'ws_d')) = 'pro'
   and (select plan_id from public.subscriptions where workspace_id = (select v from ids where k = 'ws_d')) = 'free'
   and (private.workspace_usage((select v from ids where k = 'ws_d')) ->> 'entitlement') = 'internal_testing'
-  and (private.workspace_usage((select v from ids where k = 'ws_d')) ->> 'mention_allowance')::int = 15000,
+  and (private.workspace_usage((select v from ids where k = 'ws_d')) ->> 'mention_allowance')::int = 10000,
   'internal grant gives Pro limits; the subscription row stays Free (nothing billed)');
-select t.ok((private.schedule_context((select v from ids where k = 'p_d'), 'reddit') ->> 'max_keywords')::int = 10,
+select t.ok((private.schedule_context((select v from ids where k = 'p_d'), 'reddit') ->> 'max_keywords')::int = 3,
   'internal grant applies to monitoring entitlements');
 select t.as_user('00000000-0000-0000-0000-00000000000d');
 set role authenticated;
@@ -1338,8 +1338,8 @@ select t.ok((select count(*) from public.oauth_grants where workspace_id = (sele
 reset role;
 
 -- ===================================================================== competitors
--- Dave's workspace on Pro (3 competitors per product, 3 products).
-update public.subscriptions set plan_id = 'pro' where workspace_id = (select v from ids where k = 'ws_d');
+-- Dave's workspace on Scale (5 competitors per product, 10 products, 30 keywords shared with competitors).
+update public.subscriptions set plan_id = 'scale' where workspace_id = (select v from ids where k = 'ws_d');
 select t.as_user('00000000-0000-0000-0000-00000000000d');
 set role authenticated;
 insert into ids select 'c1', public.add_competitor((select v from ids where k = 'p_d'), ' RivalApp ', 'https://rival.example', array['rival app', 'RIVALAPP', 'rivalapp.io']);
@@ -1362,14 +1362,16 @@ select t.throws(format($$select public.add_competitor(%L, 'Nested')$$, (select v
 select public.add_competitor((select v from ids where k = 'p_d'), 'DaveApp');
 select t.ok(true, 'a competitor may share a name with one of the workspace''s own products');
 select public.add_competitor((select v from ids where k = 'p_d'), 'Third Rival');
-select t.throws(format($$select public.add_competitor(%L, 'Fourth Rival')$$, (select v from ids where k = 'p_d')),
-  'competitor count follows the plan (Pro: 3)', 'competitor limit');
+select public.add_competitor((select v from ids where k = 'p_d'), 'Fourth Rival');
+select public.add_competitor((select v from ids where k = 'p_d'), 'Fifth Rival');
+select t.throws(format($$select public.add_competitor(%L, 'Sixth Rival')$$, (select v from ids where k = 'p_d')),
+  'competitor count follows the plan (Scale: 5)', 'competitor limit');
 reset role;
-select t.ok((select count(*) from public.products where workspace_id = (select v from ids where k = 'ws_d') and competitor_of is not null) = 3,
-  'three tracking products exist');
+select t.ok((select count(*) from public.products where workspace_id = (select v from ids where k = 'ws_d') and competitor_of is not null) = 5,
+  'five tracking products exist');
 select t.as_user('00000000-0000-0000-0000-00000000000d');
 set role authenticated;
--- Tracking products don't use product slots: Pro allows 3 products and Dave can still add them.
+-- Tracking products don't use product slots: Dave can still add products alongside five competitors.
 insert into public.products (workspace_id, name, created_by) select v, 'DaveTwo', auth.uid() from ids where k = 'ws_d';
 insert into public.products (workspace_id, name, created_by) select v, 'DaveThree', auth.uid() from ids where k = 'ws_d';
 select t.ok((select count(*) from public.products where workspace_id = (select v from ids where k = 'ws_d') and competitor_of is null and archived_at is null) = 3,
