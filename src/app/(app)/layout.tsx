@@ -8,6 +8,7 @@ import { Topbar, type ShellNotification } from "@/components/app-shell/topbar";
 import { RealtimeProvider } from "@/components/realtime/realtime-provider";
 import { MotionProvider } from "@/components/motion";
 import { Toaster } from "@/components/toaster";
+import { ProductTour } from "@/components/app-shell/product-tour";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, workspace } = await requireWorkspace();
@@ -15,7 +16,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const activeProduct = await getActiveProduct(workspace.id);
   const now = new Date();
   const since = new Date(now.getTime() - 86_400_000).toISOString();
-  const [workspaces, products, notifRes, unreadRes, usage, recentRes, openRes] = await Promise.all([
+  const [workspaces, products, notifRes, unreadRes, usage, recentRes, openRes, profileRes] = await Promise.all([
     getWorkspaces(),
     getProducts(workspace.id),
     supabase
@@ -38,6 +39,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     activeProduct
       ? supabase.from("feedback_clusters").select("id", { count: "exact", head: true }).eq("product_id", activeProduct.id).in("status", ["open", "acknowledged"])
       : Promise.resolve({ count: 0 }),
+    supabase.from("profiles").select("tour_completed_at").eq("id", user.id).maybeSingle(),
   ]);
 
   const notifications: ShellNotification[] = (notifRes.data ?? []).map((n) => ({
@@ -84,6 +86,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </div>
     </div>
     <Toaster />
+    {/* Shown once, after onboarding (a product exists); errors reading the profile never show it. */}
+    <ProductTour autoStart={Boolean(activeProduct) && profileRes.data !== null && !(profileRes.data as { tour_completed_at: string | null }).tour_completed_at} />
     </MotionProvider>
     </RealtimeProvider>
   );

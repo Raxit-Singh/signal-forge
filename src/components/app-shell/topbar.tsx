@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  Bell, CalendarRange, LogOut, Menu, Search, Settings, User,
+  Bell, CalendarRange, Compass, LogOut, Menu, Search, Settings, User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Kbd } from "@/components/ui/primitives";
@@ -18,6 +18,8 @@ import { markNotificationsReadAction } from "@/app/actions/notifications";
 import { Mark, ProductCard, SidebarNav, WorkspaceSwitcher, type ShellCounts, type ShellWorkspace } from "./sidebar";
 import { NAV } from "./nav";
 import { CommandMenu, useCommandMenuShortcut } from "./command-menu";
+import { ReportBug } from "./report-bug";
+import { START_TOUR_EVENT } from "./product-tour";
 import { LiveIndicator } from "@/components/realtime/realtime-provider";
 import { RANGE_PRESETS, parseRange } from "@/lib/domain/date-range";
 import { cn } from "@/lib/utils";
@@ -40,7 +42,8 @@ function MobileNav({ current, workspaces, products, activeProductId, counts }: {
         <ProductCard products={products} activeId={activeProductId} />
         <SidebarNav counts={counts} onNavigate={() => setOpen(false)} />
         <div className="mt-auto grid gap-1">
-          <Link href="/settings" onClick={() => setOpen(false)} className="flex h-9 items-center gap-3 rounded-xl px-3 text-[13px] text-muted-foreground hover:text-foreground"><Settings className="size-4" aria-hidden />Settings</Link>
+          <ReportBug />
+          <Link href="/settings" onClick={() => setOpen(false)} data-tour="settings" className="flex h-9 items-center gap-3 rounded-xl px-3 text-[13px] text-muted-foreground hover:text-foreground"><Settings className="size-4" aria-hidden />Settings</Link>
           <WorkspaceSwitcher current={current} workspaces={workspaces} />
         </div>
       </SheetContent>
@@ -202,6 +205,7 @@ function AccountMenu({ email }: { email: string }) {
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild><Link href="/settings/account"><User aria-hidden /> Account</Link></DropdownMenuItem>
         <DropdownMenuItem asChild><Link href="/settings"><Settings aria-hidden /> Settings</Link></DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => window.dispatchEvent(new Event(START_TOUR_EVENT))}><Compass aria-hidden /> Take the tour</DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => { void signOutAction(); }}>
           <LogOut aria-hidden /> Sign out

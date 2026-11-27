@@ -38,7 +38,7 @@ export const CAPS = {
   blueskyPosts: { ...base, exactPhrase: true, maxQueryLength: 300, dateFilter: "range", sortNewest: true, pagination: "cursor", maxPagesPerRun: 5 },
   // DEV: tag feed only (no documented full-text search).
   devArticles: { ...base, maxQueryLength: 30, dateFilter: "none", sortNewest: true, pagination: "page", maxPagesPerRun: 1, wordMatch: false },
-  appStoreReviews: { ...base, dateFilter: "none", sortNewest: true, pagination: "page", maxPagesPerRun: 2 },
+  appStoreReviews: { ...base, dateFilter: "none", sortNewest: true, pagination: "page", maxPagesPerRun: 10 },
   // Play Developer API reviews.list: newest first, ~last 7 days only, page tokens.
   googlePlayReviews: { ...base, dateFilter: "none", sortNewest: true, pagination: "cursor", maxPagesPerRun: 5 },
   // Milestone 2 sources. Each adapter builds its own query from a group's terms.

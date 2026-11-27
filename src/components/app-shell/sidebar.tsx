@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/overlays";
 import { switchProductAction, switchWorkspaceAction } from "@/app/actions/workspace";
 import { cn } from "@/lib/utils";
+import { ReportBug } from "./report-bug";
 
 export interface ShellWorkspace {
   id: string;
@@ -42,13 +43,13 @@ export function SidebarNav({ counts, onNavigate }: { counts?: ShellCounts; onNav
   return (
     <nav aria-label="Main" className="grid gap-5">
       {NAV_GROUPS.map((group) => (
-        <div key={group} className="grid gap-0.5">
+        <div key={group} className="grid gap-0.5" data-tour={`group:${group}`}>
           <p className="px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">{group}</p>
           {NAV.filter((n) => n.group === group && n.href !== "/settings").map(({ href, label, icon: Icon }) => {
             const active = isActive(pathname, href);
             const n = badge[href];
             return (
-              <Link key={href} href={href} onClick={onNavigate} aria-current={active ? "page" : undefined}
+              <Link key={href} href={href} onClick={onNavigate} aria-current={active ? "page" : undefined} data-tour={href}
                 className={cn("press relative flex h-9 items-center gap-3 rounded-xl px-3 text-[13px] transition-colors",
                   active ? "text-foreground" : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground")}>
                 {active && (
@@ -185,7 +186,8 @@ export function Sidebar({ current, workspaces, products, activeProductId, counts
       <SidebarNav counts={counts} />
       <div className="mt-auto grid gap-2">
         {plan && <PlanCard plan={plan} />}
-        <Link href="/settings" aria-current={onSettings ? "page" : undefined}
+        <ReportBug />
+        <Link href="/settings" aria-current={onSettings ? "page" : undefined} data-tour="settings"
           className={cn("press flex h-9 items-center gap-3 rounded-xl px-3 text-[13px] transition-colors", onSettings ? "panel text-foreground" : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground")}>
           <SettingsIcon className="size-4" strokeWidth={1.75} aria-hidden />Settings
         </Link>

@@ -53,7 +53,7 @@ export const COLLECTION_PROFILES: Record<string, CollectionProfile> = {
   // Bluesky: until-paging (cursor refused unauthenticated); the index is not a complete archive.
   "bluesky/posts": free({ perPage: 100, providerMaxPages: null, maxPagesPerJob: 5, resume: "range", sortNewest: true, historyDays: null, historyNote: "What Bluesky's search index holds (not a complete archive)." }),
   "dev/default": free({ perPage: 100, providerMaxPages: 1, maxPagesPerJob: 1, resume: "none", sortNewest: true, historyDays: null, historyNote: "Newest 100 articles per tag (tag feed; no full-text search)." }),
-  "app_store/default": free({ perPage: 50, providerMaxPages: 10, maxPagesPerJob: 2, resume: "none", sortNewest: true, historyDays: null, historyNote: "Most recent reviews only (Apple's feed: up to 500)." }),
+  "app_store/default": free({ perPage: 50, providerMaxPages: 10, maxPagesPerJob: 10, resume: "none", sortNewest: true, historyDays: null, historyNote: "Most recent reviews only (Apple's feed: up to 500)." }),
   // API Direct
   "reddit/posts": { perPage: 20, providerMaxPages: 12, maxPagesPerJob: 3, billing: "request", resume: "page", sortNewest: true, historyDays: 365, historyNote: "Up to 12 months (posted_ago 12m) and 12 pages (240 posts) per query." },
   "reddit/comments": { perPage: 25, providerMaxPages: 10, maxPagesPerJob: 10, billing: "pages", resume: "none", sortNewest: true, historyDays: null, historyNote: "No date filter: the newest 250 comments per query (measured ~22–25 per page)." },
