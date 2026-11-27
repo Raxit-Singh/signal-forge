@@ -15,3 +15,10 @@ export function unsubscribeSecret(): Buffer {
   if (!base) throw new Error("CREDENTIALS_ENCRYPTION_KEY is required for unsubscribe links.");
   return Buffer.from(hkdfSync("sha256", Buffer.from(base, "base64"), Buffer.alloc(0), "signalforge:unsubscribe:v1", 32));
 }
+
+/** Key for the sign-up browser cookie (src/lib/auth/pending-signup.ts). */
+export function pendingSignupSecret(): Buffer {
+  const base = serverEnv().CREDENTIALS_ENCRYPTION_KEY;
+  if (!base) throw new Error("CREDENTIALS_ENCRYPTION_KEY is required for the sign-up browser cookie.");
+  return Buffer.from(hkdfSync("sha256", Buffer.from(base, "base64"), Buffer.alloc(0), "signalforge:pending-signup:v1", 32));
+}

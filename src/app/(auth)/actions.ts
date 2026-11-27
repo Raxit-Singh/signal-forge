@@ -1,6 +1,6 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { publicEnv } from "@/lib/env";
@@ -12,6 +12,9 @@ import {
   newPasswordSchema, resetRequestSchema, signInSchema, signUpSchema,
 } from "@/lib/validation/schemas";
 import { failure, invalid, logServerError, type ActionState } from "@/lib/server/action-result";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { pendingSignupSecret } from "@/lib/server/agent/state-secret";
+import { PENDING_SIGNUP_COOKIE, PENDING_SIGNUP_TTL_SECONDS, signPendingSignup, verifyPendingSignup } from "@/lib/auth/pending-signup";
 
 /**
  * Where sign-in links and provider callbacks return to: the address the visitor
@@ -66,7 +69,7 @@ export async function signUpAction(_: ActionState, formData: FormData): Promise<
   }
   const next = safeRedirectPath(String(formData.get("next") ?? ""), "/onboarding");
   const supabase = await createClient();
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email: parsed.data.email,
     password: parsed.data.password,
     // After confirming: onboarding, or where the visitor was headed (e.g. an invitation link).
@@ -86,10 +89,50 @@ export async function signUpAction(_: ActionState, formData: FormData): Promise<
     return failure("We couldn't create your account. Try again in a moment.");
   }
   // Supabase returns the same response for an address that already has an
-  // account (no enumeration, no duplicate account).
+  // account (no enumeration, no duplicate account). Only a new account (one with an identity) is remembered.
+  if (data.user && data.user.identities?.length) {
+    (await cookies()).set(PENDING_SIGNUP_COOKIE, signPendingSignup(pendingSignupSecret(), data.user.id), {
+      httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: PENDING_SIGNUP_TTL_SECONDS,
+    });
+  }
   const q = new URLSearchParams({ email: parsed.data.email });
   if (next !== "/onboarding") q.set("next", next);
   redirect(`/signup/check-email?${q}`);
+}
+
+/**
+ * Polled by "Check your email": has the email been confirmed yet, on any device? When it has, this browser (the one
+ * that signed up, proven by its httpOnly cookie) is signed in and the page moves on. Before then nothing happens.
+ */
+export async function checkSignupConfirmedAction(): Promise<{ confirmed: boolean; waiting: boolean }> {
+  const supabase = await createClient();
+  const jar = await cookies();
+  // Opened the link in this browser: already signed in.
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user?.email_confirmed_at) {
+    jar.delete(PENDING_SIGNUP_COOKIE);
+    return { confirmed: true, waiting: false };
+  }
+  const userId = verifyPendingSignup(pendingSignupSecret(), jar.get(PENDING_SIGNUP_COOKIE)?.value);
+  if (!userId) return { confirmed: false, waiting: false };
+  const admin = createAdminClient();
+  const { data: found } = await admin.auth.admin.getUserById(userId);
+  const account = found?.user;
+  if (!account?.email || !account.email_confirmed_at) return { confirmed: false, waiting: true };
+  // Confirmed on another device: sign this browser in with a one-time link that is never emailed.
+  const { data: link, error: linkError } = await admin.auth.admin.generateLink({ type: "magiclink", email: account.email });
+  const tokenHash = link?.properties?.hashed_token;
+  if (linkError || !tokenHash) {
+    logServerError("checkSignupConfirmed", linkError ?? new Error("no token"));
+    return { confirmed: false, waiting: true };
+  }
+  const { error } = await supabase.auth.verifyOtp({ type: "email", token_hash: tokenHash });
+  if (error) {
+    logServerError("checkSignupConfirmed", error);
+    return { confirmed: false, waiting: true };
+  }
+  jar.delete(PENDING_SIGNUP_COOKIE);
+  return { confirmed: true, waiting: false };
 }
 
 export async function resendVerificationAction(_: ActionState, formData: FormData): Promise<ActionState> {

@@ -79,11 +79,18 @@ const SERIES = [
   { key: "features", name: "Feature requests", color: ink(0.28) },
 ] as const;
 
+/**
+ * Bars stay slim however few days there are (a wide bar with round ends reads as a blob), and a quiet stretch keeps a
+ * floor on the scale, so one post isn't drawn as tall as a busy day.
+ */
+const BAR_MAX_PX = 14;
+const MIN_SCALE = 5;
+
 /** Bug reports, complaints and feature requests per day as stacked capsules (bugs in red at the base). */
 export function FeedbackTrendChart({ days, height = 170 }: { days: FeedbackDay[]; height?: number }) {
   const [hover, setHover] = useState<number | null>(null);
   const total = (d: FeedbackDay) => d.bugs + d.features + d.complaints;
-  const max = Math.max(1, ...days.map(total));
+  const max = Math.max(MIN_SCALE, ...days.map(total));
   return (
     <div className="grid gap-2.5 overflow-x-clip">
       <div className="flex items-end gap-[3px] sm:gap-1" style={{ height }} onMouseLeave={() => setHover(null)}
@@ -91,9 +98,9 @@ export function FeedbackTrendChart({ days, height = 170 }: { days: FeedbackDay[]
         {days.map((d, i) => {
           const t = total(d);
           return (
-            <div key={d.day} className="relative flex h-full min-w-0 flex-1 items-end" onMouseEnter={() => setHover(i)}>
+            <div key={d.day} className="relative flex h-full min-w-0 flex-1 items-end justify-center" onMouseEnter={() => setHover(i)}>
               <span className="grow-y flex w-full flex-col-reverse overflow-hidden rounded-full bg-foreground/[0.05]"
-                style={vars({ height: `${Math.max(3, (t / max) * 100)}%`, "--d": `${300 + i * 18}ms`, opacity: hover === null || hover === i ? 1 : 0.5, transition: "opacity 150ms ease" })}>
+                style={vars({ maxWidth: BAR_MAX_PX, height: `${Math.max(3, (t / max) * 100)}%`, "--d": `${300 + i * 18}ms`, opacity: hover === null || hover === i ? 1 : 0.5, transition: "opacity 150ms ease" })}>
                 {SERIES.map((s) => d[s.key] > 0 && (
                   <span key={s.key} className="block w-full" style={{ height: `${(d[s.key] / Math.max(1, t)) * 100}%`, background: s.color,
                     boxShadow: s.key === "bugs" ? "0 0 14px color-mix(in oklab, var(--signal) 50%, transparent)" : undefined }} />
@@ -121,9 +128,10 @@ export function FeedbackTrendChart({ days, height = 170 }: { days: FeedbackDay[]
  */
 export function SentimentChart({ days }: { days: FeedbackDay[] }) {
   const [hover, setHover] = useState<number | null>(null);
-  // One scale for both directions; each half is as tall as its own largest day (220px shared).
+  // One scale for both directions; each half is as tall as its own largest day (220px shared), and a quiet stretch
+  // keeps a floor on the scale so a single post isn't drawn as a tall bar.
   const maxPos = Math.max(0, ...days.map((d) => d.positive)), maxNeg = Math.max(0, ...days.map((d) => d.negative));
-  const scale = 220 / Math.max(1, maxPos + maxNeg);
+  const scale = 220 / Math.max(MIN_SCALE * 2, maxPos + maxNeg);
   const HP = Math.max(24, maxPos * scale), HN = Math.max(24, maxNeg * scale);
   return (
     <div className="grid gap-2.5 overflow-x-clip">
@@ -132,14 +140,14 @@ export function SentimentChart({ days }: { days: FeedbackDay[] }) {
         <span className="pointer-events-none absolute inset-x-0 border-t border-dashed border-foreground/15" style={{ top: HP }} aria-hidden />
         {days.map((d, i) => (
           <div key={d.day} className="relative grid min-w-0 flex-1" style={{ gridTemplateRows: `${HP}px 2px ${HN}px` }} onMouseEnter={() => setHover(i)}>
-            <span className="flex items-end">
+            <span className="flex items-end justify-center">
               <span className="grow-y w-full rounded-full bg-gradient-to-b from-foreground/70 to-foreground/30"
-                style={vars({ height: `${maxPos ? (d.positive / maxPos) * 100 : 0}%`, "--d": `${300 + i * 18}ms`, opacity: hover === null || hover === i ? 1 : 0.5 })} />
+                style={vars({ maxWidth: BAR_MAX_PX, height: `${(d.positive * scale / HP) * 100}%`, "--d": `${300 + i * 18}ms`, opacity: hover === null || hover === i ? 1 : 0.5 })} />
             </span>
             <span />
-            <span className="flex items-start">
+            <span className="flex items-start justify-center">
               <span className="w-full origin-top rounded-full bg-gradient-to-b from-signal to-[color-mix(in_oklab,var(--signal)_70%,white)] shadow-[0_0_14px_color-mix(in_oklab,var(--signal)_45%,transparent)] fade-in"
-                style={vars({ height: `${maxNeg ? (d.negative / maxNeg) * 100 : 0}%`, "--d": `${400 + i * 18}ms`, opacity: hover === null || hover === i ? 1 : 0.5 })} />
+                style={vars({ maxWidth: BAR_MAX_PX, height: `${(d.negative * scale / HN) * 100}%`, "--d": `${400 + i * 18}ms`, opacity: hover === null || hover === i ? 1 : 0.5 })} />
             </span>
             <Tip show={hover === i} side={i < days.length / 2 ? "left" : "right"} title={long(d.day)}
               lines={[["positive", d.positive, ink(0.7)], ["negative", d.negative, "var(--signal)"], ["neutral, mixed or unclear", d.neutral + d.mixed + d.uncertain], ["not yet classified", d.unclassified]]} />

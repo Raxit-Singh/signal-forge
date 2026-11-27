@@ -13,14 +13,14 @@
    Do **not** run `supabase/tests/harness.sql` against a real project — it is for local tests only.
 4. **Authentication → Sign In / Providers → Email:** enable email provider, keep *Confirm email* ON. Minimum password length 10.
 5. **Authentication → URL Configuration:** Site URL = your production origin (e.g. `https://<app>.vercel.app`). Redirect URLs: add `http://localhost:3000/**` **and** `https://<app>.vercel.app/**` (with `/**`; an entry without it matches only that exact URL). If a redirect isn't allowed, Supabase silently sends the user to the Site URL instead. That is how verification links ended up on `localhost` (fixed 2026-10-18). `npm run auth:check -- --site https://<app>.vercel.app` checks this.
-6. **Authentication → Emails → Templates** (Supabase allows editing templates only once custom SMTP is configured, step 7; until then the defaults are used and work as described below): the link should carry a token hash to `/auth/confirm`, so it works in any browser or device. `{{ .RedirectTo }}` is the `/auth/confirm?next=…` address the app passed, so links follow whichever site (local or deployed) sent them:
+6. **Authentication → Emails → Templates** (Supabase allows editing templates only once custom SMTP is configured, step 7; until then the defaults are used and work as described below): use the branded Heardex templates in `supabase/templates/` (subjects in its README; regenerate with `node scripts/auth-email-templates.mjs`). Their links carry a token hash to `/auth/confirm`, so they work in any browser or device. `{{ .RedirectTo }}` is the `/auth/confirm?next=…` address the app passed, so links follow whichever site (local or deployed) sent them:
    - *Confirm signup:* `<a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email">Confirm email address</a>`
    - *Reset password:* `<a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=recovery">Reset password</a>`
    - *Magic link:* `<a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email">Sign in</a>`
    - *Change email address:* `<a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email_change">Confirm new email address</a>`
 
    The default `{{ .ConfirmationURL }}` templates also work: Supabase verifies the email and `/auth/confirm` exchanges the returned code. They sign the user in only in the browser that started sign-up. In another browser the email is still confirmed and the page asks them to sign in.
-7. **SMTP:** Supabase's default email sender is for testing: it sends only to your Supabase team's addresses and is limited to a few emails per hour for the whole project (2/hour on this project). Configure a custom SMTP provider before inviting real users (decision deferred to M6; free tiers exist).
+7. **SMTP:** Supabase's default email sender is for testing: it comes from "Supabase Auth", sends only to your Supabase team's addresses and is limited to a few emails per hour for the whole project (2/hour on this project). Use Resend (see "Email (Resend)" below for the domain): Authentication → Emails → SMTP Settings → enable custom SMTP; sender email `hello@heardex.com` (sign-up, sign-in and update emails; it takes no replies, and the templates point people to support@heardex.com), sender name `Heardex`; host `smtp.resend.com`, port `465`, username `resend`, password = the Resend API key. Then raise Authentication → Rate Limits → emails per hour (e.g. 30).
 8. Free-tier facts that matter (checked 2026-10-14): 500 MB database, 50,000 MAU, 5 GB egress, **projects pause after 1 week of inactivity**, 2 active free projects. A paused project stops cron jobs — fine for development, not for paying customers.
 
 ## 2. Social sign-in: Google, GitHub, X
@@ -296,7 +296,7 @@ Dodo Payments is the merchant of record: it sells to the customer, handles sales
 ## Email (Resend)
 
 1. Create a Resend account, add and verify a sending domain (DNS records), create an API key with sending access → `RESEND_API_KEY`.
-2. `EMAIL_FROM="SignalForge <reports@your-verified-domain>"`.
+2. `EMAIL_FROM="Heardex <hello@heardex.com>"` (an address on the verified domain). App emails set Reply-To to support@heardex.com, so a reply reaches support. Add a DMARC record too: TXT `_dmarc` = `v=DMARC1; p=none; rua=mailto:support@heardex.com`.
 3. Restart. Without both, emails are recorded as "skipped" in `email_log` and nothing is sent. Supabase Auth emails (sign-up, password reset) are separate: configure custom SMTP in Supabase (Resend provides SMTP) before real users.
 
 ## Error reporting (Sentry)

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>Sign in to Heardex</title>
+</head>
+<body style="margin:0;padding:0;background:#f6f6f7;-webkit-text-size-adjust:100%;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">Sign in to Heardex with one click.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f6f6f7;">
+  <tr>
+    <td align="center" style="padding:40px 16px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;">
+        <tr>
+          <td style="padding:0 4px 20px 4px;">
+            <a href="https://www.heardex.com" style="text-decoration:none;color:#0b0b0c;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:18px;font-weight:600;letter-spacing:-0.3px;">
+              <img src="https://www.heardex.com/apple-icon.png" width="28" height="28" alt="" style="vertical-align:middle;border:0;border-radius:7px;margin-right:8px;">heardex
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#ffffff;border:1px solid #e4e4e8;border-radius:16px;padding:36px 32px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;color:#0b0b0c;">
+            <div style="width:32px;height:3px;background:#dc2f22;border-radius:2px;margin:0 0 24px 0;"></div>
+            <h1 style="margin:0 0 12px 0;font-size:22px;line-height:1.3;font-weight:600;letter-spacing:-0.3px;">Sign in to Heardex</h1>
+            <p style="margin:0 0 28px 0;font-size:15px;line-height:1.6;color:#0b0b0c;">Use the button below to sign in as <strong>{{ .Email }}</strong>.</p>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="border-radius:10px;background:#0b0b0c;">
+                  <a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email" style="display:inline-block;padding:13px 24px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:10px;">Sign in</a>
+                </td>
+              </tr>
+            </table>
+            <p style="margin:28px 0 0 0;font-size:13px;line-height:1.6;color:#63636b;">The link works for one hour and only once. If you didn't ask to sign in, ignore this email.</p>
+            <p style="margin:20px 0 0 0;padding-top:20px;border-top:1px solid #e4e4e8;font-size:12px;line-height:1.6;color:#63636b;">
+              Button not working? Copy this link into your browser:<br>
+              <a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email" style="color:#63636b;word-break:break-all;">{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email</a>
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:20px 4px 0 4px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;line-height:1.6;color:#63636b;">
+            Heardex, product feedback from public posts, ranked. Vadodara, Gujarat, India.<br>
+            This address doesn't receive replies. Questions or a problem? Write to <a href="mailto:support@heardex.com" style="color:#63636b;">support@heardex.com</a> or visit <a href="https://www.heardex.com" style="color:#63636b;">heardex.com</a>.
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>

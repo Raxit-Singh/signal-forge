@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { serverEnv } from "@/lib/server/env";
 import type { Email } from "@/lib/email/templates";
+import { LEGAL } from "@/lib/legal";
 
 /** Email is sent only when the server has a Resend key and a verified sender address. */
 export function emailConfigured(): boolean {
@@ -34,7 +35,8 @@ export async function sendEmail(admin: SupabaseClient, m: {
     const res = await fetchImpl("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json", "Idempotency-Key": m.dedupeKey.slice(0, 256) },
-      body: JSON.stringify({ from: env.EMAIL_FROM, to: [m.to], subject: m.email.subject, html: m.email.html, text: m.email.text, headers: m.headers }),
+      // The sender address (hello@) takes no replies; a reply goes to support.
+      body: JSON.stringify({ from: env.EMAIL_FROM, reply_to: LEGAL.email, to: [m.to], subject: m.email.subject, html: m.email.html, text: m.email.text, headers: m.headers }),
       signal: AbortSignal.timeout(15_000),
     });
     const body = (await res.json().catch(() => ({}))) as { id?: string; message?: string; name?: string };
