@@ -9,6 +9,7 @@ import { idle } from "@/lib/action-state";
 import { countNewMentionsAction, setMentionRelevanceAction } from "@/app/actions/mentions";
 import { useRealtime } from "@/components/realtime/realtime-provider";
 import { BrandLogo } from "@/components/brand-logo";
+import { useNavPending } from "@/components/nav-pending";
 import { cn } from "@/lib/utils";
 
 type Option = { id: string; name: string };
@@ -28,6 +29,9 @@ export function MentionFilters({ sources, types, sentiments, counts }: {
   const params = useSearchParams();
   const [q, setQ] = useState(params.get("q") ?? "");
   const [pending, start] = useTransition();
+  useNavPending(pending);
+  // The tab the user picked lights up at once; the list follows when the server has it.
+  const [picked, setPicked] = useOptimistic<string | null>(null);
 
   // Any filter change goes back to page 1; the date range is kept. push (not replace) so Back undoes it.
   const apply = (patch: Record<string, string | null>) => {
@@ -39,12 +43,16 @@ export function MentionFilters({ sources, types, sentiments, counts }: {
       else sp.delete(k);
     }
     const qs = sp.toString();
-    start(() => router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false }));
+    start(() => {
+      setPicked(qs);
+      router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    });
   };
 
   const hasFilters = ["q", "source", "type", "status", "dupes", "sentiment"].some((k) => params.get(k));
-  const status = params.get("status") ?? "";
-  const sentiment = params.get("sentiment") ?? "";
+  const view = picked !== null ? new URLSearchParams(picked) : params;
+  const status = view.get("status") ?? "";
+  const sentiment = view.get("sentiment") ?? "";
   const tab = status === "review" && !sentiment ? "review"
     : !status && sentiment === "negative" ? "negative"
     : !status && sentiment === "positive" ? "positive"

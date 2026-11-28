@@ -1,4 +1,6 @@
 import "server-only";
+import { notify, notifyAllowance } from "@/lib/server/notifications";
+import { backfillNotice } from "@/lib/notifications";
 import { NEVER, scanStopped } from "./scan-pause";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { pagesToRequest, relevantShare, upperRate } from "@/lib/sources/arrival";
@@ -68,14 +70,25 @@ const FIRST_JOB_PAGES = 2;
 const TASK_COLUMNS = "id, run_id, workspace_id, product_id, query_id, platform, stream, status, cursor, jobs_run, pages, results, inserted, paid_requests, consecutive_failures";
 
 async function refreshRun(admin: SupabaseClient, runId: string) {
-  const { data: tasks } = await admin.from("backfill_tasks").select("status, note").eq("run_id", runId);
-  const list = (tasks ?? []) as Array<{ status: TaskStatus; note: string | null }>;
+  const { data: tasks } = await admin.from("backfill_tasks").select("status, note, inserted, workspace_id, product_id").eq("run_id", runId);
+  const list = (tasks ?? []) as Array<{ status: TaskStatus; note: string | null; inserted: number; workspace_id: string; product_id: string }>;
   const status = runStatus(list);
   const done = status === "completed" || status === "partial" || status === "unavailable";
   const pauseReason = status === "paused" ? list.find((t) => t.status === "paused" && t.note)?.note?.slice(0, 300) ?? null : null;
   await admin.from("backfill_runs").update({
     status, pause_reason: pauseReason, ...(done ? { completed_at: new Date().toISOString() } : {}),
   }).eq("id", runId).neq("status", "canceled");
+  // Tell the workspace once, when the whole history search has finished.
+  if (done && list[0]) {
+    const { data: p } = await admin.from("products").select("name, competitor_of").eq("id", list[0].product_id).maybeSingle();
+    if (p && !p.competitor_of) {
+      const inserted = list.reduce((sum, t) => sum + Number(t.inserted ?? 0), 0);
+      await notify(admin, {
+        workspaceId: list[0].workspace_id, productId: list[0].product_id, kind: "system",
+        ...backfillNotice(p.name as string, inserted, status as "completed" | "partial" | "unavailable"), link: "/mentions", dedupeKey: `backfill:${runId}`,
+      });
+    }
+  }
 }
 
 export interface BackfillResult {
@@ -161,6 +174,7 @@ export async function runBackfillTask(admin: SupabaseClient, job: JobRow, adapte
 
     const ing = await ingestForBackfill(admin, provider, adapter, t.product_id, search.items, new Date());
     const overLimit = ing.overLimit > 0;
+    if (ing.inserted > 0 || overLimit) await notifyAllowance(admin, t.workspace_id);
     const resume = decideResume({
       profile, window, items: search.items, saturated: Boolean(search.saturated),
       pagesRead: search.pagesRequested ?? maxPages, previous: t.cursor, platformName: adapter.name,

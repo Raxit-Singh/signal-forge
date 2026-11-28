@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
-import { getActiveProduct, getProducts, getWorkspaces, getWorkspaceUsage, requireWorkspace } from "@/lib/server/session";
+import { redirect } from "next/navigation";
+import { getActiveProduct, getProducts, getWorkspaces, getWorkspaceUsage, hasRole, requireWorkspace } from "@/lib/server/session";
 import { UsageBanner } from "@/components/usage-banner";
 import { getTimeZone } from "@/lib/server/timezone";
 import { Sidebar } from "@/components/app-shell/sidebar";
@@ -14,6 +15,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const { user, workspace } = await requireWorkspace();
   const supabase = await createClient();
   const activeProduct = await getActiveProduct(workspace.id);
+  // Setup isn't finished (browser Back, or the logo during onboarding): go back to the step the admin was on rather
+  // than an empty dashboard. /onboarding resumes it. Members can't run onboarding, so they're let in.
+  if (!workspace.onboardingCompletedAt && hasRole(workspace.role, "admin")) {
+    const all = await getProducts(workspace.id);
+    if (all.length === 0) redirect("/onboarding/product");
+    if (all.some((p) => p.onboardingStep < 6)) redirect("/onboarding");
+  }
   const now = new Date();
   const since = new Date(now.getTime() - 86_400_000).toISOString();
   const [workspaces, products, notifRes, unreadRes, usage, recentRes, openRes, profileRes] = await Promise.all([

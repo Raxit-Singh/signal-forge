@@ -1,4 +1,6 @@
 import "server-only";
+import { notify } from "@/lib/server/notifications";
+import { spikeNotice } from "@/lib/notifications";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildSeries, type Bucket, type CoverageRow, type SeriesRow } from "@/lib/analytics/buzz";
 import {
@@ -106,6 +108,23 @@ export async function detectSpikesForProduct(
       status: e.ev.status, baseline_periods: e.ev.baselinePeriods, needed_periods: e.ev.neededPeriods, evaluated_at: now.toISOString(),
     })), { onConflict: "product_id,scope,scope_key,granularity" });
     if (evErr) throw new Error(`spike evaluations not stored (${evErr.code ?? "db"})`);
+    // A confirmed jump in the whole product's daily mentions, in the last two days, reaches the bell (once per day).
+    if (r.bucket === "day") {
+      const recent = now.getTime() - 2 * DAY;
+      const spike = platformRows
+        .filter((x) => x.platform === null && x.confidence === "confirmed" && new Date(x.period_start as string).getTime() >= recent)
+        .sort((a, b) => String(b.period_start).localeCompare(String(a.period_start)))[0];
+      if (spike) {
+        const { data: named } = await admin.from("products").select("name, competitor_of").eq("id", product.id).maybeSingle();
+        if (named && !named.competitor_of) {
+          await notify(admin, {
+            workspaceId: product.workspace_id, productId: product.id, kind: "spike",
+            ...spikeNotice(named.name as string, Number(spike.observed), Number(spike.expected), spike.period_start as string),
+            link: "/buzz", dedupeKey: `spike:${product.id}:${String(spike.period_start).slice(0, 10)}`,
+          });
+        }
+      }
+    }
     stored += platformRows.length + keywordRows.length;
     confirmed += [...platformRows, ...keywordRows].filter((x) => x.confidence === "confirmed").length;
   }

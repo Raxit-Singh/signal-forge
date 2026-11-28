@@ -19,6 +19,7 @@ import { Mark, ProductCard, SidebarNav, WorkspaceSwitcher, type ShellCounts, typ
 import { NAV } from "./nav";
 import { CommandMenu, useCommandMenuShortcut } from "./command-menu";
 import { ReportBug } from "./report-bug";
+import { useNavPending } from "@/components/nav-pending";
 import { START_TOUR_EVENT } from "./product-tour";
 import { LiveIndicator } from "@/components/realtime/realtime-provider";
 import { RANGE_PRESETS, parseRange } from "@/lib/domain/date-range";
@@ -59,6 +60,8 @@ function DateRangePicker() {
   const range = parseRange(Object.fromEntries(params.entries()), new Date());
   const [from, setFrom] = useState(range.custom ? range.fromDate : "");
   const [to, setTo] = useState(range.custom ? range.toDate : "");
+  const [pending, start] = useTransition();
+  useNavPending(pending);
 
   const apply = (next: Record<string, string | null>) => {
     const sp = new URLSearchParams(params.toString());
@@ -66,7 +69,7 @@ function DateRangePicker() {
       if (v === null) sp.delete(k);
       else sp.set(k, v);
     }
-    router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
+    start(() => router.replace(`${pathname}?${sp.toString()}`, { scroll: false }));
   };
 
   return (
@@ -162,7 +165,7 @@ function NotificationCenter({ workspaceId, items, unread }: { workspaceId: strin
         </div>
         {items.length === 0 ? (
           <p className="px-3 py-8 text-center text-[13px] text-muted-foreground">
-            No notifications yet. Spike alerts and reports will appear here.
+            No notifications yet. New issues, spikes, finished history searches, weekly reports and plan limits appear here.
           </p>
         ) : (
           <ul className="max-h-96 divide-y overflow-y-auto">

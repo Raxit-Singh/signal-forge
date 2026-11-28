@@ -69,6 +69,9 @@ export function KeywordEditor({
   const enabledCount = aliases.filter((a) => a.enabled).length;
   const atLimit = Boolean(allowance) && enabledCount >= allowance!.available;
   const overLimit = Boolean(allowance) && enabledCount > allowance!.available;
+  // One keyword for this product and it's the product name (always on): adding others could never switch them on.
+  const hasBrand = productName !== undefined && aliases.some((a) => isBrandTerm(a.term, productName));
+  const onlyBrand = Boolean(allowance) && allowance!.available <= 1 && hasBrand && aliases.every((a) => isBrandTerm(a.term, productName!) || !a.enabled);
 
   return (
     <form action={action} className="grid gap-4">
@@ -85,6 +88,8 @@ export function KeywordEditor({
           const needsContext = a.isAmbiguous && a.contextTerms.length === 0;
           // The product name is always monitored: it can't be removed or switched off (only given context words).
           const brand = productName !== undefined && isBrandTerm(a.term, productName);
+          // On a one-keyword plan only the product name can be on; the rest stay saved (off) but aren't shown.
+          if (onlyBrand && !brand) return null;
           return (
             <li key={a.term} className={cn("grid gap-2.5 rounded-2xl border p-3.5 transition-colors",
               a.enabled ? "border-foreground/[0.12] bg-foreground/[0.04]" : "border-foreground/[0.06] bg-transparent")}>
@@ -117,26 +122,32 @@ export function KeywordEditor({
                       onChange={(e) =>
                         update(i, {
                           isAmbiguous: e.target.checked,
-                          enabled: e.target.checked && a.contextTerms.length === 0 ? false : a.enabled,
+                          // The product name is on whenever it can be.
+                          enabled: e.target.checked && a.contextTerms.length === 0 ? false : brand ? true : a.enabled,
                         })
                       }
                     />
                     Needs context
                   </label>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    disabled={brand}
-                    title={brand ? "Your product name is always monitored" : undefined}
-                    aria-label={`Remove ${a.term}`}
-                    onClick={() => setAliases((l) => l.filter((_, j) => j !== i))}
-                  >
-                    <Trash2 />
-                  </Button>
+                  {/* The product name can't be removed, so it gets no remove button at all. */}
+                  {!brand && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Remove ${a.term}`}
+                      onClick={() => setAliases((l) => l.filter((_, j) => j !== i))}
+                    >
+                      <Trash2 />
+                    </Button>
+                  )}
                 </div>
               </div>
-              {a.reason && <p className="text-xs text-muted-foreground">{a.reason}</p>}
+              {needsContext ? (
+                <p className="text-xs text-muted-foreground">
+                  Off until you add a context word below{brand ? "" : ", or untick “Needs context” if the word is distinctive"}. A mention then counts only when one of those words also appears.
+                </p>
+              ) : a.reason ? <p className="text-xs text-muted-foreground">{a.reason}</p> : null}
               {a.isAmbiguous && (
                 <div className="grid gap-2 sm:grid-cols-2">
                   <label className="grid gap-1 text-xs">
@@ -168,6 +179,13 @@ export function KeywordEditor({
         })}
       </ul>
 
+      {onlyBrand ? (
+        <p className="rounded-2xl border border-dashed p-4 text-[13px] text-muted-foreground">
+          Your {allowance!.planName} plan includes {allowance!.max === 1 ? "one keyword" : `${allowance!.max} keywords`}, and your product name
+          uses it: every mention of {productName} is found. To listen for more names, handles or misspellings,{" "}
+          <a href="/settings/billing" className="font-medium text-foreground underline underline-offset-2">see the plans</a>.
+        </p>
+      ) : (
       <div className="flex gap-2">
         <label htmlFor={addId} className="sr-only">Add a keyword</label>
         <Input
@@ -187,6 +205,7 @@ export function KeywordEditor({
           <Plus /> Add
         </Button>
       </div>
+      )}
 
       {overLimit && allowance && (
         <p className="text-xs text-negative" role="alert">
@@ -203,7 +222,7 @@ export function KeywordEditor({
             </span>
           )}
           <p className="text-xs text-muted-foreground tabular">
-            {enabledCount} of {aliases.length} keywords active
+            {enabledCount} of {onlyBrand ? aliases.filter((x) => isBrandTerm(x.term, productName!)).length : aliases.length} keywords active
             {allowance && ` · plan allows ${allowance.available}${allowance.available !== allowance.max ? ` here (${allowance.max} per workspace)` : ""}`}
           </p>
         </div>

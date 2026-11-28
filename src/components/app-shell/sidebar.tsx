@@ -1,12 +1,13 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "motion/react";
 import { Check, ChevronsUpDown, Plus, Zap } from "lucide-react";
 import { NAV, NAV_GROUPS } from "./nav";
 import { GLIDE } from "@/components/motion";
+import { LinkPending } from "@/components/nav-pending";
 import { HeardexMark } from "@/components/brand";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -39,6 +40,9 @@ export function Mark({ className }: { className?: string }) {
 /** Grouped navigation (sidebar and the mobile sheet). The active item gets a gliding red marker. */
 export function SidebarNav({ counts, onNavigate }: { counts?: ShellCounts; onNavigate?: () => void }) {
   const pathname = usePathname();
+  // The marker glides to a clicked item at once, before its page arrives; it follows the address again after.
+  const [clicked, setClicked] = useState<{ href: string; from: string } | null>(null);
+  const current = clicked && clicked.from === pathname ? clicked.href : pathname;
   const badge: Record<string, number | undefined> = { "/mentions": counts?.mentions24h, "/feedback": counts?.openIssues };
   return (
     <nav aria-label="Main" className="grid gap-5">
@@ -46,10 +50,11 @@ export function SidebarNav({ counts, onNavigate }: { counts?: ShellCounts; onNav
         <div key={group} className="grid gap-0.5" data-tour={`group:${group}`}>
           <p className="px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">{group}</p>
           {NAV.filter((n) => n.group === group && n.href !== "/settings").map(({ href, label, icon: Icon }) => {
-            const active = isActive(pathname, href);
+            const active = isActive(current, href);
             const n = badge[href];
             return (
-              <Link key={href} href={href} onClick={onNavigate} aria-current={active ? "page" : undefined} data-tour={href}
+              <Link key={href} href={href} onClick={() => { if (!isActive(pathname, href)) setClicked({ href, from: pathname }); onNavigate?.(); }}
+                aria-current={isActive(pathname, href) ? "page" : undefined} data-tour={href}
                 className={cn("press relative flex h-9 items-center gap-3 rounded-xl px-3 text-[13px] transition-colors",
                   active ? "text-foreground" : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground")}>
                 {active && (
@@ -58,6 +63,7 @@ export function SidebarNav({ counts, onNavigate }: { counts?: ShellCounts; onNav
                   </motion.span>
                 )}
                 <Icon className="relative size-4 shrink-0" strokeWidth={1.75} aria-hidden />
+                <LinkPending />
                 <span className="relative flex-1 truncate">{label}</span>
                 {n !== undefined && n > 0 && <span className="relative rounded-md bg-foreground/[0.06] px-1.5 text-[11px] tabular-nums text-foreground/80">{n > 999 ? "999+" : n}</span>}
               </Link>

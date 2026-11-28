@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useOptimistic, useState, useTransition } from "react";
+import { useNavPending } from "@/components/nav-pending";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Area, CartesianGrid, ComposedChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Loader2 } from "lucide-react";
@@ -34,6 +35,9 @@ export function TrendGraph(p: Props) {
   const pathname = usePathname();
   const params = useSearchParams();
   const [pending, start] = useTransition();
+  useNavPending(pending);
+  // The chosen range lights up at once; the graph follows when the server has it.
+  const [rangeKey, setRangeKey] = useOptimistic(p.range.key as string);
   const [custom, setCustom] = useState(p.range.key === "custom");
   const [from, setFrom] = useState(p.range.key === "custom" ? p.range.from : "");
   const [to, setTo] = useState(p.range.key === "custom" ? p.range.to : "");
@@ -57,7 +61,10 @@ export function TrendGraph(p: Props) {
   const go = (next: Record<string, string | null>) => {
     const sp = new URLSearchParams(params.toString());
     for (const [k, v] of Object.entries(next)) if (v === null) sp.delete(k); else sp.set(k, v);
-    start(() => router.replace(`${pathname}?${sp.toString()}`, { scroll: false }));
+    start(() => {
+      if (next.range) setRangeKey(next.range);
+      router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
+    });
   };
   const scopeValue = p.scope.kind === "all" ? "" : `${p.scope.kind}:${p.scope.value}`;
   const firstMonitored = p.points.findIndex((x) => x.coverage !== "none");
@@ -83,7 +90,7 @@ export function TrendGraph(p: Props) {
           ]} />
         <div role="radiogroup" aria-label="Time range" className="panel flex rounded-full p-1 text-[13px]">
           {[...RANGE_PRESETS.map((r) => ({ key: r.key, label: r.short })), { key: "custom", label: "Custom" }].map((r) => {
-            const on = r.key === "custom" ? custom : p.range.key === r.key && !custom;
+            const on = r.key === "custom" ? custom : rangeKey === r.key && !custom;
             return (
               <button key={r.key} type="button" role="radio" aria-checked={on}
                 onClick={() => { if (r.key === "custom") setCustom(true); else { setCustom(false); go({ range: r.key, from: null, to: null }); } }}

@@ -8,6 +8,8 @@ import { sha256 } from "@/lib/ai/pipeline";
 import { AiError, type FeedbackCategory, type Sentiment, type Severity } from "@/lib/ai/types";
 import { budgetedCall, budgetedEmbed, cacheGet, cachePut, resolveAi, type ResolvedAi } from "./gateway";
 import { productContext } from "./classify";
+import { notify } from "@/lib/server/notifications";
+import { newIssuesNotice } from "@/lib/notifications";
 
 /** Feedback older than this no longer forms new issues (existing ones keep their history). */
 const WINDOW_DAYS = 90;
@@ -202,6 +204,7 @@ async function reclusterProductLocked(admin: SupabaseClient, productId: string, 
     await admin.from("feedback_clusters").update(row(u.cluster, product.workspaceId, productId, grouping, pOf.get(u.cluster)!)).eq("id", u.id);
     await replaceMembers(admin, u.id, product.workspaceId, u.cluster);
   }
+  const created: Array<{ id: string; title: string; category: string }> = [];
   for (const c of plan.inserts) {
     const { data: ins, error: insErr } = await admin.from("feedback_clusters").insert(row(c, product.workspaceId, productId, grouping, pOf.get(c)!)).select("id").single();
     if (insErr || !ins) {
@@ -209,6 +212,15 @@ async function reclusterProductLocked(admin: SupabaseClient, productId: string, 
       continue;
     }
     await replaceMembers(admin, ins.id as string, product.workspaceId, c);
+    created.push({ id: ins.id as string, title: c.title, category: c.category });
+  }
+  // New issues reach the bell (one notice per run, however many there are).
+  const notice = newIssuesNotice(product.name, created);
+  if (notice) {
+    await notify(admin, {
+      workspaceId: product.workspaceId, productId, ...notice,
+      link: created.length === 1 ? `/insights/${created[0]!.id}` : "/feedback", dedupeKey: `issues:${created[0]!.id}`,
+    });
   }
   if (plan.deletes.length) await admin.from("feedback_clusters").delete().in("id", plan.deletes);
   return { clusters: computed.length, inserted: plan.inserts.length, removed: plan.deletes.length, grouping };

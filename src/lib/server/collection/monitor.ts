@@ -1,4 +1,5 @@
 import "server-only";
+import { notify, notifyAllowance } from "@/lib/server/notifications";
 import { NEVER, scanStopped } from "./scan-pause";
 import { failureRetry } from "@/lib/sources/retry";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -408,6 +409,10 @@ export async function runMonitorQuery(
       results.push({ ...r.result, nextIntervalMinutes: decision.intervalMinutes, continuation: gap !== null, gapLeft: resume.gap !== null, pagesRequested: search.pagesRequested ?? maxPages });
     }
     if (expandedParents.length > 0) await recordExpansions(admin, provider, members, expandedParents, expansion, now);
+    // Allowance notices for workspaces that just received (or were held back from) mentions.
+    if (results.some((x) => (x.inserted ?? 0) > 0 || (x.overLimit ?? 0) > 0)) {
+      for (const ws of new Set(members.map((m) => m.q.workspace_id))) await notifyAllowance(admin, ws);
+    }
     for (const [ledgerId, v] of perRequest) {
       await admin.rpc("svc_annotate_api_spend", { p_ledger_id: ledgerId, p_relevant: v.relevant, p_duplicates: v.duplicates });
     }
@@ -418,6 +423,17 @@ export async function runMonitorQuery(
     const err = e instanceof SourceError ? e : new SourceError("transient", e instanceof Error ? e.message : "Unknown error");
     if (err.kind !== "budget") {
       await recordHealth(admin, provider, { status: err.kind === "auth" ? "error" : "degraded", error: err.message });
+    }
+    // A customer's own connection stopped working (Google Play key revoked or permission removed): tell them, once a day.
+    if (err.kind === "auth" && provider === "google_play") {
+      const today = now.toISOString().slice(0, 10);
+      for (const m of members) {
+        await notify(admin, {
+          workspaceId: m.q.workspace_id, productId: m.q.product_id, kind: "integration_error",
+          title: "Google Play reviews stopped", body: "Heardex couldn't read your Play Console with the saved key. Reconnect Google Play to start collecting reviews again.",
+          link: "/settings/connections", dedupeKey: `gplay-auth:${m.q.product_id}:${today}`,
+        });
+      }
     }
     // Checkpoints (and any unread gap) don't move; the next run re-searches (sooner after failures).
     for (const m of members) {

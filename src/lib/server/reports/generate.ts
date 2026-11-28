@@ -1,4 +1,5 @@
 import "server-only";
+import { notify } from "@/lib/server/notifications";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { coverageRows, coveredShare, totals } from "@/lib/server/analytics/buzz";
 import { getCompetitorComparison } from "@/lib/server/analytics/competitors";
@@ -38,7 +39,7 @@ async function periodNumbers(admin: SupabaseClient, productId: string, from: Dat
  */
 export async function generateReport(
   admin: SupabaseClient, productId: string, kind: "weekly" | "custom", period: { start: Date; end: Date }, now = new Date(),
-): Promise<{ id: string } | null> {
+): Promise<{ id: string; workspaceId: string; productName: string; periodLabel: string } | null> {
   const { data: p } = await admin.from("products").select("id, workspace_id, name, created_at, competitor_of, archived_at").eq("id", productId).maybeSingle();
   if (!p || p.competitor_of || p.archived_at) return null;
   const { data: q } = await admin.from("monitoring_queries").select("provider").eq("product_id", productId).eq("enabled", true);
@@ -128,7 +129,7 @@ export async function generateReport(
     status: "ready", data, created_at: now.toISOString(),
   }, { onConflict: "product_id,kind,period_start" }).select("id").single();
   if (error || !row) throw new Error(`save report: ${error?.message}`);
-  return { id: row.id as string };
+  return { id: row.id as string, workspaceId: p.workspace_id as string, productName: p.name as string, periodLabel: body.period.label };
 }
 
 /** Daily: last week's report for every active product that doesn't have one yet. */
@@ -145,6 +146,10 @@ export async function generateWeeklyReports(admin: SupabaseClient, now = new Dat
       const r = await generateReport(admin, p.id as string, "weekly", week, now);
       if (r) {
         n++;
+        await notify(admin, {
+          workspaceId: r.workspaceId, productId: p.id as string, kind: "report_ready",
+          title: `Weekly report ready for ${r.productName}`, body: r.periodLabel, link: `/reports/${r.id}`, dedupeKey: `report:${r.id}`,
+        });
         await emailWeeklyReport(admin, r.id).catch((e) => console.error(`[reports] email ${r.id}: ${e instanceof Error ? e.message : e}`));
       }
     } catch (e) {
