@@ -97,7 +97,7 @@ export function AddCompetitorForm({ productId, disabledReason, keywordsLeft, men
         </label>
       )}
       <div className="flex flex-wrap items-center gap-2">
-        <SubmitButton size="sm" pendingLabel="Adding…" disabled={Boolean(disabledReason)}>Add competitor</SubmitButton>
+        <SubmitButton size="sm" pendingLabel="Starting…" disabled={Boolean(disabledReason)}>Start tracking</SubmitButton>
         {disabledReason && <span className="text-xs text-muted-foreground">{disabledReason}</span>}
       </div>
       <FormMessage state={state} />

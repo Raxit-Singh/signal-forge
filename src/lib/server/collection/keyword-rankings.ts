@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { coverageRows, coveredShare, totals } from "@/lib/server/analytics/buzz";
+import { analyticsRpc, coverageRows, coveredShare, totals, totalsMany } from "@/lib/server/analytics/buzz";
 import {
   coverageStatus, keywordPerformance, platformPerformance,
   type CountRow, type CoverageStatus, type KeywordPerformance, type PlatformPerformance,
@@ -44,11 +44,14 @@ export async function getKeywordRankings(
   const active = o.platforms.filter((p) => p.groups > 0 && p.state !== "not_configured" && p.state !== "not_enabled");
   const ids = active.map((p) => p.id);
 
-  const [cur, prev, curTotals, prevTotals, prevCov] = await Promise.all([
-    sb.rpc("keyword_platform_counts", { p_product_id: productId, p_from: from.toISOString(), p_to: to.toISOString() }),
-    sb.rpc("keyword_platform_counts", { p_product_id: productId, p_from: prevFrom.toISOString(), p_to: from.toISOString() }),
-    totals(sb, productId, from, to, null),
-    totals(sb, productId, prevFrom, from, null),
+  // Both periods' totals come from one scan (on a large product, separate scans racing each other hit the timeout).
+  const [cur, prev, [curTotals, prevTotals], prevCov] = await Promise.all([
+    analyticsRpc(sb, "keyword_platform_counts", { p_product_id: productId, p_from: from.toISOString(), p_to: to.toISOString() }),
+    analyticsRpc(sb, "keyword_platform_counts", { p_product_id: productId, p_from: prevFrom.toISOString(), p_to: from.toISOString() }),
+    // One scan reaches at most 400 days, so very long custom ranges keep two.
+    to.getTime() - prevFrom.getTime() <= 400 * 86_400_000
+      ? totalsMany(sb, productId, [[from, to], [prevFrom, from]] as const, null)
+      : Promise.all([totals(sb, productId, from, to, null), totals(sb, productId, prevFrom, from, null)]),
     ids.length ? coverageRows(sb, productId, prevFrom, from, "day", "UTC", ids) : Promise.resolve([]),
   ]);
   if (cur.error || prev.error) throw new Error(`keyword_platform_counts failed (${(cur.error ?? prev.error)!.code ?? "db"})`);

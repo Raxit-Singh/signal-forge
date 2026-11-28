@@ -23,8 +23,8 @@ test.afterEach(async () => {
 test("free plan can't add competitors", async ({ page }) => {
   await page.goto(await signInPath(user!.email, "/competitors"));
   const main = page.locator("#main");
-  await expect(main.getByText("doesn't include competitor tracking")).toBeVisible();
-  await expect(main.getByRole("button", { name: "Add competitor" })).toBeDisabled();
+  await expect(main.getByTestId("competitors-not-included")).toBeVisible();
+  await expect(main.getByTestId("add-competitor")).toHaveCount(0);
 });
 
 test("add → searches created → share of voice, volume and sentiment on common sources → pause → remove", async ({ page }) => {
@@ -39,11 +39,11 @@ test("add → searches created → share of voice, volume and sentiment on commo
   const form = main.getByTestId("add-competitor");
   await form.getByLabel("Competitor name").fill("Zorblax Metrics");
   await form.getByLabel(/Extra keywords/).fill("zorblax.io, Zorblax app, zorblax hq");
-  await form.getByRole("button", { name: "Add competitor" }).click();
+  await form.getByRole("button", { name: "Start tracking" }).click();
   await expect(form.getByText("Up to 2 extra keywords")).toBeVisible();
   // Keywords are shared with the product (Pro: 3 in total), so the name plus one extra.
   await form.getByLabel(/Extra keywords/).fill("zorblax.io");
-  await form.getByRole("button", { name: "Add competitor" }).click();
+  await form.getByRole("button", { name: "Start tracking" }).click();
   await expect(form.getByText("Tracking Zorblax Metrics")).toBeVisible();
 
   const comp = main.getByTestId("competitor");

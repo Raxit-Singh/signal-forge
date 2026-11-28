@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   normalizeWebsiteUrl, parseGithubRepo, parseAppStoreUrl, parsePlayStoreUrl, safeRedirectPath,
 } from "./urls.ts";
-import { suggestAliases, isAmbiguousTerm, isAmbiguousCustomTerm, splitWords, contextKeywords, ensureBrandTerm, retargetBrandAliases } from "./aliases.ts";
+import { contextSuggestions, suggestAliases, isAmbiguousTerm, isAmbiguousCustomTerm, splitWords, contextKeywords, ensureBrandTerm, retargetBrandAliases } from "./aliases.ts";
 import { checkKeywordLimit, checkProductLimit, effectivePlanId, formatPrice, intervalPrice, mentionUsageLevel, planFromRow, planLimitMessage, usageFromRpc } from "./plans.ts";
 import { fitSuggestionsToAllowance } from "./keyword-allowance.ts";
 import { checkKeyShape, keyHint } from "./ai-providers.ts";
@@ -283,4 +283,12 @@ test("yearly billing: price a month, a year, and the saving over twelve monthly 
   assert.deepEqual(intervalPrice({ priceCentsMonthly: 12000, priceCentsYearly: 120000 }, "year"), { perMonthCents: 10000, perYearCents: 120000, saveCents: 24000 });
   assert.deepEqual(intervalPrice({ priceCentsMonthly: 12000, priceCentsYearly: 120000 }, "month"), { perMonthCents: 12000, perYearCents: 144000, saveCents: 0 });
   assert.deepEqual(intervalPrice({ priceCentsMonthly: 0, priceCentsYearly: null }, "year"), { perMonthCents: 0, perYearCents: 0, saveCents: 0 });
+});
+
+test("contextSuggestions offers the website first, then words from the description, without the name", () => {
+  const out = contextSuggestions({ name: "abc", websiteDomain: "ABC.app", category: "Analytics", description: "Analytics for product teams. abc tracks analytics." });
+  assert.equal(out[0], "abc.app");
+  assert.ok(out.includes("analytics"));
+  assert.ok(!out.includes("abc"));
+  assert.deepEqual(contextSuggestions({ name: "abc", websiteDomain: null, category: null, description: null }), []);
 });

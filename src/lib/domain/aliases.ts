@@ -103,6 +103,13 @@ export function contextKeywords(input: Pick<AliasInput, "category" | "descriptio
     .map(([w]) => w);
 }
 
+/** Words offered as one-click context for a common-word keyword: the website's domain, then distinctive words from the category and description. */
+export function contextSuggestions(input: Pick<AliasInput, "category" | "description" | "name" | "websiteDomain">, limit = 6): string[] {
+  const out = contextKeywords(input, limit);
+  if (input.websiteDomain) out.unshift(input.websiteDomain.toLowerCase());
+  return [...new Set(out)].slice(0, limit);
+}
+
 function push(list: AliasSuggestion[], s: AliasSuggestion) {
   const key = s.term.toLowerCase();
   if (s.term.trim().length < 2 || s.term.length > 100) return;

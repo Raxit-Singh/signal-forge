@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ensureBrandTerm } from "@/lib/domain/aliases";
+import { contextSuggestions, ensureBrandTerm } from "@/lib/domain/aliases";
+import { normalizeWebsiteUrl } from "@/lib/domain/urls";
 import { notFound, redirect } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
@@ -19,7 +20,7 @@ export default async function ProductKeywordsPage({ params }: { params: Promise<
 
   const supabase = await createClient();
   const [{ data: product }, { data: aliases }] = await Promise.all([
-    supabase.from("products").select("id, name").eq("id", productId).eq("workspace_id", workspace.id).is("archived_at", null).is("competitor_of", null).maybeSingle(),
+    supabase.from("products").select("id, name, website_url, category, description").eq("id", productId).eq("workspace_id", workspace.id).is("archived_at", null).is("competitor_of", null).maybeSingle(),
     supabase
       .from("product_aliases")
       .select("term, kind, is_ambiguous, context_terms, negative_terms, enabled, source")
@@ -28,6 +29,11 @@ export default async function ProductKeywordsPage({ params }: { params: Promise<
   ]);
   if (!product) notFound();
   const allowance = await getKeywordSlots(workspace.id, productId);
+  const site = product.website_url ? normalizeWebsiteUrl(product.website_url as string) : null;
+  const suggestions = contextSuggestions({
+    name: product.name as string, websiteDomain: site?.ok ? site.value.domain : null,
+    category: product.category as string | null, description: product.description as string | null,
+  });
 
   const initial: EditableAlias[] = (aliases ?? []).map((a) => ({
     term: a.term as string,
@@ -52,7 +58,7 @@ export default async function ProductKeywordsPage({ params }: { params: Promise<
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <KeywordEditor productId={product.id as string} initial={ensureBrandTerm(initial, product.name as string).aliases} mode="settings" allowance={allowance} productName={product.name as string} />
+          <KeywordEditor productId={product.id as string} initial={ensureBrandTerm(initial, product.name as string).aliases} mode="settings" allowance={allowance} productName={product.name as string} contextSuggestions={suggestions} />
         </CardContent>
       </Card>
     </>

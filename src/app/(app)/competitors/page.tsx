@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { PackagePlus, Plus, Swords } from "lucide-react";
 import { CountUp } from "@/components/motion";
 import { createClient } from "@/lib/supabase/server";
@@ -47,6 +48,10 @@ export default async function CompetitorsPage({ searchParams }: { searchParams: 
     supabase.from("product_aliases").select("id, products!inner(archived_at)", { count: "exact", head: true })
       .eq("workspace_id", workspace.id).eq("enabled", true).is("products.archived_at", null),
   ]);
+  // Plans that include competitor tracking, for the note shown when this one doesn't.
+  const { data: planRows } = plan.maxCompetitorsPerProduct === 0
+    ? await supabase.from("plans").select("name, max_competitors_per_product").eq("is_public", true).gt("max_competitors_per_product", 0).order("sort_order")
+    : { data: [] as Array<{ name: string; max_competitors_per_product: number }> };
   const d = await getCompetitorComparison(supabase, { id: product.id, name: product.name, createdAt: p?.created_at as string }, range, tz);
   const canManage = hasRole(workspace.role, "admin");
   const limit = plan.maxCompetitorsPerProduct;
@@ -92,10 +97,16 @@ export default async function CompetitorsPage({ searchParams }: { searchParams: 
                 Add competitors to see who owns the conversation: share of voice, daily volume and sentiment, measured on the same sources over the same time.
               </p>
             )}
-            {canManage && (
+            {/* Only a shortcut down to the form (whose own button adds); hidden when the plan can't add any. */}
+            {canManage && limit > 0 && !addBlocked && (
               <a href="#add-competitor" className="press flex h-11 w-fit items-center gap-2 rounded-full bg-primary px-5 text-[14px] font-medium text-primary-foreground shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12),0_8px_24px_-8px_color-mix(in_oklab,var(--signal)_80%,transparent)]">
-                <Plus className="size-4" aria-hidden />Add competitor
+                <Plus className="size-4" aria-hidden />Add a competitor
               </a>
+            )}
+            {canManage && limit === 0 && (
+              <Link href="/settings/billing" className="press flex h-11 w-fit items-center gap-2 rounded-full bg-primary px-5 text-[14px] font-medium text-primary-foreground">
+                See plans with competitor tracking
+              </Link>
             )}
           </div>
 
@@ -257,7 +268,17 @@ export default async function CompetitorsPage({ searchParams }: { searchParams: 
               ))}
             </ul>
           )}
-          {canManage ? (
+          {canManage && limit === 0 ? (
+            <div className="panel grid gap-1.5 rounded-[18px] p-5 text-[13px]" data-testid="competitors-not-included">
+              <p className="text-[15px] font-medium">Not included in your {plan.name} plan</p>
+              <p className="text-muted-foreground">
+                {(planRows ?? []).length > 0
+                  ? <>Competitor tracking comes with {(planRows ?? []).map((r) => `${r.name} (${r.max_competitors_per_product} per product)`).join(" and ")}. </>
+                  : <>Competitor tracking comes with higher plans. </>}
+                <Link href="/settings/billing" className="font-medium text-foreground underline underline-offset-2">Compare plans</Link>
+              </p>
+            </div>
+          ) : canManage ? (
             <div id="add-competitor" className="panel scroll-mt-20 rounded-[18px] p-5">
               <AddCompetitorForm productId={product.id} disabledReason={addBlocked} keywordsLeft={limit > 0 ? keywordsLeft : null}
                 mentionsLeft={usage?.mentionsRemaining ?? null} historyDays={plan.historyDays} />

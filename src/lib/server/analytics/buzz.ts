@@ -4,6 +4,18 @@ import {
   buildSeries, growth, viralityScore, zonedDayStart, type Bucket, type CoverageRow, type Growth, type SeriesPoint, type SeriesRow, type Virality,
 } from "@/lib/analytics/buzz";
 
+/**
+ * An analytics RPC, tried a second time when the database cancels it for taking too long (57014).
+ * On a large product several of these run at once and one can lose the race under load;
+ * a page shouldn't fail for that when a second try usually finishes in about a second.
+ */
+export async function analyticsRpc(sb: SupabaseClient, fn: string, args: Record<string, unknown>) {
+  const first = await sb.rpc(fn, args);
+  if (first.error?.code !== "57014") return first;
+  console.warn(`[analytics] ${fn} timed out; trying once more`);
+  return sb.rpc(fn, args);
+}
+
 export interface TotalsRow {
   source: string;
   relevant: number;
@@ -65,7 +77,7 @@ function sumTotals(rows: TotalsRow[], sources: string[] | null): PeriodTotals {
 }
 
 export async function totals(sb: SupabaseClient, productId: string, from: Date, to: Date, sources: string[] | null): Promise<PeriodTotals> {
-  const { data, error } = await sb.rpc("buzz_totals", { p_product_id: productId, p_from: from.toISOString(), p_to: to.toISOString(), p_sources: sources });
+  const { data, error } = await analyticsRpc(sb, "buzz_totals", { p_product_id: productId, p_from: from.toISOString(), p_to: to.toISOString(), p_sources: sources });
   if (error) throw new Error(`buzz_totals failed (${error.code ?? "db"})`);
   return sumTotals((data ?? []) as TotalsRow[], null);
 }
@@ -74,7 +86,7 @@ export async function totals(sb: SupabaseClient, productId: string, from: Date, 
 export async function totalsMany<const W extends ReadonlyArray<readonly [Date, Date]>>(
   sb: SupabaseClient, productId: string, windows: W, sources: string[] | null,
 ): Promise<{ -readonly [K in keyof W]: PeriodTotals }> {
-  const { data, error } = await sb.rpc("buzz_totals_windows", {
+  const { data, error } = await analyticsRpc(sb, "buzz_totals_windows", {
     p_product_id: productId, p_from: windows.map(([f]) => f.toISOString()), p_to: windows.map(([, t]) => t.toISOString()), p_sources: sources,
   });
   if (error) throw new Error(`buzz_totals_windows failed (${error.code ?? "db"})`);
@@ -83,7 +95,7 @@ export async function totalsMany<const W extends ReadonlyArray<readonly [Date, D
 }
 
 export async function coverageRows(sb: SupabaseClient, productId: string, from: Date, to: Date, bucket: Bucket, tz: string, sources: string[] | null) {
-  const { data, error } = await sb.rpc("buzz_coverage", {
+  const { data, error } = await analyticsRpc(sb, "buzz_coverage", {
     p_product_id: productId, p_from: from.toISOString(), p_to: to.toISOString(), p_bucket: bucket, p_tz: tz, p_sources: sources,
   });
   if (error) throw new Error(`buzz_coverage failed (${error.code ?? "db"})`);
@@ -122,7 +134,7 @@ export async function getBuzzDashboard(
 
   const ago = (days: number) => new Date(now.getTime() - days * D);
   const [seriesRes, cov, windowTotals, covGrowth, spikesRes, eventsRes, kwSpikesRes, evalRes] = await Promise.all([
-    sb.rpc("buzz_series", { p_product_id: productId, p_from: from.toISOString(), p_to: range.to.toISOString(), p_bucket: bucket, p_tz: tz, p_sources: sourceFilter }),
+    analyticsRpc(sb, "buzz_series", { p_product_id: productId, p_from: from.toISOString(), p_to: range.to.toISOString(), p_bucket: bucket, p_tz: tz, p_sources: sourceFilter }),
     coverageRows(sb, productId, from, range.to, bucket, tz, sourceFilter),
     totalsMany(sb, productId, [
       [from, range.to], [prev.from, prev.to],

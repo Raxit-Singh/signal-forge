@@ -16,13 +16,14 @@ type Option = { id: string; name: string };
 
 const TABS = [
   { key: "all", label: "All", patch: { status: null, sentiment: null } },
-  { key: "review", label: "Need review", patch: { status: "review", sentiment: null } },
+  { key: "relevant", label: "Confirmed", patch: { status: "relevant", sentiment: null } },
+  { key: "review", label: "Possible matches", patch: { status: "review", sentiment: null } },
   { key: "negative", label: "Negative", patch: { sentiment: "negative", status: null } },
   { key: "positive", label: "Positive", patch: { sentiment: "positive", status: null } },
 ] as const;
 
 export function MentionFilters({ sources, types, sentiments, counts }: {
-  sources: Option[]; types: Option[]; sentiments: Option[]; counts: { all: number; review: number; negative: number; positive: number };
+  sources: Option[]; types: Option[]; sentiments: Option[]; counts: { all: number; relevant: number; review: number; negative: number; positive: number };
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -54,6 +55,7 @@ export function MentionFilters({ sources, types, sentiments, counts }: {
   const status = view.get("status") ?? "";
   const sentiment = view.get("sentiment") ?? "";
   const tab = status === "review" && !sentiment ? "review"
+    : status === "relevant" && !sentiment ? "relevant"
     : !status && sentiment === "negative" ? "negative"
     : !status && sentiment === "positive" ? "positive"
     : !status && !sentiment ? "all" : null;
@@ -107,8 +109,8 @@ export function MentionFilters({ sources, types, sentiments, counts }: {
           options={[{ value: "", label: "Any sentiment" }, ...sentiments.map((o) => ({ value: o.id, label: o.name }))]} />
         <FilterSelect label="Relevance" value={status} onChange={(v) => apply({ status: v || null })}
           options={[
-            { value: "", label: "Relevant + needs review" }, { value: "review", label: "Needs review" },
-            { value: "relevant", label: "Relevant only" }, { value: "irrelevant", label: "Not relevant" }, { value: "all", label: "Everything" },
+            { value: "", label: "Confirmed + possible" }, { value: "review", label: "Possible matches" },
+            { value: "relevant", label: "Confirmed only" }, { value: "irrelevant", label: "Not relevant" }, { value: "all", label: "Everything" },
           ]} />
         <label className="flex min-h-9 cursor-pointer items-center gap-1.5 px-1 text-[13px] text-muted-foreground">
           <input

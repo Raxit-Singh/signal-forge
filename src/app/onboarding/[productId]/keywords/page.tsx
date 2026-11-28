@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
-import { ensureBrandTerm, suggestAliases, type AliasSuggestion } from "@/lib/domain/aliases";
+import { contextSuggestions, ensureBrandTerm, suggestAliases, type AliasSuggestion } from "@/lib/domain/aliases";
 import { normalizeWebsiteUrl } from "@/lib/domain/urls";
 import { Card, CardContent } from "@/components/ui/primitives";
 import { KeywordEditor, type EditableAlias } from "@/components/keyword-editor";
@@ -22,6 +22,8 @@ export default async function KeywordsStep({ params }: { params: Promise<{ produ
     .eq("product_id", product.id)
     .order("created_at");
 
+  const site = product.website_url ? normalizeWebsiteUrl(product.website_url) : null;
+  const domain = site?.ok ? site.value.domain : null;
   let initial: EditableAlias[];
   if (saved && saved.length > 0) {
     initial = saved.map((a) => ({
@@ -34,10 +36,9 @@ export default async function KeywordsStep({ params }: { params: Promise<{ produ
       source: a.source as EditableAlias["source"],
     }));
   } else {
-    const site = product.website_url ? normalizeWebsiteUrl(product.website_url) : null;
     initial = suggestAliases({
       name: product.name,
-      websiteDomain: site?.ok ? site.value.domain : null,
+      websiteDomain: domain,
       githubRepo: product.github_repo,
       category: product.category,
       description: product.description,
@@ -62,14 +63,15 @@ export default async function KeywordsStep({ params }: { params: Promise<{ produ
         title="Keywords to listen for"
         description={
           <>
-            We suggested these from what you entered. Ambiguous words (like a common English word) only count when one
-            of their <span className="font-medium text-foreground">context terms</span> appears in the same post.
+            Heardex collects posts that contain one of these words. We started with your product name, which is always on.
+            You can add other names people use for it, like a short name, a handle or a common misspelling.
           </>
         }
       />
       <Card>
         <CardContent>
-          <KeywordEditor productId={product.id} initial={ensureBrandTerm(initial, product.name).aliases} mode="onboarding" allowance={allowance} productName={product.name} />
+          <KeywordEditor productId={product.id} initial={ensureBrandTerm(initial, product.name).aliases} mode="onboarding" allowance={allowance} productName={product.name}
+            contextSuggestions={contextSuggestions({ name: product.name, websiteDomain: domain, category: product.category, description: product.description })} />
         </CardContent>
       </Card>
     </>

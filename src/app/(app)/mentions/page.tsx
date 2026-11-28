@@ -160,12 +160,16 @@ export default async function MentionsPage({ searchParams }: { searchParams: Pro
     .eq("product_id", product.id).eq("dedup_kind", "original")
     .gte("published_at", range.from.toISOString()).lt("published_at", range.to.toISOString());
   const dayAgo = new Date(new Date(loadedAt).getTime() - 86_400_000).toISOString();
+  // The headline counts confirmed mentions only (as Overview, the sidebar and the platform cards do);
+  // possible matches are listed too, but counted separately until they're confirmed.
+  const confirmed = STATUS_FILTER.relevant!;
   const summaryP = Promise.all([
     glance((x) => x.in("relevance_status", STATUS_FILTER[""]!)),
     glance((x) => x.eq("relevance_status", "pending")),
-    glance((x) => x.in("relevance_status", STATUS_FILTER[""]!).eq("processing_status", "classified").eq("sentiment", "negative")),
-    glance((x) => x.in("relevance_status", STATUS_FILTER[""]!).gte("published_at", dayAgo)),
-    glance((x) => x.in("relevance_status", STATUS_FILTER[""]!).eq("processing_status", "classified").eq("sentiment", "positive")),
+    glance((x) => x.in("relevance_status", confirmed).eq("processing_status", "classified").eq("sentiment", "negative")),
+    glance((x) => x.in("relevance_status", confirmed).gte("published_at", dayAgo)),
+    glance((x) => x.in("relevance_status", confirmed).eq("processing_status", "classified").eq("sentiment", "positive")),
+    glance((x) => x.in("relevance_status", confirmed)),
   ]);
   // Volume per day (all and negative) and per platform, for the hero chart and platform cards.
   const shapeP = Promise.all([
@@ -192,7 +196,7 @@ export default async function MentionsPage({ searchParams }: { searchParams: Pro
   const rows = (data ?? []) as unknown as MentionRow[];
   const filtered = Boolean(q || source || type || statusKey || showDupes || feedback || sentiment);
   const [coverage, summary, [dash, daily]] = await Promise.all([getCoverageSummary(product.id), summaryP, shapeP]);
-  const [inRange = 0, review = 0, negative = 0, lastDay = 0, positive = 0] = summary.map((r) => r.count ?? 0);
+  const [inRange = 0, review = 0, negative = 0, lastDay = 0, positive = 0, counted = 0] = summary.map((r) => r.count ?? 0);
   const negByDay = new Map(((daily.data ?? []) as Array<{ day: string; negative: number }>).map((r) => [r.day, Number(r.negative ?? 0)]));
   const dayKey = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
   const dayLabel = new Intl.DateTimeFormat("en-US", dash.bucket === "hour" ? { hour: "numeric", timeZone: tz } : { weekday: "short", month: "short", day: "numeric", timeZone: tz });
@@ -209,7 +213,7 @@ export default async function MentionsPage({ searchParams }: { searchParams: Pro
   const sources = PUBLIC_SOURCES.map((id) => ({ id, name: integrationInfo(id)?.name ?? id }));
   const shown = pageRange(page, PAGE_SIZE, total);
 
-  const pct = (n: number) => (inRange > 0 ? `${Math.round((n / inRange) * 100)}%` : "—");
+  const pct = (n: number) => (counted > 0 ? `${Math.round((n / counted) * 100)}%` : "—");
   const href = (patch: SearchParams) => pageHref("/mentions", { ...sp, ...patch }, 1);
 
   return (
@@ -240,16 +244,22 @@ export default async function MentionsPage({ searchParams }: { searchParams: Pro
                 <p className="text-[14px] text-muted-foreground">Conversations matching {product.name}&apos;s keywords · {range.label.toLowerCase()}</p>
               </div>
               <div className="grid gap-2">
-                <CountUp value={inRange} className="text-[56px] font-semibold leading-none tracking-[-0.045em] sm:text-[64px]" />
+                <CountUp value={counted} className="text-[56px] font-semibold leading-none tracking-[-0.045em] sm:text-[64px]" />
                 <p className="text-[14px] text-muted-foreground">
-                  Negative <span className="text-signal">{pct(negative)}</span> · Positive <span className="text-foreground">{pct(positive)}</span> · {lastDay.toLocaleString("en-US")} in the last 24 hours
+                  Confirmed mentions · Negative <span className="text-signal">{pct(negative)}</span> · Positive <span className="text-foreground">{pct(positive)}</span> · {lastDay.toLocaleString("en-US")} in the last 24 hours
                 </p>
+                {review > 0 && (
+                  <p className="max-w-md text-[13px] text-muted-foreground">
+                    Plus {review.toLocaleString("en-US")} possible {review === 1 ? "match" : "matches"}: posts that contain a keyword but may not be about {product.name}.
+                    They&apos;re listed below and count once confirmed.
+                  </p>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {review > 0 ? (
                   <Link href={href({ status: "review", sentiment: undefined })} scroll={false}
                     className="press flex h-11 items-center gap-2 rounded-full bg-primary px-5 text-[14px] font-medium text-primary-foreground shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12),0_8px_24px_-8px_color-mix(in_oklab,var(--signal)_80%,transparent)]">
-                    <ListChecks className="size-4" aria-hidden />Review {review.toLocaleString("en-US")} {review === 1 ? "match" : "matches"}
+                    <ListChecks className="size-4" aria-hidden />Review {review.toLocaleString("en-US")} possible {review === 1 ? "match" : "matches"}
                   </Link>
                 ) : (
                   <Link href={href({ sentiment: "negative", status: undefined })} scroll={false}
@@ -285,7 +295,7 @@ export default async function MentionsPage({ searchParams }: { searchParams: Pro
               sources={sources}
               types={Object.entries(MENTION_TYPES).map(([id, name]) => ({ id, name }))}
               sentiments={Object.entries(SENTIMENTS).map(([id, v]) => ({ id, name: v.label }))}
-              counts={{ all: inRange, review, negative, positive }}
+              counts={{ all: inRange, relevant: counted, review, negative, positive }}
             />
             {feedback && (
               <p className="flex flex-wrap items-center gap-2 text-[13px]" data-testid="feedback-filter">
@@ -299,7 +309,8 @@ export default async function MentionsPage({ searchParams }: { searchParams: Pro
               <span aria-live="polite">
                 {total === 0
                   ? "No mentions in this view"
-                  : `Showing ${formatCount(shown.from)}–${formatCount(shown.to)} of ${total.toLocaleString("en-US")} mention${total === 1 ? "" : "s"}`}
+                  : `Showing ${formatCount(shown.from)}–${formatCount(shown.to)} of ${total.toLocaleString("en-US")} mention${total === 1 ? "" : "s"}${
+                    !filtered && review > 0 ? ` (${counted.toLocaleString("en-US")} confirmed, ${review.toLocaleString("en-US")} possible)` : ""}`}
               </span>
               {total > 0 && <span className="hidden sm:inline">Newest first</span>}
             </p>
